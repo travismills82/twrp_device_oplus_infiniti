@@ -4,11 +4,45 @@
  */
 
 #include <android-base/logging.h>
+#include <android-base/parseint.h>
 #include <android-base/properties.h>
 #define _REALLY_INCLUDE_SYS__SYSTEM_PROPERTIES_H_
 #include <sys/_system_properties.h>
 
+#include <fs_mgr.h>
+#include <unordered_map>
+
 using android::base::GetProperty;
+using android::fs_mgr::GetKernelCmdline;
+
+const std::unordered_map<int, std::string> kRegionSuffixMap = {
+    {27,    "IN"},
+    {55,    "RU"},
+    {68,    "EEA"},
+    {151,   ""},    // CN
+    {161,   "NA"},
+    {0,     ""},    // Default
+};
+
+struct ModelInfo {
+    const char* brand;              // ro.product.brand
+    const char* device;             // ro.product.device
+    const char* manufacturer;       // ro.product.manufacturer
+    const char* model;              // ro.product.model
+    const char* base_name;          // ro.product.name  w/o region suffix
+    const char* supportSpr;         // vendor.display.enable_spr
+};
+
+const std::unordered_map<int, ModelInfo> kModelInfoMap = {
+    {23821, {"OnePlus", "OP5D0DL1", "OnePlus", "PJZ110",  "PJZ110",  "1"}}, // dodge CN
+    {24600, {"realme",  "RE6018L1", "realme",  "RMX5010", "RMX5010", "0"}}, // RMX5010 CN
+    {24620, {"realme",  "RE602CL1", "realme",  "RMX5090", "RMX5090", "0"}}, // RMX5090 CN
+    {24670, {"realme",  "RE605FL1", "realme",  "RMX5011", "RMX5011", "0"}}, // RMX5011 IN
+    {24671, {"realme",  "RE605FL1", "realme",  "RMX5011", "RMX5011", "0"}}, // RMX5011 EEA/RU
+    {24811, {"OnePlus", "OP60EBL1", "OnePlus", "PKR110",  "PKR110",  "0"}}, // hummer CN
+    {24821, {"OnePlus", "OP60F5L1", "OnePlus", "PKX110",  "PKX110",  "1"}}, // pagani CN
+    {0,     {"OPLUS",   "SM87XX",   "OPLUS",   "SM87XX",  "SM87XX",  "0"}}, // Default
+};
 
 /*
  * SetProperty does not allow updating read only properties and as a result
@@ -26,51 +60,34 @@ void OverrideProperty(const char* name, const char* value) {
     }
 }
 
-void SetupModelProperties(
-    const char* brand,          // ro.product.brand
-    const char* device,         // ro.product.device
-    const char* manufacturer,   // ro.product.manufacturer
-    const char* model,          // ro.product.model
-    const char* name,           // ro.product.name
-    const char* supportSpr      // vendor.display.enable_spr
-) {
-    OverrideProperty("ro.product.brand",            brand);
-    OverrideProperty("ro.product.device",           device);
-    OverrideProperty("ro.product.manufacturer",     manufacturer);
-    OverrideProperty("ro.product.model",            model);
-    OverrideProperty("ro.product.name",             name);
-    OverrideProperty("vendor.display.enable_spr",   supportSpr);
-    OverrideProperty("ro.build.date.utc",           "0");
+void SetupModelProperties(const ModelInfo& info, const std::string& region) {
+    std::string name = info.base_name + region;
+    struct PropPair {
+        const char* key;
+        const char* value;
+    } props[] = {
+        {"ro.product.brand",            info.brand},
+        {"ro.product.device",           info.device},
+        {"ro.product.manufacturer",     info.manufacturer},
+        {"ro.product.model",            info.model},
+        {"ro.product.name",             name.c_str()},
+        {"vendor.display.enable_spr",   info.supportSpr},
+        {"ro.build.date.utc",           "0"},
+    };
+    for (const auto& p : props) {
+        OverrideProperty(p.key, p.value);
+    }
 }
 
-/*
- * Only for read-only properties. Properties that can be wrote to more
- * than once should be set in a typical init script (e.g. init.oplus.hw.rc)
- * after the original property has been set.
- */
 void vendor_load_properties() {
-    auto prjname = std::stoi(GetProperty("ro.boot.prjname", "0"));
+    std::string buf = "0";
+    GetKernelCmdline("oplus_region", &buf);
 
-    switch (prjname) {
-        case 24600: // RMX5010 CN
-            SetupModelProperties("realme", "RE6018L1", "realme", "RMX5010", "RMX5010", "0");
-            break;
-        case 24620: // RMX5090 CN
-            SetupModelProperties("realme", "RE602CL1", "realme", "RMX5090", "RMX5090", "0");
-            break;
-        case 24670:
-            SetupModelProperties("realme", "RE605FL1", "realme", "RMX5011", "RMX5011", "0");
-            break;
-        case 24811: // hummer CN
-            SetupModelProperties("OnePlus", "OP60EBL1", "OnePlus", "PKR110", "PKR110", "0");
-            break;
-        case 24821: // pagani CN
-            SetupModelProperties("OnePlus", "OP60F5L1", "OnePlus", "PKX110", "PKX110", "1");
-            break;
-        case 23821: // dodge CN
-            SetupModelProperties("OnePlus", "OP5D0DL1", "OnePlus", "PJZ110", "PJZ110", "1");
-            break;
-        default:
-            LOG(ERROR) << "Unexpected prjname: " << prjname;
-    }
+    auto region = std::stoi(buf);
+    auto region_suffix_iter = kRegionSuffixMap.find(region);
+
+    auto prjname = std::stoi(GetProperty("ro.boot.prjname", "0"));
+    auto model_info = kModelInfoMap.find(prjname);
+
+    SetupModelProperties(model_info->second, region_suffix_iter->second);
 }
