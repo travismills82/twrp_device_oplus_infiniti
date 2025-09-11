@@ -94,17 +94,6 @@ jobs:
         sudo apt install repo -y
         git config user.name ${{ github.actor }}
         git config user.email ${{ github.actor }}@users.noreply.github.com
-        echo -e "$BUILD_INFO" >> INFO.txt
-        echo "Change log:" >> INFO.txt
-        set +e
-        cd device/${{ github.event.inputs.DEVICE_PATH }}
-        LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null)
-        if [ $? -eq 0 ]; then
-          git log "$LAST_TAG"..HEAD --pretty=format:"- %h-%an: %s" >> INFO.txt
-        else
-          git log --pretty=format:"- %h-%an: %s" >> INFO.txt
-        fi
-        cat INFO.txt
 
     - name: Sync source
       run: |
@@ -115,12 +104,19 @@ jobs:
         kill $TIP_PID && exit 0
 
     - name: Setup device
-      uses: actions/checkout@v5
-      with:
-        fetch-depth: 0
-        path: device/${{ github.event.inputs.DEVICE_PATH }}
-        ref: ${{ github.event.inputs.DEVICE_TREE_BRANCH }}
-        repository: ${{ github.event.inputs.DEVICE_TREE_URL }}
+      run: |
+        git clone ${{ github.event.inputs.DEVICE_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} device/${{ github.event.inputs.DEVICE_PATH }} --depth=1
+
+        echo -e "$BUILD_INFO" >> INFO.txt
+        echo "Change log:" >> INFO.txt
+        set +e
+        LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null)
+        if [ $? -eq 0 ]; then
+          git log "$LAST_TAG"..HEAD --pretty=format:"- %h-%an: %s" >> INFO.txt
+        else
+          git log --pretty=format:"- %h-%an: %s" >> INFO.txt
+        fi
+        cat INFO.txt
 
     - name: Build TWRP
       run: |
