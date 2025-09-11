@@ -86,11 +86,6 @@ jobs:
         sudo sed -i 's/^#PRIORITY=100/PRIORITY=1000/' /etc/default/zramswap
         sudo systemctl restart zramswap
         zramctl
-        
-    - name: Check Out
-      uses: actions/checkout@v5
-      with:
-        fetch-depth: 0
 
     - name: Setup environment
       run: |
@@ -102,6 +97,7 @@ jobs:
         echo -e "$BUILD_INFO" >> INFO.txt
         echo "Change log:" >> INFO.txt
         set +e
+        cd device/${{ github.event.inputs.DEVICE_PATH }}
         LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null)
         if [ $? -eq 0 ]; then
           git log "$LAST_TAG"..HEAD --pretty=format:"- %h-%an: %s" >> INFO.txt
@@ -119,9 +115,13 @@ jobs:
         kill $TIP_PID && exit 0
 
     - name: Setup device
-      run: |
-        git clone ${{ github.event.inputs.DEVICE_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} device/${{ github.event.inputs.DEVICE_PATH }} --depth=1
-        
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+        path: device/${{ github.event.inputs.DEVICE_PATH }}
+        ref: ${{ github.event.inputs.DEVICE_TREE_BRANCH }}
+        repository: ${{ github.event.inputs.DEVICE_TREE_URL }}
+
     - name: Build TWRP
       run: |
         source build/envsetup.sh
