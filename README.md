@@ -7,6 +7,7 @@
 - OnePlus 13T (CN)
 - OnePlus Ace 5 Pro (CN)
 - OnePlus 13 (CN)
+- OnePlus 15 (CN)
 
 ## Build it yourself?
 
