@@ -1,4 +1,4 @@
-# TWRP device tree for OPLUS sm88xx sreies
+# TWRP device tree for OPLUS infiniti
 
 ## Supported devices
 
@@ -10,16 +10,16 @@
 mkdir twrp && cd twrp
 repo init --depth=1 -u https://github.com/TWRP-Test/platform_manifest_twrp_aosp.git -b twrp-16.0
 repo sync
-git clone --depth=1 https://github.com/kmiit/twrp_device_oplus_sm88xx device/oplus/sm88xx
+git clone --depth=1 https://github.com/kmiit/twrp_device_oplus_infiniti device/oplus/infiniti
 ```
 
 ```shell
 source build/envsetup.sh
-lunch twrp_sm87xx
+lunch twrp_infiniti
 make recoveryimage
 ```
 
-If there is no error, recovery.img will be found in `out/target/product/sm88xx/recovery.img`
+If there is no error, recovery.img will be found in `out/target/product/infiniti/recovery.img`
 
 ## Features
 

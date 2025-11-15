@@ -4,14 +4,14 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-DEVICE_PATH := device/oplus/sm88xx
+DEVICE_PATH := device/oplus/infiniti
 
 # Inherit from device.mk configuration
 $(call inherit-product, $(DEVICE_PATH)/device.mk)
 
 ## Device identifier
-PRODUCT_DEVICE  := sm88xx
-PRODUCT_NAME    := twrp_sm88xx
+PRODUCT_DEVICE  := infiniti
+PRODUCT_NAME    := twrp_infiniti
 PRODUCT_BRAND   := oplus
 
 # Theme
