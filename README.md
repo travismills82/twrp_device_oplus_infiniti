@@ -1,12 +1,8 @@
-# TWRP device tree for OPLUS sm87xx sreies
+# TWRP device tree for OPLUS sm88xx sreies
 
 ## Supported devices
 
-- Realme GT7 Pro (CN, GL)
-- Realme GT7 Pro Speed (CN, GL)
-- OnePlus 13T (CN)
-- OnePlus Ace 5 Pro (CN)
-- OnePlus 13 (CN)
+- OnePlus 15 (CN)
 
 ## Build it yourself?
 
@@ -14,7 +10,7 @@
 mkdir twrp && cd twrp
 repo init --depth=1 -u https://github.com/TWRP-Test/platform_manifest_twrp_aosp.git -b twrp-16.0
 repo sync
-git clone --depth=1 https://github.com/kmiit/twrp_device_oplus_sm87xx device/oplus/sm87xx
+git clone --depth=1 https://github.com/kmiit/twrp_device_oplus_sm88xx device/oplus/sm88xx
 ```
 
 ```shell
@@ -23,7 +19,7 @@ lunch twrp_sm87xx
 make recoveryimage
 ```
 
-If there is no error, recovery.img will be found in `out/target/product/sm87xx/recovery.img`
+If there is no error, recovery.img will be found in `out/target/product/sm88xx/recovery.img`
 
 ## Features
 

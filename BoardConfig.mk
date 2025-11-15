@@ -49,8 +49,8 @@ AB_OTA_PARTITIONS += \
     my_stock
 
 # Bootloader
-PRODUCT_PLATFORM                := sun
-TARGET_BOOTLOADER_BOARD_NAME    := sun
+PRODUCT_PLATFORM                := canoe
+TARGET_BOOTLOADER_BOARD_NAME    := canoe
 
 # Crypto
 BOARD_USES_METADATA_PARTITION   := true
@@ -87,9 +87,9 @@ BOARD_RAMDISK_USE_LZ4       := true
 BOARD_PROPERTY_OVERRIDES_SPLIT_ENABLED  := true
 BOARD_RECOVERYIMAGE_PARTITION_SIZE      := 0x6400000
 
-BOARD_SUPER_PARTITION_SIZE                  := 15569256448
+BOARD_SUPER_PARTITION_SIZE                  := 18907922432
 BOARD_SUPER_PARTITION_GROUPS                := qti_dynamic_partitions
-BOARD_QTI_DYNAMIC_PARTITIONS_SIZE           := 15565062144
+BOARD_QTI_DYNAMIC_PARTITIONS_SIZE           := 18903728128
 BOARD_QTI_DYNAMIC_PARTITIONS_PARTITION_LIST := system system_ext product vendor vendor_dlkm odm
 BOARD_QTI_DYNAMIC_PARTITIONS_PARTITION_LIST += my_bigball my_carrier my_company my_engineering my_heytap my_manifest my_preload my_product my_region my_stock
 
@@ -98,8 +98,8 @@ TARGET_COPY_OUT_ODM             := odm
 TARGET_COPY_OUT_VENDOR          := vendor
 
 # Platform
-TARGET_BOARD_PLATFORM   := sm87xx
-QCOM_BOARD_PLATFORMS    += sm87xx
+TARGET_BOARD_PLATFORM   := sm88xx
+QCOM_BOARD_PLATFORMS    += sm88xx
 
 # Recovery
 BOARD_EXCLUDE_KERNEL_FROM_RECOVERY_IMAGE    := true
@@ -135,7 +135,7 @@ PLATFORM_VERSION                := 99.87.36
 PLATFORM_VERSION_LAST_STABLE    := $(PLATFORM_VERSION)
 PLATFORM_SECURITY_PATCH         := 2099-12-31
 VENDOR_SECURITY_PATCH           := $(PLATFORM_SECURITY_PATCH)
-TW_DEVICE_VERSION               := OPLUS-SM87XX
+TW_DEVICE_VERSION               := OPLUS-SM88XX
 
 # Verified Boot
 BOARD_AVB_ENABLE := true

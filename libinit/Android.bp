@@ -5,11 +5,11 @@
 //
 
 cc_library_static {
-    name: "libinit_oplus_sm87xx",
+    name: "libinit_oplus_sm88xx",
     static_libs: [
         "libbase",
         "libfs_mgr"
     ],
-    srcs: ["libinit_oplus_sm87xx.cpp"],
+    srcs: ["libinit_oplus_sm88xx.cpp"],
     recovery_available: true,
 }
