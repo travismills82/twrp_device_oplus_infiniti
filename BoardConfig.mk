@@ -71,8 +71,8 @@ TARGET_USERIMAGES_USE_F2FS := true
 TW_USE_DMCTL               := true
 
 # Init
-TARGET_INIT_VENDOR_LIB          := //$(DEVICE_PATH):libinit_oplus_sm87xx
-TARGET_RECOVERY_DEVICE_MODULES  := libinit_oplus_sm87xx
+TARGET_INIT_VENDOR_LIB          := //$(DEVICE_PATH):libinit_oplus_sm88xx
+TARGET_RECOVERY_DEVICE_MODULES  := libinit_oplus_sm88xx
 
 # Kernel
 BOARD_KERNEL_IMAGE_NAME     := Image
