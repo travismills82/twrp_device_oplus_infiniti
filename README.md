@@ -34,7 +34,7 @@ Works:
 - [O] Sideload
 - [O] Touch
 - [O] USB OTG
-- [O] Vibrator
+- [X] Vibrator
 
 ## To use it:
 
