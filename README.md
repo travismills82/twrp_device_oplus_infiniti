@@ -27,14 +27,14 @@ Works:
 
 - [X] ADB
 - [X] Display
-- [X] Decryption
-- [X] Fasbootd
-- [X] Flashing
-- [X] MTP
-- [X] Sideload
-- [X] Touch
-- [X] USB OTG
-- [X] Vibrator
+- [] Decryption
+- [X] Fastbootd
+- [] Flashing
+- [] MTP
+- [] Sideload
+- [] Touch
+- [] USB OTG
+- [] Vibrator
 
 ## To use it:
 
