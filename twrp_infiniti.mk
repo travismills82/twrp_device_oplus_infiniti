@@ -16,5 +16,3 @@ PRODUCT_BRAND   := oplus
 
 # Theme
 TW_STATUS_ICONS_ALIGN   := center
-TW_Y_OFFSET             := 111
-TW_H_OFFSET             := -111
