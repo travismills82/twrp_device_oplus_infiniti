@@ -68,8 +68,8 @@ on property:ro.crypto.state=encrypted && property:ro.boot.dynamic_partitions=tru
     start prepdecrypt.vendor
 
 on property:vendor.sys.listeners.registered=true
-
-service my_mvTouch_script /system/bin/sh /vendor/bin/mvTouch.sh
-    user root
     setprop sys.boot_completed 1
     start vendor.ssgtzd    
+    
+service my_mvTouch_script /system/bin/sh /vendor/bin/mvTouch.sh
+    user root
