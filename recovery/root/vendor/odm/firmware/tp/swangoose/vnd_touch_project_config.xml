@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project name="swangoose">
+	<version>20250819</version>
+
+	<device id="0" ic_name="gt9966">
+		<afelib>libgt9966.so</afelib>
+		<postalgolib>libpostalgo-null.so</postalgolib>
+		<mode afemode="diff" algomode="coord" postOn ="1"></mode>
+		<panel vendor="samsung" alias="AC305" hint="">
+			<algo-config scence="prefilter" path="vnd_algo_config_main.xml" />
+			<algo-config scence="post" path="vnd_algo_config_main.xml" />
+			<custom-config scence="default" path="vnd_custom_config_main.xml" />
+			<firmware-config path="vnd_tp_fw_main.bin" />
+			<grip-config path="vnd_edge_touch_config_main.xml" />
+			<touchScene-config path="vnd_touch_scene_config_main.xml" />
+		</panel>
+	</device>
+	
+	
+	<device id="1" ic_name="gt9916">
+		<afelib>libgt9916.so</afelib>
+		<postalgolib>libpostalgo-null.so</postalgolib>
+		<mode afemode="diff" algomode="coord" postOn="1" ></mode>
+		<glovetflite>GloveDetect.tflite</glovetflite>
+		<filmtflite>model.tflite</filmtflite>
+		<panel vendor="boe" alias="AC306" hint="">
+			<algo-config scence="prefilter" path="vnd_algo_config_sub.xml" />
+			<algo-config scence="post" path="vnd_algo_config_sub.xml" />
+			<custom-config scence="default" path="vnd_custom_config_main.xml" />
+			<firmware-config path="vnd_tp_fw_second.bin" />
+			<grip-config path="vnd_edge_touch_config_main.xml" />
+			<touchScene-config path="vnd_touch_scene_config_main.xml" />
+		</panel>
+	</device>
+</project>

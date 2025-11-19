@@ -1,0 +1,206 @@
+<?xml version="1.0" encoding="utf-8"?>
+<algo>
+	<version>2025081402</version>
+	<algo-version>v2.0.4.50</algo-version>
+		<modules id="AFT" enable="true" hint="">
+			<param name="tx-rx-num" type="u32" hint="" >
+				<value>38,42</value>
+			</param>
+
+			<param name="prevention,grip_disable_level" type="u32" hint="" >
+				<value>255</value>
+			</param>
+
+			<param name="prevention,updelay_time_ms" type="u32" hint="" >
+				<value>30</value>
+			</param>
+
+			<param name="prevention,makeup_cnt_weight" type="u32" hint="" >
+				<value>5,1,2,2,2</value>
+			</param>
+
+			<param name="prevention,large_corner_range" type="u32" hint="" >
+				<value>1200,3000</value>
+			</param>
+
+			<param name="prevention,large_corner_judge_condition" type="u32" hint="" >
+				<value>300,100,1000,7,7</value>
+			</param>
+
+			<param name="prevention,trx_reject_condition" type="u32" hint="" >
+				<value>9,7,5</value>
+			</param>
+
+			<param name="prevention,large_judge_time_ms" type="u32" hint="" >
+				<value>500,50,100</value>
+			</param>
+
+			<param name="prevention,large_exit_condition" type="u32" hint="" >
+				<value>8,8,2</value>
+			</param>
+
+			<param name="prevention,single_channel_width" type="u32" hint="" >
+				<value>320,320</value>
+			</param>
+
+			<param name="prevention,normal_tap_condition" type="u32" hint="" >
+				<value>10,350</value>
+			</param>
+
+			<param name="prevention,long_edge_condition" type="u32" hint="" >
+				<value>70,120,40,80</value>
+			</param>
+
+			<param name="prevention,long_fingerhold_condition" type="u32" hint="" >
+				<value>70,6,4,4</value>
+			</param>
+
+			<param name="prevention,short_edge_condition" type="u32" hint="" >
+				<value>250,90,180,80</value>
+			</param>
+
+			<param name="prevention,top_corner_config" type="u32" hint="" >
+				<value>500,1500,300</value>
+			</param>
+
+			<param name="prevention,edge_swipe_config" type="u32" hint="" >
+				<value>300,1000</value>
+			</param>
+
+			<param name="prevention,trx_strict_reject_condition" type="u32" hint="" >
+				<value>3,1,1</value>
+			</param>
+
+			<param name="prevention,long_strict_edge_condition" type="u32" hint="" >
+				<value>50,25</value>
+			</param>
+
+			<param name="prevention,short_strict_edge_condition" type="u32" hint="" >
+				<value>160,60</value>
+			</param>
+
+			<param name="prevention,large_strict_exit_condition" type="u32" hint="" >
+				<value>4,4</value>
+			</param>
+
+			<param name="prevention,corner_move_rejected" type="u32" hint="" >
+				<value>0</value>
+			</param>
+
+			<param name="prevention,corner_eliminate_point_support" type="u32" hint="" >
+				<value>1</value>
+			</param>
+
+			<param name="prevention,curved_screen_V4" type="u32" hint="" >
+				<value>1</value>
+			</param>
+
+			<param name="prevention,curved_screen_V4_3" type="u32" hint="" >
+				<value>1</value>
+			</param>
+
+			<param name="prevention,long_fingerhold_condition2" type="u32" hint="" >
+				<value>650,2000,0,0</value>
+			</param>
+
+			<param name="prevention,top_corner_config2" type="u32" hint="" >
+				<value>3,80,600,1500,0</value>
+			</param>
+
+			<param name="prevention,hor_long_top_corner_config" type="u32" hint="" >
+				<value>350,2270</value>
+			</param>
+
+			<param name="prevention,top_middle_config" type="u32" hint="" >
+				<value>14400,1000,1000,0</value>
+			</param>
+
+			<param name="prevention,corner_eliminate_point_type" type="u32" hint="" >
+				<value>0,1380,2280,1</value>
+			</param>
+
+			<param name="prevention,long_eliminate_point_type" type="u32" hint="" >
+				<value>2,14400,10560,300,31680,300,1</value>
+			</param>
+
+			<param name="prevention,finger_hold_differ_size" type="u32" hint="" >
+				<value>1,0,400,300</value>
+			</param>
+
+			<param name="prevention,finger_hold_max_rx_exit_distance" type="u32" hint="" >
+				<value>5,350,2300</value>
+			</param>
+
+			<param name="prevention,max_rx_exit_distance" type="u32" hint="" >
+				<value>1,5,150,350,2000</value>
+			</param>
+
+			<param name="prevention,dynamic_finger_hold_exit_distance" type="u32" hint="" >
+				<value>1,350,2300,450</value>
+			</param>
+
+			<param name="prevention,edge_sliding_matched_support" type="u32" hint="" >
+				<value>1,150,3,0</value>
+			</param>
+
+			<param name="prevention,reclining_mode_support" type="u32" hint="" >
+				<value>1</value>
+			</param>
+
+			<param name="prevention,long_eliminate_point_type_recli" type="u32" hint="" >
+				<value>2,12400,9240,240,27720,500,1</value>
+			</param>
+
+			<param name="prevention,finger_hold_differ_size_recli" type="u32" hint="" >
+				<value>1,0,400,400</value>
+			</param>
+
+			<param name="prevention,finger_hold_max_rx_exit_distance_recli" type="u32" hint="" >
+				<value>5,350,2300</value>
+			</param>
+
+			<param name="prevention,max_rx_exit_distance_recli" type="u32" hint="" >
+				<value>1,5,100,350,2300</value>
+			</param>
+
+			<param name="prevention,dynamic_finger_hold_exit_distance_recli" type="u32" hint="" >
+				<value>1,350,2300,450</value>
+			</param>
+
+			<param name="prevention,edge_sliding_matched_support_recli" type="u32" hint="" >
+				<value>1,150,3,0</value>
+			</param>
+
+			<param name="prevention,long_edge_condition_recli" type="u32" hint="" >
+				<value>179,90,120,80</value>
+			</param>
+
+			<param name="prevention,large_corner_judge_condition_ime" type="u32" hint="" >
+				<value>300,0,0,0,0</value>
+			</param>
+
+			<param name="prevention,corner_major_minor_check" type="u32" hint="" >
+				<value>200,600,25,0,1</value>
+			</param>
+
+			<param name="prevention,corner_point_edge_percent_thd" type="u32" hint="" >
+				<value>1600,1,30,32,1</value>
+			</param>
+
+			<param name="prevention,corner_point_edge_percent_thd2" type="u32" hint="" >
+				<value>40,3,20,0,0</value>
+			</param>
+
+			<param name="prevention,point_stability_judgment_check" type="u32" hint="" >
+				<value>1,1,0,0,0</value>
+			</param>
+
+			<param name="prevention,point_corner_er_min_limit_check" type="u32" hint="" >
+				<value>3,5,0,0,1</value>
+			</param>
+
+			<param name="prevention,uniform_make_up_point_v2" type="u32" hint="" >
+				<value>10,2,45,5,1</value>
+			</param>
+		</modules>
+</algo>

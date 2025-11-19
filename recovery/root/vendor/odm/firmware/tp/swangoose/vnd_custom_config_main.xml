@@ -1,0 +1,200 @@
+<?xml version="1.0" encoding="utf-8"?>
+<custom>
+	<version>2025082201</version>
+	<fwk-version>v5.0.0</fwk-version>
+	<modules id="charger" enable="true" hint="support charger detect?">
+		<param name="default" type="bool" hint="charger off: 0, charger on: 1">
+			<value>0</value>
+		</param>
+	</modules>
+
+	<modules id="wl_charger" enable="true" hint="">
+		<param name="default" type="bool" hint="">
+			<value>0</value>
+		</param>
+	</modules>
+
+	<modules id="ifp_en" enable="true" hint="">
+		<param name="default" type="bool" hint="">
+			<value>0</value>
+		</param>
+	</modules>
+
+	<modules id="fp_active" enable="true" hint="">
+		<param name="default" type="bool" hint="">
+			<value>0</value>
+		</param>
+	</modules>
+
+	<modules id="game_mode" enable="true" hint="">
+		<param name="default" type="u32" hint="">
+			<value>0</value>
+		</param>
+	</modules>
+
+	<modules id="palm" enable="true" hint="">
+		<param name="default" type="bool" hint="">
+			<value>0</value>
+		</param>
+	</modules>
+
+	<modules id="gesture_en" enable="true" hint="">
+		<param name="default" type="bool" hint="">
+			<value>0</value>
+		</param>
+	</modules>
+
+	<modules id="gesture_cfg" enable="true" hint="">
+		<param name="default" type="u32" hint="">
+			<value>128</value>
+		</param>
+	</modules>
+
+	<modules id="gesture_coord" enable="true" hint="">
+		<param name="default" type="bool" hint="">
+			<value>1</value>
+		</param>
+	</modules>
+
+	<modules id="sportify_aod" enable="true" hint="">
+		<param name="default" type="bool" hint="">
+			<value>1</value>
+		</param>
+	</modules>
+
+	<modules id="palm_to_sleep_support" enable="true" hint="">
+		<param name="default" type="bool" hint="">
+			<value>1</value>
+		</param>
+	</modules>
+
+	<modules id="palm_to_sleep_enable" enable="true" hint="">
+		<param name="default" type="u32" hint="">
+			<value>0</value>
+		</param>
+	</modules>
+
+	<modules id="high-frame-rate-time" enable="true" hint="">
+		<param name="default" type="u32" hint="">
+			<value>0</value>
+		</param>
+		<param name="supports" type="[u32]" hint="">
+			<!-- value write to chip -->
+			<value>0 60</value>
+		</param>
+	</modules>
+
+	<modules id="report_rate" enable="true" hint="report_rate of touch default, 60, 120, 180, 240 .etc">
+		<param name="default" type="bool" hint="">
+			<!-- according to ReportFps -->
+			<value>0</value>
+		</param>
+		<param name="supports" type="[u32]" hint="">
+			<!-- value write to chip -->
+			<value>0,1,12,18,24,24,24,24</value>
+		</param>
+	</modules>
+
+	<modules id="sensitive-level" enable="true" hint="">
+		<param name="default" type="u32" hint="">
+		<!-- according to SensitiveLevel -->
+			<value>0</value>
+		</param>
+		<param name="supports" type="[u32]" hint="">
+			<value>16,12,10,9,7,5</value>
+		</param>
+	</modules>
+
+	<modules id="smooth-level" enable="true" hint="">
+		<param name="default" type="u32" hint="">
+		<!-- according to SmoothLevel -->
+			<value>0</value>
+		</param>
+		<param name="supports" type="[u32]" hint="">
+			<value>16,25,23,21,18,16</value>
+		</param>
+	</modules>
+
+	<modules id="kernel_grip_handle" enable="true" hint="anti-false-touch grip param debug support">
+		<param name="" type="u32" hint="">
+			<value>1</value>
+		</param>
+	</modules>
+
+	<modules id="kernel_grip_default_para" enable="true" hint="anti-false-touch grip apps param support">
+		<param name="" type="u32" hint="">
+			<value>1</value>
+		</param>
+	</modules>
+
+	<modules id="touch_scene_support" enable="true" hint="touch scene param debug support">
+		<param name="" type="u32" hint="">
+			<value>1</value>
+		</param>
+	</modules>
+
+	<modules id="touch_scene_default_para" enable="true" hint="touch scene apps param support">
+		<param name="" type="u32" hint="">
+			<value>1</value>
+		</param>
+	</modules>
+
+	<modules id="recling_mode" enable="true" hint="anti-false-touch recling mode support">
+		<param name="" type="u32" hint="">
+			<value>0</value>
+		</param>
+	</modules>
+
+	<modules id="temper_send_to_fw_support" enable="true" hint="">
+		<param name="default" type="bool" hint="">
+			<value>1</value>
+		</param>
+	</modules>
+
+	<modules id="glove_enable_support" enable="true" hint="">
+		<param name="default" type="bool" hint="">
+			<value>0</value>
+		</param>
+	</modules>
+
+	<modules id="oplus_pen_support" enable="true" hint="pen support">
+		<param name="default" type="u32" hint="">
+			<value>0</value>
+		</param>
+	</modules>
+	<modules id="oplus_pen_enable" enable="true" hint="">
+		<param name="default" type="bool" hint="">
+			<value>0</value>
+		</param>
+	</modules>
+	<modules id="oplus_pen_control" enable="true" hint="">
+		<param name="default" type="bool" hint="">
+			<value>0</value>
+		</param>
+	</modules>
+	<modules id="oplus_pen_bt_info" enable="true" hint="oplus bt pen info">
+		<param name="default" type="bool" hint="">
+			<value>0</value>
+		</param>
+	</modules>
+	<modules id="oplus_pen_health_info" enable="true" hint="oplus bt health info">
+		<param name="default" type="bool" hint="">
+			<value>0</value>
+		</param>
+	</modules>
+	<modules id="game_hotzone_support" enable="true" hint="">
+		<param name="default" type="bool" hint="">
+			<value>1</value>
+		</param>
+	</modules>
+	<modules id="game_status_support" enable="true" hint="">
+		<param name="default" type="bool" hint="">
+			<value>1</value>
+		</param>
+	</modules>
+	<modules id="click_sensitive_support" enable="true" hint="">
+		<param name="default" type="bool" hint="">
+			<value>0</value>
+		</param>
+	</modules>
+</custom>
