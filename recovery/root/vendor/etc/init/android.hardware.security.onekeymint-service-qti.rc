@@ -3,16 +3,16 @@
 # Confidential and Proprietary - Qualcomm Technologies, Inc.
 
 on init
-    start vendor.keymint-qti
+    start vendor.keymint
 
-service vendor.keymint-qti /vendor/bin/hw/android.hardware.security.keymint-service-qti
+service vendor.keymint /vendor/bin/hw/android.hardware.security.onekeymint-service-qti
     class early_hal
     user system
     group system drmrpc
     seclabel u:r:recovery:s0
 
 on property:vendor.car.hiber=hiberExit
-    stop vendor.keymint-qti
-    start vendor.keymint-qti
+    stop vendor.keymint
+    start vendor.keymint
     stop keystore2
     start keystore2

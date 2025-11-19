@@ -21,11 +21,3 @@ subsystem adf
 /dev/block/bootdevice/by-name/ddr                0660           root     system
 /dev/block/sdd3                                  0660           root     system
 #endif
-
-#ifdef OPLUS_FEATURE_BLUETOOTH_EAR
-#GaoShangxiu@Connectivity.BT, 2022/08/22, Add for ear
-/dev/ttyHS1            0660 bluetooth bluetooth
-/dev/zeku_ear_spi1     0660 bluetooth bluetooth
-/dev/btear             0660 bluetooth bluetooth
-/dev/zeku_ear_spi0     0660 system    audio
-#endif /* OPLUS_FEATURE_BLUETOOTH_EAR */
