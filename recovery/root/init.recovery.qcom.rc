@@ -60,7 +60,6 @@ on property:twrp.modules.loaded=true
     wait /sys/class/power_supply/battery
     start vendor.health-default
     start vendor.boot-qti
-    start vendor.oplus.vibrator
     start vendor.gatekeeper_default
     umount /firmware
 
@@ -69,7 +68,6 @@ on property:ro.crypto.state=encrypted && property:ro.boot.dynamic_partitions=tru
 
 on property:vendor.sys.listeners.registered=true
     setprop sys.boot_completed 1
-    start vendor.ssgtzd    
-    
-service my_mvTouch_script /system/bin/sh /vendor/bin/mvTouch.sh
-    user root
+    start vendor.ssgtzd
+    start vendor.keymint-strongbox
+    start vendor.oplus.vibrator
