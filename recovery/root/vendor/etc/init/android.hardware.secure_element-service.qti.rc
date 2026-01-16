@@ -2,5 +2,4 @@ service vendor.secure_element /vendor/bin/hw/android.hardware.secure_element-ser
     class hal
     user root
     group nfc root
-    interface aidl android.hardware.secure_element.ISecureElement eSE1
     seclabel u:r:recovery:s0
