@@ -2,7 +2,7 @@
 
 ## Supported devices
 
-- OnePlus 15 (CN)
+- OnePlus 15
 
 ## Build it yourself?
 
@@ -27,9 +27,10 @@ Works:
 
 - [X] ADB
 - [X] Display
-- [-] Decryption
-- [X] Fastbootd (No touch)
-- [?] Flashing
+- [X] Decryption
+- [X] Fastbootd
+- [X] Flashing
+- [X] OTA Flash
 - [X] MTP
 - [?] Sideload
 - [X] Touch
