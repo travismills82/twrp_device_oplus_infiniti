@@ -35,7 +35,8 @@ struct ModelInfo {
 
 const std::unordered_map<int, ModelInfo> kModelInfoMap = {
     {24831, {"OnePlus", "OP60FFL1", "OnePlus", "PLK110",  "PLK110",  "1"}}, // infiniti CN
-    {24863, {"OnePlus", "OP60FFL1", "OnePlus", "CPH2745",  "CPH2745",  "1"}}, // infiniti IN
+    {24863, {"OnePlus", "OP611FL1", "OnePlus", "CPH2745",  "CPH2745",  "1"}}, // infiniti IN
+    {24863, {"OnePlus", "OP611FL1", "OnePlus", "CPH2747",  "CPH2747",  "1"}}, // infiniti EU/GLO
     {0,     {"OPLUS",   "SM88XX",   "OPLUS",   "SM88XX",  "SM88XX",  "0"}}, // Default
 };
 
