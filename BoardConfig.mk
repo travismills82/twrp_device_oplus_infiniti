@@ -79,7 +79,7 @@ BOARD_BOOT_HEADER_VERSION   := 4
 BOARD_KERNEL_PAGESIZE       := 4096
 BOARD_MKBOOTIMG_ARGS        += --header_version $(BOARD_BOOT_HEADER_VERSION)
 BOARD_MKBOOTIMG_ARGS        += --pagesize $(BOARD_KERNEL_PAGESIZE)
-
+TARGET_PREBUILT_KERNEL 	    := device/oplus/infinti/Image
 BOARD_RAMDISK_USE_LZ4       := true
 
 # Partitions
