@@ -13,10 +13,11 @@ BUILD_BROKEN_NINJA_USES_ENV_VARS    += RTIC_MPGEN
 BUILD_BROKEN_PLUGIN_VALIDATION      := soong-libaosprecovery_defaults soong-libguitwrp_defaults soong-libminuitwrp_defaults soong-vold_defaults
 
 # Architecture
-TARGET_ARCH                 := arm64
-TARGET_ARCH_VARIANT         := armv8-a
-TARGET_CPU_ABI              := arm64-v8a
-TARGET_CPU_VARIANT          := oryon
+TARGET_ARCH := arm64
+TARGET_ARCH_VARIANT := armv8-a
+TARGET_CPU_ABI := arm64-v8a
+TARGET_CPU_VARIANT := generic
+TARGET_CPU_VARIANT_RUNTIME := oryon
 
 # A/B
 AB_OTA_PARTITIONS := \
@@ -74,6 +75,8 @@ TARGET_INIT_VENDOR_LIB          := //$(DEVICE_PATH):libinit_oplus_infiniti
 TARGET_RECOVERY_DEVICE_MODULES  := libinit_oplus_infiniti
 
 # Kernel
+TARGET_KERNEL_ARCH          := arm64
+TARGET_KERNEL_HEADER_ARCH   := arm64
 BOARD_KERNEL_IMAGE_NAME     := Image
 BOARD_BOOT_HEADER_VERSION   := 4
 BOARD_KERNEL_PAGESIZE       := 4096
@@ -97,8 +100,13 @@ TARGET_COPY_OUT_ODM             := odm
 TARGET_COPY_OUT_VENDOR          := vendor
 
 # Platform
-TARGET_BOARD_PLATFORM   := sm88xx
-QCOM_BOARD_PLATFORMS    += sm88xx
+TARGET_BOARD_PLATFORM := sm8850
+TARGET_BOARD_PLATFORM_GPU := qcom-adreno840
+QCOM_BOARD_PLATFORMS += sm8850
+
+# Power
+ENABLE_CPUSETS := true
+ENABLE_SCHEDBOOST := true
 
 # Recovery
 BOARD_EXCLUDE_KERNEL_FROM_RECOVERY_IMAGE    := true
