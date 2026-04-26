@@ -121,12 +121,14 @@ TW_INCLUDE_RESETPROP          := true
 TW_USE_TOOLBOX                := true
 
 # TWRP display
-TW_BRIGHTNESS_PATH      := /sys/class/backlight/panel0-backlight/brightness
-TW_DEFAULT_BRIGHTNESS   := 1000
-TW_FRAMERATE            := 120
-TW_MAX_BRIGHTNESS       := 2047
+TW_BRIGHTNESS_PATH := "/sys/class/backlight/panel0-backlight/brightness"
+TW_DEFAULT_BRIGHTNESS := 2047
+TW_FRAMERATE := 120
+TW_MAX_BRIGHTNESS := 4094
+TW_NO_SCREEN_BLANK := true
 TW_SCREEN_BLANK_ON_BOOT := true
-TW_THEME                := portrait_hdpi
+TW_THEME := portrait_hdpi
+TARGET_USES_VULKAN := true
 
 # TWRP file system
 RECOVERY_SDCARD_ON_DATA     := true
@@ -138,11 +140,12 @@ TW_INCLUDE_NTFS_3G          := true
 TW_NO_EXFAT_FUSE            := true
 
 # Version
-PLATFORM_VERSION                := 99.87.36
-PLATFORM_VERSION_LAST_STABLE    := $(PLATFORM_VERSION)
-PLATFORM_SECURITY_PATCH         := 2099-12-31
-VENDOR_SECURITY_PATCH           := $(PLATFORM_SECURITY_PATCH)
-TW_DEVICE_VERSION               := OPLUS-infiniti
+PLATFORM_VERSION := 99.87.36
+PLATFORM_VERSION_LAST_STABLE := $(PLATFORM_VERSION)
+PLATFORM_SECURITY_PATCH := 2099-12-31
+VENDOR_SECURITY_PATCH := $(PLATFORM_SECURITY_PATCH)
+BOOT_SECURITY_PATCH := $(PLATFORM_SECURITY_PATCH)
+TW_DEVICE_VERSION := OnePlus_15
 
 # Verified Boot
 BOARD_AVB_ENABLE := true
@@ -155,6 +158,7 @@ TARGET_RECOVERY_QCOM_RTC_FIX            := true
 TW_CUSTOM_CPU_TEMP_PATH                 := "/sys/class/thermal/thermal_zone45/temp" # CPU-0-0-0
 TW_EXCLUDE_APEX                         := true
 TW_EXCLUDE_DEFAULT_USB_INIT             := true
+TW_DEFAULT_LANGUAGE 			:= en
 TW_EXTRA_LANGUAGES                      := true
 TW_LOAD_VENDOR_MODULES 			:= "adsp_loader_dlkm.ko oplus_chg_v2.ko stm_st54se_gpio.ko nxp-nci.ko"
 TW_LOAD_VENDOR_MODULES_EXCLUDE_GKI      := true
