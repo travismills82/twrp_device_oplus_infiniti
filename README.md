@@ -32,7 +32,7 @@ Works:
 - [X] Flashing
 - [X] OTA Flash
 - [X] MTP
-- [?] Sideload
+- [X] Sideload
 - [X] Touch
 - [X] USB OTG
 - [X] Vibrator
