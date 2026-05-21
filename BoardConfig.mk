@@ -49,6 +49,10 @@ AB_OTA_PARTITIONS += \
     my_region \
     my_stock
 
+# Battery
+TW_CUSTOM_BATTERY_PATH := "/sys/class/power_supply/battery"
+TW_BATTERY_SYSFS_WAIT_SECONDS := 6
+
 # Bootloader
 PRODUCT_PLATFORM                := canoe
 TARGET_BOOTLOADER_BOARD_NAME    := canoe
@@ -56,7 +60,9 @@ TARGET_BOOTLOADER_BOARD_NAME    := canoe
 # Crypto
 BOARD_USES_METADATA_PARTITION   := true
 TW_INCLUDE_CRYPTO               := true
+TW_INCLUDE_CRYPTO_FBE           := true
 TW_INCLUDE_OMAPI                := true
+TW_OZIP_DECRYPT_KEY             := 0000
 
 # Debug
 TARGET_USES_LOGD                := true
@@ -82,7 +88,7 @@ BOARD_BOOT_HEADER_VERSION   := 4
 BOARD_KERNEL_PAGESIZE       := 4096
 BOARD_MKBOOTIMG_ARGS        += --header_version $(BOARD_BOOT_HEADER_VERSION)
 BOARD_MKBOOTIMG_ARGS        += --pagesize $(BOARD_KERNEL_PAGESIZE)
-TARGET_PREBUILT_KERNEL 	    := device/oplus/infinti/Image
+TARGET_PREBUILT_KERNEL      := device/oplus/infiniti/Image
 BOARD_RAMDISK_USE_LZ4       := true
 
 # Partitions
@@ -158,12 +164,17 @@ TARGET_RECOVERY_QCOM_RTC_FIX            := true
 TW_CUSTOM_CPU_TEMP_PATH                 := "/sys/class/thermal/thermal_zone45/temp" # CPU-0-0-0
 TW_EXCLUDE_APEX                         := true
 TW_EXCLUDE_DEFAULT_USB_INIT             := true
-TW_DEFAULT_LANGUAGE 			:= en
+TW_DEFAULT_LANGUAGE 			        := en
 TW_EXTRA_LANGUAGES                      := true
-TW_LOAD_VENDOR_MODULES 			:= "adsp_loader_dlkm.ko oplus_chg_v2.ko stm_st54se_gpio.ko nxp-nci.ko"
+TW_LOAD_VENDOR_MODULES 			        := "adsp_loader_dlkm.ko oplus_chg_v2.ko stm_st54se_gpio.ko nxp-nci.ko"
 TW_LOAD_VENDOR_MODULES_EXCLUDE_GKI      := true
 TW_NO_SCREEN_BLANK                      := true
 TW_USE_SERIALNO_PROPERTY_FOR_DEVICE_ID  := true
+TW_QCOM_ATS_OFFSET                      := 1000000000
+TW_INCLUDE_LPTOOLS                      := true
+TW_INCLUDE_BASH                         := true
+TW_INCLUDE_NANO                         := true
+TW_INCLUDE_TZDATA                       := true
 
 
 
