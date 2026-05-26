@@ -1,0 +1,13 @@
+#!/system/bin/sh
+# Bundled Magisk launcher helper
+
+MAGISK_APK="/system/etc/magisk/Magisk.apk"
+PARTITION="${1:-init_boot}"
+
+if [ ! -f "$MAGISK_APK" ]; then
+    echo "Bundled Magisk APK not found"
+    echo "Add prebuilts/magisk/Magisk.apk before building recovery"
+    exit 1
+fi
+
+exec /system/bin/twrp-root-patcher magisk "$MAGISK_APK" "$PARTITION"
