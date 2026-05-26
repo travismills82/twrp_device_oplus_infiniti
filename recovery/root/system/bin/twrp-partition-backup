@@ -1,0 +1,26 @@
+#!/system/bin/sh
+# Partition backup helper
+
+BACKUP_DIR=/sdcard/TWRP/device-backups
+mkdir -p ${BACKUP_DIR}
+
+backup_partition() {
+    part=$1
+    block=$(find /dev/block/by-name -name ${part} 2>/dev/null | head -n 1)
+
+    if [ -n "$block" ]; then
+        echo "Backing up ${part}"
+        dd if=${block} of=${BACKUP_DIR}/${part}.img bs=4M
+    else
+        echo "Partition ${part} not found"
+    fi
+}
+
+backup_partition persist
+backup_partition modem
+backup_partition modem_a
+backup_partition modem_b
+backup_partition bluetooth
+backup_partition dsp
+
+echo "Partition backup complete"
