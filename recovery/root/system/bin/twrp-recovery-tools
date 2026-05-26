@@ -1,0 +1,40 @@
+#!/system/bin/sh
+# Recovery utility toolkit
+
+case "$1" in
+    avb-disable)
+        echo "Disabling AVB verification props"
+        resetprop ro.boot.verifiedbootstate orange
+        resetprop ro.boot.flash.locked 0
+        ;;
+
+    payload-info)
+        echo "Payload inspection"
+        unzip -l "$2"
+        ;;
+
+    thermal)
+        echo "CPU thermal information"
+        cat /sys/class/thermal/thermal_zone*/temp 2>/dev/null
+        ;;
+
+    logs)
+        echo "Exporting recovery logs"
+        cp /tmp/recovery.log /sdcard/recovery.log
+        dmesg > /sdcard/dmesg-recovery.log
+        ;;
+
+    slots)
+        echo "Slot information"
+        getprop ro.boot.slot_suffix
+        ;;
+
+    *)
+        echo "Available commands:"
+        echo "  avb-disable"
+        echo "  payload-info <zip>"
+        echo "  thermal"
+        echo "  logs"
+        echo "  slots"
+        ;;
+esac
