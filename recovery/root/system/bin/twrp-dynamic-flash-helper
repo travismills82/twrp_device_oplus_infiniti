@@ -1,0 +1,17 @@
+#!/system/bin/sh
+# Dynamic partition helper for modern Oplus devices
+
+ui_print() {
+    echo "[TWRP] $1"
+}
+
+current_slot=$(getprop ro.boot.slot_suffix)
+ui_print "Current slot: ${current_slot}"
+
+ui_print "Detected dynamic partitions:"
+lpdump super 2>/dev/null
+
+ui_print "Mounted logical partitions:"
+dmctl list-devices 2>/dev/null
+
+ui_print "vendor_boot/init_boot aware environment initialized"
