@@ -1,0 +1,109 @@
+#!/system/bin/sh
+#
+# Recovery-side Magisk/APatch boot image patch helper.
+#
+# This script intentionally does not bundle Magisk/APatch binaries.
+# Place the official Magisk APK/ZIP or APatch APK/ZIP on /sdcard and pass it
+# as the second argument.
+#
+# Usage:
+#   twrp-root-patcher magisk /sdcard/Magisk.apk [boot|init_boot]
+#   twrp-root-patcher apatch /sdcard/APatch.apk [boot|init_boot]
+#
+
+set -e
+
+TOOL="$1"
+PACKAGE="$2"
+PARTITION="${3:-init_boot}"
+WORKDIR="/tmp/twrp-root-patcher"
+OUTDIR="/sdcard/TWRP/root-patcher"
+
+ui_print() {
+    echo "[root-patcher] $1"
+}
+
+fail() {
+    ui_print "ERROR: $1"
+    exit 1
+}
+
+find_partition() {
+    name="$1"
+    slot="$(getprop ro.boot.slot_suffix 2>/dev/null || true)"
+
+    for candidate in \
+        "/dev/block/by-name/${name}${slot}" \
+        "/dev/block/by-name/${name}" \
+        "/dev/block/bootdevice/by-name/${name}${slot}" \
+        "/dev/block/bootdevice/by-name/${name}"; do
+        if [ -e "$candidate" ]; then
+            echo "$candidate"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+[ -n "$TOOL" ] || fail "missing patcher type: magisk or apatch"
+[ -n "$PACKAGE" ] || fail "missing Magisk/APatch APK or ZIP path"
+[ -f "$PACKAGE" ] || fail "package not found: $PACKAGE"
+
+case "$TOOL" in
+    magisk|apatch) ;;
+    *) fail "unsupported patcher: $TOOL" ;;
+esac
+
+case "$PARTITION" in
+    boot|init_boot) ;;
+    *) fail "unsupported partition: $PARTITION; use boot or init_boot" ;;
+esac
+
+BLOCK="$(find_partition "$PARTITION")" || fail "could not find ${PARTITION} block device"
+
+rm -rf "$WORKDIR"
+mkdir -p "$WORKDIR" "$OUTDIR"
+
+ui_print "Source partition: $BLOCK"
+ui_print "Dumping ${PARTITION}.img"
+dd if="$BLOCK" of="$WORKDIR/${PARTITION}.img" bs=4M
+cp "$WORKDIR/${PARTITION}.img" "$OUTDIR/${PARTITION}-stock.img"
+
+ui_print "Extracting patcher package"
+unzip -q "$PACKAGE" -d "$WORKDIR/package" || fail "failed to extract package"
+
+if [ "$TOOL" = "magisk" ]; then
+    BOOTPATCH="$(find "$WORKDIR/package" -name boot_patch.sh | head -n 1)"
+    [ -n "$BOOTPATCH" ] || fail "Magisk boot_patch.sh not found in package"
+
+    ui_print "Running Magisk boot patch script"
+    cp "$WORKDIR/${PARTITION}.img" "$WORKDIR/boot.img"
+    cd "$(dirname "$BOOTPATCH")"
+    KEEPVERITY=true KEEPFORCEENCRYPT=true RECOVERYMODE=false sh "$BOOTPATCH" "$WORKDIR/boot.img" || fail "Magisk patch failed"
+
+    PATCHED="$(find /tmp "$WORKDIR" -name 'magisk_patched*.img' -o -name 'new-boot.img' 2>/dev/null | head -n 1)"
+    [ -n "$PATCHED" ] || fail "patched Magisk image not found"
+    cp "$PATCHED" "$OUTDIR/${PARTITION}-magisk-patched.img"
+    ui_print "Created: $OUTDIR/${PARTITION}-magisk-patched.img"
+fi
+
+if [ "$TOOL" = "apatch" ]; then
+    ui_print "APatch package extracted. Searching for patch binary"
+    APATCH_BIN="$(find "$WORKDIR/package" -type f \( -name 'apatch' -o -name 'kptools' -o -name 'kpimg' \) | head -n 1)"
+
+    [ -n "$APATCH_BIN" ] || fail "APatch CLI/kptools binary not found in package; use an APatch package that includes CLI patch tools"
+    chmod 755 "$APATCH_BIN"
+
+    ui_print "Attempting APatch command-line patch"
+    "$APATCH_BIN" patch "$WORKDIR/${PARTITION}.img" "$OUTDIR/${PARTITION}-apatch-patched.img" || \
+        "$APATCH_BIN" -p "$WORKDIR/${PARTITION}.img" -o "$OUTDIR/${PARTITION}-apatch-patched.img" || \
+        fail "APatch CLI invocation failed; patch manually with the saved stock image"
+
+    [ -f "$OUTDIR/${PARTITION}-apatch-patched.img" ] || fail "patched APatch image not created"
+    ui_print "Created: $OUTDIR/${PARTITION}-apatch-patched.img"
+fi
+
+ui_print "Stock backup saved: $OUTDIR/${PARTITION}-stock.img"
+ui_print "Flash the patched image manually from TWRP only after verifying it is correct."
+ui_print "Example: dd if=<patched.img> of=$BLOCK bs=4M"
