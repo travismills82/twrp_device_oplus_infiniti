@@ -126,6 +126,19 @@ TW_INCLUDE_REPACKTOOLS        := true
 TW_INCLUDE_RESETPROP          := true
 TW_USE_TOOLBOX                := true
 
+# TWRP advanced features
+TW_INCLUDE_ADB_BACKUP       := true
+TW_INCLUDE_BLOBPACK         := true
+TW_INCLUDE_MTP              := true
+TW_INCLUDE_PYTHON           := true
+TW_INCLUDE_SELINUX          := true
+TW_INCLUDE_SEPOLICY         := true
+TW_INCLUDE_ZIP              := true
+TW_MTP_DEVICE               := "/dev/mtp_usb"
+TW_USE_NEW_MINADBD          := true
+TW_USE_SHA2                 := true
+TW_USE_TWTOOLS              := true
+
 # TWRP display
 TW_BRIGHTNESS_PATH := "/sys/class/backlight/panel0-backlight/brightness"
 TW_DEFAULT_BRIGHTNESS := 2047
@@ -144,6 +157,8 @@ TW_INCLUDE_FUSE_EXFAT       := true
 TW_INCLUDE_FUSE_NTFS        := true
 TW_INCLUDE_NTFS_3G          := true
 TW_NO_EXFAT_FUSE            := true
+TW_BACKUP_EXCLUSIONS        += /data/cache /data/dalvik-cache /data/misc_ce/*/cache /data/system/dropbox
+TW_BACKUP_SELINUX_CONTEXTS  := true
 
 # Version
 PLATFORM_VERSION := 99.87.36
@@ -164,17 +179,17 @@ TARGET_RECOVERY_QCOM_RTC_FIX            := true
 TW_CUSTOM_CPU_TEMP_PATH                 := "/sys/class/thermal/thermal_zone45/temp" # CPU-0-0-0
 TW_EXCLUDE_APEX                         := true
 TW_EXCLUDE_DEFAULT_USB_INIT             := true
-TW_DEFAULT_LANGUAGE 			        := en
+TW_DEFAULT_LANGUAGE                     := en
 TW_EXTRA_LANGUAGES                      := true
-TW_LOAD_VENDOR_MODULES 			        := "adsp_loader_dlkm.ko oplus_chg_v2.ko stm_st54se_gpio.ko nxp-nci.ko"
+TW_LOAD_VENDOR_MODULES                  := "adsp_loader_dlkm.ko oplus_chg_v2.ko stm_st54se_gpio.ko nxp-nci.ko"
 TW_LOAD_VENDOR_MODULES_EXCLUDE_GKI      := true
 TW_NO_SCREEN_BLANK                      := true
+TW_NO_SCREEN_TIMEOUT                    := true
 TW_USE_SERIALNO_PROPERTY_FOR_DEVICE_ID  := true
 TW_QCOM_ATS_OFFSET                      := 1000000000
 TW_INCLUDE_LPTOOLS                      := true
 TW_INCLUDE_BASH                         := true
 TW_INCLUDE_NANO                         := true
 TW_INCLUDE_TZDATA                       := true
-
-
-
+TW_INCLUDE_CHARGER                      := true
+TW_INCLUDE_CRASHLOG                     := true
