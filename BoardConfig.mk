@@ -78,7 +78,7 @@ TW_USE_DMCTL               := true
 
 # Init
 TARGET_INIT_VENDOR_LIB          := //$(DEVICE_PATH):libinit_oplus_infiniti
-TARGET_RECOVERY_DEVICE_MODULES  := libinit_oplus_infiniti
+TARGET_RECOVERY_DEVICE_MODULES  += libinit_oplus_infiniti
 
 # Kernel
 TARGET_KERNEL_ARCH          := arm64
