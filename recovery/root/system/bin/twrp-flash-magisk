@@ -40,6 +40,11 @@ find_partition() {
     return 1
 }
 
+get_size_bytes() {
+    file="$1"
+    wc -c < "$file" 2>/dev/null | tr -d ' '
+}
+
 case "$PARTITION" in
     init_boot|boot) ;;
     *) fail "unsupported partition: $PARTITION; use init_boot or boot" ;;
@@ -57,7 +62,34 @@ ui_print "Running Magisk patcher"
 twrp-root-patcher magisk "$MAGISK_APK" "$PARTITION"
 
 PATCHED="${OUTDIR}/${PARTITION}-magisk-patched.img"
+STOCK="${OUTDIR}/${PARTITION}-stock.img"
+
 [ -f "$PATCHED" ] || fail "patched image not found: $PATCHED"
+[ -r "$PATCHED" ] || fail "patched image is not readable: $PATCHED"
+[ -s "$PATCHED" ] || fail "patched image is empty: $PATCHED"
+[ -f "$STOCK" ] || fail "stock backup not found: $STOCK"
+[ -r "$STOCK" ] || fail "stock backup is not readable: $STOCK"
+[ -s "$STOCK" ] || fail "stock backup is empty: $STOCK"
+
+PATCHED_SIZE="$(get_size_bytes "$PATCHED")"
+STOCK_SIZE="$(get_size_bytes "$STOCK")"
+
+case "$PATCHED_SIZE" in
+    ''|*[!0-9]*) fail "could not determine patched image size" ;;
+esac
+
+case "$STOCK_SIZE" in
+    ''|*[!0-9]*) fail "could not determine stock image size" ;;
+esac
+
+MIN_SIZE=$((STOCK_SIZE / 2))
+MAX_SIZE=$((STOCK_SIZE + (STOCK_SIZE / 2)))
+
+ui_print "Stock image size: ${STOCK_SIZE} bytes"
+ui_print "Patched image size: ${PATCHED_SIZE} bytes"
+
+[ "$PATCHED_SIZE" -ge "$MIN_SIZE" ] || fail "patched image is unexpectedly small"
+[ "$PATCHED_SIZE" -le "$MAX_SIZE" ] || fail "patched image is unexpectedly large"
 
 ui_print "Saving checksum"
 sha256sum "$PATCHED" > "${PATCHED}.sha256" 2>/dev/null || true
@@ -67,6 +99,6 @@ dd if="$PATCHED" of="$BLOCK" bs=4M
 sync
 
 ui_print "Magisk flash complete"
-ui_print "Stock backup: ${OUTDIR}/${PARTITION}-stock.img"
+ui_print "Stock backup: $STOCK"
 ui_print "Patched image: $PATCHED"
 ui_print "Reboot to system when ready."
