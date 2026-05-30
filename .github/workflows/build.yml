@@ -91,7 +91,7 @@ jobs:
       run: |
         export DEBIAN_FRONTEND=noninteractive
         sudo apt update && sudo apt upgrade -y
-        sudo apt install repo -y
+        sudo apt install repo python3 -y
         git config --global user.name ${{ github.actor }}
         git config --global user.email ${{ github.actor }}@users.noreply.github.com
 
