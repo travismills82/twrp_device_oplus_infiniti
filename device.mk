@@ -51,9 +51,5 @@ ifneq ($(wildcard $(DEVICE_PATH)/prebuilts/magisk/Magisk.apk),)
 PRODUCT_PACKAGES += bundled-magisk-apk
 endif
 
-# Patch generated TWRP theme to expose Flash Magisk under Advanced.
-# The source theme is copied by libguitwrp into $(PRODUCT_OUT)/recovery/root/twres.
-$(shell python3 $(DEVICE_PATH)/tools/patch_twrp_magisk_theme.py $(PRODUCT_OUT)/recovery/root/twres/portrait.xml)
-
 # Soong namespaces
 PRODUCT_SOONG_NAMESPACES += $(DEVICE_PATH)
