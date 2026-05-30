@@ -1,0 +1,72 @@
+#!/system/bin/sh
+#
+# Patch and flash the active boot/init_boot partition with bundled Magisk.
+# Intended for use from TWRP Advanced menu or terminal.
+#
+# Usage:
+#   twrp-flash-magisk [init_boot|boot]
+#
+
+set -e
+
+PARTITION="${1:-init_boot}"
+OUTDIR="/sdcard/TWRP/root-patcher"
+MAGISK_APK="/system/etc/magisk/Magisk.apk"
+
+ui_print() {
+    echo "[magisk-flash] $1"
+}
+
+fail() {
+    ui_print "ERROR: $1"
+    exit 1
+}
+
+find_partition() {
+    name="$1"
+    slot="$(getprop ro.boot.slot_suffix 2>/dev/null || true)"
+
+    for candidate in \
+        "/dev/block/by-name/${name}${slot}" \
+        "/dev/block/by-name/${name}" \
+        "/dev/block/bootdevice/by-name/${name}${slot}" \
+        "/dev/block/bootdevice/by-name/${name}"; do
+        if [ -e "$candidate" ]; then
+            echo "$candidate"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+case "$PARTITION" in
+    init_boot|boot) ;;
+    *) fail "unsupported partition: $PARTITION; use init_boot or boot" ;;
+esac
+
+[ -f "$MAGISK_APK" ] || fail "bundled Magisk APK not found at $MAGISK_APK"
+command -v twrp-root-patcher >/dev/null 2>&1 || fail "twrp-root-patcher not found"
+
+BLOCK="$(find_partition "$PARTITION")" || fail "could not find ${PARTITION} block device"
+
+ui_print "Target partition: $PARTITION"
+ui_print "Target block: $BLOCK"
+ui_print "Running Magisk patcher"
+
+twrp-root-patcher magisk "$MAGISK_APK" "$PARTITION"
+
+PATCHED="${OUTDIR}/${PARTITION}-magisk-patched.img"
+[ -f "$PATCHED" ] || fail "patched image not found: $PATCHED"
+
+ui_print "Saving checksum"
+sha256sum "$PATCHED" > "${PATCHED}.sha256" 2>/dev/null || true
+
+ui_print "Flashing patched image to $BLOCK"
+dd if="$PATCHED" of="$BLOCK" bs=4M
+sync
+
+ui_print "Magisk flash complete"
+ui_print "Stock backup: ${OUTDIR}/${PARTITION}-stock.img"
+ui_print "Patched image: $PATCHED"
+ui_print "Reboot to system when ready."
