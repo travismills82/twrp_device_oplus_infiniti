@@ -75,6 +75,9 @@ RECOVERY_BINARY_SOURCE_FILES    += $(TARGET_OUT_EXECUTABLES)/strace
 # File systems
 TARGET_USERIMAGES_USE_F2FS := true
 TW_USE_DMCTL               := true
+TARGET_USERIMAGES_USE_EROFS := true
+BOARD_EROFS_PCLUSTER_SIZE := 262144
+BOARD_EROFS_SHARE_DUP_BLOCKS := true
 
 # Init
 TARGET_INIT_VENDOR_LIB          := //$(DEVICE_PATH):libinit_oplus_infiniti
@@ -142,7 +145,7 @@ TW_USE_TWTOOLS              := true
 # TWRP display
 TW_BRIGHTNESS_PATH := "/sys/class/backlight/panel0-backlight/brightness"
 TW_DEFAULT_BRIGHTNESS := 2047
-TW_FRAMERATE := 120
+TW_FRAMERATE := 60
 TW_MAX_BRIGHTNESS := 4094
 TW_NO_SCREEN_BLANK := true
 TW_SCREEN_BLANK_ON_BOOT := true
