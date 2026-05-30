@@ -38,5 +38,22 @@ PRODUCT_EXTRA_RECOVERY_KEYS += \
 	$(DEVICE_PATH)/security/local_OTA \
 	$(DEVICE_PATH)/security/special_OTA
 
+# Recovery helpers
+PRODUCT_PACKAGES += \
+	twrp-dynamic-flash-helper \
+	twrp-partition-backup \
+	twrp-recovery-tools \
+	twrp-root-patcher \
+	twrp-magisk-bundled \
+	twrp-flash-magisk
+
+ifneq ($(wildcard $(DEVICE_PATH)/prebuilts/magisk/Magisk.apk),)
+PRODUCT_PACKAGES += bundled-magisk-apk
+endif
+
+# Patch generated TWRP theme to expose Flash Magisk under Advanced.
+# The source theme is copied by libguitwrp into $(PRODUCT_OUT)/recovery/root/twres.
+$(shell python3 $(DEVICE_PATH)/tools/patch_twrp_magisk_theme.py $(PRODUCT_OUT)/recovery/root/twres/portrait.xml)
+
 # Soong namespaces
 PRODUCT_SOONG_NAMESPACES += $(DEVICE_PATH)
