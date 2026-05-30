@@ -107,6 +107,11 @@ jobs:
       run: |
         git clone ${{ github.event.inputs.DEVICE_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} device/${{ github.event.inputs.DEVICE_PATH }}
 
+    - name: Patch TWRP theme
+      run: |
+        python3 device/${{ github.event.inputs.DEVICE_PATH }}/tools/patch_twrp_magisk_theme.py bootable/recovery/gui/theme/common/portrait.xml
+        grep -n "twrp-flash-magisk" bootable/recovery/gui/theme/common/portrait.xml
+
     - name: Generate build info
       run: |
         echo -e "$BUILD_INFO" >> INFO.txt
