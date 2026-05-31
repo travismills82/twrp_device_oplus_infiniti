@@ -67,8 +67,8 @@ on property:twrp.modules.loaded=true
     wait /sys/class/power_supply/battery
     start vendor.health-default
     umount /firmware
-    # Enable Wifi
-    #setprop twrp.wifi.enable 1
+    # Start the gated Wi-Fi loader. The loader exits cleanly if blobs/modules are missing.
+    setprop twrp.wifi.enable 1
 
 on property:ro.crypto.state=encrypted && property:ro.boot.dynamic_partitions=true
     start prepdecrypt.vendor
@@ -80,4 +80,3 @@ on property:vendor.sys.listeners.registered=true
     start vendor.ssgtzd
     start vendor.keymint-strongbox
     start vendor.oplus.vibrator
-
