@@ -45,7 +45,8 @@ PRODUCT_PACKAGES += \
 	twrp-recovery-tools \
 	twrp-root-patcher \
 	twrp-magisk-bundled \
-	twrp-flash-magisk
+	twrp-flash-magisk \
+	twrp-load-wifi
 
 ifneq ($(wildcard $(DEVICE_PATH)/prebuilts/magisk/Magisk.apk),)
 PRODUCT_PACKAGES += bundled-magisk-apk
