@@ -1,30 +1,15 @@
-# Gated recovery Wi-Fi startup.
-# Wi-Fi is attempted only when explicitly requested. TWRP is told Wi-Fi is
-# ready only after wpa_supplicant responds to wpa_cli ping.
+on property:post.decrypt.modules=true
+    chmod 222 /sys/bus/platform/drivers/cnss2/b0000000.qcom,cnss-peach/fs_ready
+    write /sys/bus/platform/drivers/cnss2/b0000000.qcom,cnss-peach/fs_ready 1
+    wait /sys/class/net/wlan0 10
+    write /dev/kmsg "Interface wlan0 found"
+    setprop wifi.driver.ready true
 
-on property:twrp.wifi.enable=1
-    start twrp-load-wifi
-
-on property:wifi.driver.loaded=true
+on property:wifi.driver.ready=true
     mkdir /tmp/recovery 0777 root root
-    mkdir /data/misc 0771 root root
-    mkdir /data/misc/wifi 0770 root root
-    mkdir /data/misc/wifi/sockets 0770 root root
-    rm /tmp/recovery/sockets
-    symlink /data/misc/wifi/sockets /tmp/recovery/sockets
+    mkdir /tmp/recovery/sockets 0777 root root
     start wpa_supplicant
-    start twrp-wait-wifi-ready
 
-service twrp-load-wifi /system/bin/twrp-load-wifi
-    disabled
-    oneshot
-    seclabel u:r:recovery:s0
-
-service twrp-wait-wifi-ready /system/bin/twrp-wait-wifi-ready
-    disabled
-    oneshot
-    seclabel u:r:recovery:s0
-
-service wpa_supplicant /system/bin/wpa_supplicant -Dnl80211 -iwlan0 -dd -O/data/misc/wifi/sockets -c/vendor/etc/wifi/wpa_supplicant.conf
+service wpa_supplicant /system/bin/wpa_supplicant -Dnl80211 -iwlan0 -dd -O/tmp/recovery/sockets -c/vendor/etc/wifi/wpa_supplicant.conf
     disabled
     seclabel u:r:recovery:s0
