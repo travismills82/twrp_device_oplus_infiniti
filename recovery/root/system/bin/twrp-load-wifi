@@ -1,0 +1,119 @@
+#!/system/bin/sh
+#
+# Gated Wi-Fi loader for recovery.
+# Loads the Qualcomm/CNSS WLAN stack only when the expected board data,
+# regulatory blobs, and kernel modules are present at runtime.
+#
+
+set -u
+
+MODULE_DIRS="/vendor/lib/modules /vendor_dlkm/lib/modules /system_dlkm/lib/modules /odm/lib/modules /lib/modules"
+REQUIRED_BLOBS="
+/vendor/odm/etc/wifi/bdwlan.elf
+/vendor/odm/etc/wifi/bdwlang.elf
+/vendor/odm/etc/wifi/regdb.bin
+/vendor/odm/etc/wifi/kiwi/bdwlan.b0a
+/vendor/odm/etc/wifi/kiwi/bdwlan.b0e
+/vendor/odm/etc/wifi/kiwi/bdwlan.b0i
+/vendor/odm/etc/wifi/kiwi/bdwlan.elf
+/vendor/odm/etc/wifi/kiwi/regdb.bin
+"
+WIFI_MODULES="
+pci-msm-drv.ko
+qmi_helpers.ko
+cnss_prealloc.ko
+cnss_utils.ko
+cnss_plat_ipc_qmi_svc.ko
+cnss_nl.ko
+wlan_firmware_service.ko
+smcinvoke_dlkm.ko
+qcom_ramdump.ko
+cnss2.ko
+cfg80211.ko
+qcom_va_minidump.ko
+gsim.ko
+rmnet_wlan.ko
+ipam.ko
+qca_cld3_kiwi_v2.ko
+"
+
+ui_print() {
+    echo "[wifi-loader] $1"
+    echo "[wifi-loader] $1" > /dev/kmsg 2>/dev/null || true
+}
+
+fail() {
+    ui_print "ERROR: $1"
+    setprop wifi.driver.ready false 2>/dev/null || true
+    setprop twrp.wifi.status "missing-prereqs" 2>/dev/null || true
+    exit 0
+}
+
+find_module() {
+    module="$1"
+    for dir in $MODULE_DIRS; do
+        if [ -f "$dir/$module" ]; then
+            echo "$dir/$module"
+            return 0
+        fi
+    done
+    return 1
+}
+
+module_loaded() {
+    module="$1"
+    module="${module%.ko}"
+    module="$(echo "$module" | tr '-' '_')"
+    grep -q "^${module} " /proc/modules 2>/dev/null
+}
+
+check_prereqs() {
+    for blob in $REQUIRED_BLOBS; do
+        [ -f "$blob" ] || fail "required Wi-Fi blob missing: $blob"
+    done
+
+    for module in $WIFI_MODULES; do
+        find_module "$module" >/dev/null 2>&1 || fail "required Wi-Fi module missing: $module"
+    done
+}
+
+load_modules() {
+    for module in $WIFI_MODULES; do
+        if module_loaded "$module"; then
+            ui_print "module already loaded: $module"
+            continue
+        fi
+
+        path="$(find_module "$module")" || fail "module disappeared before load: $module"
+        ui_print "loading module: $module"
+        insmod "$path" 2>/tmp/twrp-wifi-insmod.err || {
+            error="$(cat /tmp/twrp-wifi-insmod.err 2>/dev/null)"
+            fail "failed to load $module: $error"
+        }
+    done
+}
+
+wait_for_wlan() {
+    count=0
+    while [ "$count" -lt 20 ]; do
+        if [ -d /sys/class/net/wlan0 ]; then
+            ui_print "wlan0 is available"
+            return 0
+        fi
+        sleep 1
+        count=$((count + 1))
+    done
+    fail "wlan0 did not appear after loading Wi-Fi modules"
+}
+
+ui_print "checking Wi-Fi prerequisites"
+check_prereqs
+
+ui_print "all Wi-Fi prerequisites present"
+load_modules
+wait_for_wlan
+
+setprop wifi.driver.ready true 2>/dev/null || true
+setprop twrp.wifi.status ready 2>/dev/null || true
+ui_print "Wi-Fi driver is ready"
+exit 0
