@@ -1,0 +1,190 @@
+#!/system/bin/sh
+#
+# Recovery thermal guard for long-running backup/restore workloads.
+#
+# Runs continuously in recovery, caps CPU policy max frequencies, disables
+# common boost knobs when present, and lowers panel brightness as CPU thermal
+# readings rise. This is intentionally conservative because recovery has no
+# normal Android thermal userspace stack during heavy TWRP backup operations.
+#
+
+POLL_SECONDS=10
+PRIMARY_TEMP_PATH="/sys/class/thermal/thermal_zone45/temp"
+BACKLIGHT_PATH="/sys/class/backlight/panel0-backlight/brightness"
+
+NORMAL_BRIGHTNESS=768
+WARM_BRIGHTNESS=512
+HOT_BRIGHTNESS=256
+CRITICAL_BRIGHTNESS=128
+
+log_msg() {
+    echo "[thermal-guard] $1"
+    echo "[thermal-guard] $1" > /dev/kmsg 2>/dev/null || true
+}
+
+write_node() {
+    node="$1"
+    value="$2"
+    [ -e "$node" ] || return 0
+    echo "$value" > "$node" 2>/dev/null || true
+}
+
+read_int() {
+    node="$1"
+    [ -r "$node" ] || return 1
+    value="$(cat "$node" 2>/dev/null)" || return 1
+    case "$value" in
+        ''|*[!0-9-]*) return 1 ;;
+    esac
+    echo "$value"
+    return 0
+}
+
+normalize_temp() {
+    temp="$1"
+    # Most Android thermal nodes are millidegrees Celsius. If a node exposes
+    # plain Celsius, normalize it to millidegrees.
+    if [ "$temp" -gt 0 ] && [ "$temp" -lt 1000 ]; then
+        temp=$((temp * 1000))
+    fi
+    echo "$temp"
+}
+
+read_cpu_temp() {
+    if temp="$(read_int "$PRIMARY_TEMP_PATH")"; then
+        normalize_temp "$temp"
+        return 0
+    fi
+
+    max_temp=0
+    for zone in /sys/class/thermal/thermal_zone*/temp; do
+        [ -r "$zone" ] || continue
+        temp="$(read_int "$zone")" || continue
+        temp="$(normalize_temp "$temp")"
+        # Ignore obviously invalid thermal readings.
+        [ "$temp" -gt 0 ] || continue
+        [ "$temp" -lt 200000 ] || continue
+        [ "$temp" -gt "$max_temp" ] && max_temp="$temp"
+    done
+
+    [ "$max_temp" -gt 0 ] || return 1
+    echo "$max_temp"
+    return 0
+}
+
+choose_freq_cap() {
+    policy="$1"
+    percent="$2"
+
+    max_freq="$(read_int "$policy/cpuinfo_max_freq" 2>/dev/null || read_int "$policy/scaling_max_freq" 2>/dev/null || echo 0)"
+    [ "$max_freq" -gt 0 ] || return 1
+
+    target=$((max_freq * percent / 100))
+    best=0
+
+    if [ -r "$policy/scaling_available_frequencies" ]; then
+        for freq in $(cat "$policy/scaling_available_frequencies" 2>/dev/null); do
+            case "$freq" in
+                ''|*[!0-9-]*) continue ;;
+            esac
+            if [ "$freq" -le "$target" ] && [ "$freq" -gt "$best" ]; then
+                best="$freq"
+            fi
+        done
+    fi
+
+    if [ "$best" -le 0 ]; then
+        best="$target"
+    fi
+
+    echo "$best"
+    return 0
+}
+
+cap_cpu_policies() {
+    percent="$1"
+
+    for policy in /sys/devices/system/cpu/cpufreq/policy*; do
+        [ -d "$policy" ] || continue
+
+        cap="$(choose_freq_cap "$policy" "$percent")" || continue
+        min_freq="$(read_int "$policy/cpuinfo_min_freq" 2>/dev/null || echo 0)"
+
+        if [ -r "$policy/scaling_available_governors" ] && grep -qw schedutil "$policy/scaling_available_governors" 2>/dev/null; then
+            write_node "$policy/scaling_governor" schedutil
+        fi
+
+        if [ "$min_freq" -gt 0 ] && [ "$min_freq" -lt "$cap" ]; then
+            write_node "$policy/scaling_min_freq" "$min_freq"
+        fi
+
+        write_node "$policy/scaling_max_freq" "$cap"
+    done
+}
+
+disable_boosts() {
+    write_node /proc/sys/kernel/sched_boost 0
+    write_node /sys/module/cpu_boost/parameters/input_boost_enabled 0
+    write_node /sys/module/cpu_boost/parameters/sched_boost_on_input 0
+    write_node /sys/module/msm_performance/parameters/touchboost 0
+    write_node /sys/module/msm_performance/parameters/cpu_min_freq 0
+}
+
+set_brightness() {
+    level="$1"
+    [ -e "$BACKLIGHT_PATH" ] || return 0
+    write_node "$BACKLIGHT_PATH" "$level"
+}
+
+apply_state() {
+    state="$1"
+    percent="$2"
+    brightness="$3"
+    temp="$4"
+
+    disable_boosts
+    cap_cpu_policies "$percent"
+    set_brightness "$brightness"
+
+    setprop twrp.thermal.status "$state" 2>/dev/null || true
+    setprop twrp.thermal.temp "$temp" 2>/dev/null || true
+    setprop twrp.thermal.cap_pct "$percent" 2>/dev/null || true
+
+    temp_c=$((temp / 1000))
+    log_msg "state=$state temp=${temp_c}C cpu_cap=${percent}% brightness=$brightness"
+}
+
+last_state=""
+refresh=0
+log_msg "starting recovery thermal guard"
+
+while true; do
+    temp="$(read_cpu_temp 2>/dev/null || echo 0)"
+
+    if [ "$temp" -ge 100000 ]; then
+        state="critical"
+        percent=30
+        brightness="$CRITICAL_BRIGHTNESS"
+    elif [ "$temp" -ge 90000 ]; then
+        state="hot"
+        percent=40
+        brightness="$HOT_BRIGHTNESS"
+    elif [ "$temp" -ge 80000 ]; then
+        state="warm"
+        percent=55
+        brightness="$WARM_BRIGHTNESS"
+    else
+        state="normal"
+        percent=70
+        brightness="$NORMAL_BRIGHTNESS"
+    fi
+
+    refresh=$((refresh + 1))
+    if [ "$state" != "$last_state" ] || [ "$refresh" -ge 6 ]; then
+        apply_state "$state" "$percent" "$brightness" "$temp"
+        last_state="$state"
+        refresh=0
+    fi
+
+    sleep "$POLL_SECONDS"
+done
