@@ -10,7 +10,7 @@ BUILD_BROKEN_DUP_RULES                          := true
 BUILD_BROKEN_ELF_PREBUILT_PRODUCT_COPY_FILES    := true
 
 BUILD_BROKEN_NINJA_USES_ENV_VARS    += RTIC_MPGEN
-BUILD_BROKEN_PLUGIN_VALIDATION      := soong-libaosprecovery_defaults soong-libguitwrp_defaults soong-libminuitwrp_defaults soong-vold_defaults
+BUILD_BROKEN_PLUGIN_VALIDATION      := soong-libaosprecovery_defaults soong-libguitwrp_defaults soong-vold_defaults
 
 # Architecture
 TARGET_ARCH := arm64
@@ -133,7 +133,6 @@ TW_USE_TOOLBOX                := true
 TW_INCLUDE_ADB_BACKUP       := true
 TW_INCLUDE_BLOBPACK         := true
 TW_INCLUDE_MTP              := true
-TW_INCLUDE_PYTHON           := true
 TW_INCLUDE_SELINUX          := true
 TW_INCLUDE_SEPOLICY         := true
 TW_INCLUDE_ZIP              := true
