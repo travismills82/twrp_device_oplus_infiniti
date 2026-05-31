@@ -90,7 +90,7 @@ jobs:
     - name: Setup environment
       run: |
         export DEBIAN_FRONTEND=noninteractive
-        sudo apt update && sudo apt upgrade -y
+        sudo apt update
         sudo apt install repo python3 -y
         git config --global user.name ${{ github.actor }}
         git config --global user.email ${{ github.actor }}@users.noreply.github.com
@@ -100,7 +100,7 @@ jobs:
         repo init -u ${{ github.event.inputs.TWRP_MANIFEST_URL }} -b ${{ github.event.inputs.TWRP_MANIFEST_BRANCH }} --depth=1
         (while true; do echo "Syncing source..."; sleep 60; done) &
         TIP_PID=$!
-        repo sync
+        repo sync -c --no-clone-bundle --no-tags -j$(nproc --all)
         kill $TIP_PID && exit 0
 
     - name: Setup device
