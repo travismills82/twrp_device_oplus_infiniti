@@ -44,6 +44,7 @@ ui_print() {
 
 fail() {
     ui_print "ERROR: $1"
+    setprop wifi.driver.loaded false 2>/dev/null || true
     setprop wifi.driver.ready false 2>/dev/null || true
     setprop twrp.wifi.status "missing-prereqs" 2>/dev/null || true
     exit 0
@@ -68,6 +69,9 @@ module_loaded() {
 }
 
 check_prereqs() {
+    command -v wpa_supplicant >/dev/null 2>&1 || fail "wpa_supplicant binary missing"
+    command -v wpa_cli >/dev/null 2>&1 || fail "wpa_cli binary missing"
+
     for blob in $REQUIRED_BLOBS; do
         [ -f "$blob" ] || fail "required Wi-Fi blob missing: $blob"
     done
@@ -106,14 +110,20 @@ wait_for_wlan() {
     fail "wlan0 did not appear after loading Wi-Fi modules"
 }
 
+bring_wlan_up() {
+    ifconfig wlan0 up 2>/tmp/twrp-wifi-ifconfig.err || true
+}
+
 ui_print "checking Wi-Fi prerequisites"
 check_prereqs
 
 ui_print "all Wi-Fi prerequisites present"
 load_modules
 wait_for_wlan
+bring_wlan_up
 
-setprop wifi.driver.ready true 2>/dev/null || true
-setprop twrp.wifi.status ready 2>/dev/null || true
-ui_print "Wi-Fi driver is ready"
+setprop wifi.driver.ready false 2>/dev/null || true
+setprop wifi.driver.loaded true 2>/dev/null || true
+setprop twrp.wifi.status driver-loaded 2>/dev/null || true
+ui_print "Wi-Fi driver is loaded; waiting for supplicant readiness"
 exit 0
