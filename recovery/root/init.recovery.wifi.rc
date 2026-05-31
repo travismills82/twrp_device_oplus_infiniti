@@ -1,0 +1,20 @@
+# Gated recovery Wi-Fi startup.
+# Wi-Fi is attempted only when explicitly requested, and wpa_supplicant starts
+# only after twrp-load-wifi verifies blobs/modules and wlan0 is present.
+
+on property:twrp.wifi.enable=1
+    start twrp-load-wifi
+
+on property:wifi.driver.ready=true
+    mkdir /tmp/recovery 0777 root root
+    mkdir /tmp/recovery/sockets 0777 root root
+    start wpa_supplicant
+
+service twrp-load-wifi /system/bin/twrp-load-wifi
+    disabled
+    oneshot
+    seclabel u:r:recovery:s0
+
+service wpa_supplicant /system/bin/wpa_supplicant -Dnl80211 -iwlan0 -dd -O/tmp/recovery/sockets -c/vendor/etc/wifi/wpa_supplicant.conf
+    disabled
+    seclabel u:r:recovery:s0
