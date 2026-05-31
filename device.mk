@@ -48,6 +48,11 @@ PRODUCT_PACKAGES += \
 	twrp-flash-magisk \
 	twrp-load-wifi
 
+# Recovery Wi-Fi userspace tools
+PRODUCT_PACKAGES += \
+	wpa_supplicant \
+	wpa_cli
+
 ifneq ($(wildcard $(DEVICE_PATH)/prebuilts/magisk/Magisk.apk),)
 PRODUCT_PACKAGES += bundled-magisk-apk
 endif
