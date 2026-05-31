@@ -1,0 +1,63 @@
+#!/system/bin/sh
+# Wait until wpa_supplicant responds before exposing Wi-Fi as ready to TWRP.
+
+SOCKET_DIR="/tmp/recovery/sockets"
+ALT_SOCKET_DIR="/data/misc/wifi/sockets"
+IFACE="wlan0"
+
+ui_print() {
+    echo "[wifi-ready] $1"
+    echo "[wifi-ready] $1" > /dev/kmsg 2>/dev/null || true
+}
+
+fail() {
+    ui_print "ERROR: $1"
+    setprop wifi.driver.ready false 2>/dev/null || true
+    setprop twrp.wifi.status supplicant-error 2>/dev/null || true
+    exit 0
+}
+
+prepare_socket_dirs() {
+    mkdir /tmp/recovery 0777 root root 2>/dev/null || true
+    mkdir /data/misc 0771 root root 2>/dev/null || true
+    mkdir /data/misc/wifi 0770 root root 2>/dev/null || true
+    mkdir /data/misc/wifi/sockets 0770 root root 2>/dev/null || true
+
+    if [ ! -L "$SOCKET_DIR" ]; then
+        rm -rf "$SOCKET_DIR" 2>/dev/null || true
+        ln -s "$ALT_SOCKET_DIR" "$SOCKET_DIR" 2>/dev/null || true
+    fi
+}
+
+wait_for_socket() {
+    count=0
+    while [ "$count" -lt 30 ]; do
+        if [ -S "$SOCKET_DIR/$IFACE" ] || [ -S "$ALT_SOCKET_DIR/$IFACE" ]; then
+            return 0
+        fi
+        sleep 1
+        count=$((count + 1))
+    done
+    fail "supplicant control socket did not appear"
+}
+
+wait_for_pong() {
+    count=0
+    while [ "$count" -lt 30 ]; do
+        if wpa_cli -i "$IFACE" -p "$SOCKET_DIR" ping 2>/tmp/twrp-wifi-wpa-cli.err | grep -q PONG; then
+            return 0
+        fi
+        sleep 1
+        count=$((count + 1))
+    done
+    fail "wpa_cli ping did not return PONG"
+}
+
+prepare_socket_dirs
+wait_for_socket
+wait_for_pong
+
+setprop wifi.driver.ready true 2>/dev/null || true
+setprop twrp.wifi.status ready 2>/dev/null || true
+ui_print "Wi-Fi supplicant is ready"
+exit 0
