@@ -6,3 +6,11 @@
 
 soong_namespace {
 }
+
+cc_library_static {
+    name: "libinit_oplus_infiniti",
+    srcs: [
+        "init/init_oplus_infiniti.cpp",
+    ],
+    recovery_available: true,
+}
