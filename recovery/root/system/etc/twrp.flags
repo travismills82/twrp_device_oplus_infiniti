@@ -8,7 +8,7 @@
 /metadata       f2fs    /dev/block/by-name/metadata                                         flags=display="Metadata";backup=1;flashimg=1
 
 # Boot partitions
-/boot           emmc    /dev/block/bootdevice/by-name/boot                                  flags=slotselect
+/boot           emmc    /dev/block/bootdevice/by-name/boot                                  flags=slotselect;display="Boot";backup=1;flashimg=1
 /init_boot      emmc    /dev/block/bootdevice/by-name/init_boot                             flags=slotselect;display="Init Boot";backup=1;flashimg=1
 /vendor_boot    emmc    /dev/block/bootdevice/by-name/vendor_boot                           flags=slotselect;display="Vendor Boot";backup=1;flashimg=1
 /recovery       emmc    /dev/block/bootdevice/by-name/recovery                              flags=slotselect;display="Recovery";backup=1;flashimg=1
