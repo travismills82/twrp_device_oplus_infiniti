@@ -52,6 +52,12 @@ PRODUCT_PACKAGES += \
 	wpa_supplicant \
 	wpa_cli
 
+# Keep prebuilt WLAN modules visible even after /vendor is mounted over the ramdisk vendor folder.
+PRODUCT_COPY_FILES += \
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/rfkill.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/rfkill.ko \
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/cfg80211.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/cfg80211.ko \
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/qca_cld3_peach_v2.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/qca_cld3_peach_v2.ko
+
 ifneq ($(wildcard $(DEVICE_PATH)/prebuilts/magisk/Magisk.apk),)
 PRODUCT_PACKAGES += bundled-magisk-apk
 endif
