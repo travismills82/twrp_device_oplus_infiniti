@@ -1,14 +1,44 @@
-on property:post.decrypt.modules=true
+on property:twrp.wifi.enable=1
+    setprop wifi.driver.ready false
+    setprop twrp.wifi.status loading
+    mkdir /firmware 0755 root root
+    mount vfat /dev/block/bootdevice/by-name/modem${ro.boot.slot_suffix} /firmware ro
+    write /proc/sys/kernel/firmware_config/force_sysfs_fallback 1
+    insmod /vendor/lib/modules/qmi_helpers.ko
+    insmod /vendor/lib/modules/wlan_firmware_service.ko
+    insmod /vendor/lib/modules/cnss_prealloc.ko
+    insmod /vendor/lib/modules/cnss_utils.ko
+    insmod /vendor/lib/modules/cnss_plat_ipc_qmi_svc.ko
+    insmod /vendor/lib/modules/cnss_nl.ko
+    insmod /vendor/lib/modules/cnss2.ko
     chmod 222 /sys/bus/platform/drivers/cnss2/b0000000.qcom,cnss-peach/fs_ready
     write /sys/bus/platform/drivers/cnss2/b0000000.qcom,cnss-peach/fs_ready 1
-    wait /sys/class/net/wlan0 10
-    write /dev/kmsg "Interface wlan0 found"
-    setprop wifi.driver.ready true
-
-on property:wifi.driver.ready=true
+    insmod /vendor/lib/modules/rfkill.ko
+    insmod /vendor/lib/modules/cfg80211.ko
+    insmod /vendor/lib/modules/gsim.ko
+    insmod /vendor/lib/modules/rmnet_mem.ko
+    insmod /vendor/lib/modules/ipam.ko
+    insmod /vendor/lib/modules/qca_cld3_peach_v2.ko
+    write /sys/bus/platform/drivers/cnss2/b0000000.qcom,cnss-peach/fs_ready 1
+    wait /sys/class/net/wlan0 90
     mkdir /tmp/recovery 0777 root root
     mkdir /tmp/recovery/sockets 0777 root root
+    chmod 0777 /tmp/recovery
+    chmod 0777 /tmp/recovery/sockets
+    write /dev/kmsg "WLAN wlan0 is present; starting wpa_supplicant"
+    start wpa_supplicant
+
+on property:post.decrypt.modules=true
+    setprop twrp.wifi.enable 1
+
+on property:init.svc.wpa_supplicant=running
+    wait /tmp/recovery/sockets/wlan0 45
+    setprop wifi.driver.ready true
+    setprop twrp.wifi.status ready
+    write /dev/kmsg "WLAN wpa_supplicant control socket is ready"
 
 service wpa_supplicant /system/bin/wpa_supplicant -Dnl80211 -iwlan0 -dd -O/tmp/recovery/sockets -c/vendor/etc/wifi/wpa_supplicant.conf
+    user root
+    group root wifi inet
     disabled
     seclabel u:r:recovery:s0
