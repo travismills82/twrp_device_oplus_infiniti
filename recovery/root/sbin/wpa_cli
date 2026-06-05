@@ -1,0 +1,17 @@
+#!/system/bin/sh
+# TWRP's WLAN page calls "wpa_cli" without an absolute path. Some recovery
+# command shells do not include /system/bin in PATH, so keep a /sbin wrapper
+# that forwards to the real binary when it is packaged in recovery.
+
+for bin in \
+    /system/bin/wpa_cli \
+    /system_ext/bin/wpa_cli \
+    /vendor/bin/wpa_cli \
+    /vendor/bin/hw/wpa_cli; do
+    if [ -x "$bin" ]; then
+        exec "$bin" "$@"
+    fi
+done
+
+echo "wpa_cli: real binary not found in recovery" >&2
+exit 127
