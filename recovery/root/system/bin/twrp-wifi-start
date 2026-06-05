@@ -1,0 +1,147 @@
+#!/system/bin/sh
+
+IFACE="wlan0"
+SOCKET_DIR="/tmp/recovery/sockets"
+MODULE_DIRS="/system/lib/modules /vendor/lib/modules /vendor_dlkm/lib/modules /lib/modules"
+
+log_msg() {
+    echo "[twrp-wifi] $1"
+    echo "[twrp-wifi] $1" > /dev/kmsg 2>/dev/null || true
+}
+
+set_status() {
+    setprop twrp.wifi.status "$1" 2>/dev/null || true
+}
+
+set_ready() {
+    setprop wifi.driver.ready "$1" 2>/dev/null || true
+}
+
+module_name() {
+    echo "${1%.ko}" | tr '-' '_'
+}
+
+module_loaded() {
+    mod="$(module_name "$1")"
+    grep -q "^${mod} " /proc/modules 2>/dev/null
+}
+
+find_module() {
+    mod="$1"
+    for dir in $MODULE_DIRS; do
+        if [ -f "$dir/$mod" ]; then
+            echo "$dir/$mod"
+            return 0
+        fi
+    done
+    return 1
+}
+
+load_module() {
+    mod="$1"
+
+    if module_loaded "$mod"; then
+        log_msg "$mod already loaded"
+        return 0
+    fi
+
+    path="$(find_module "$mod")" || {
+        log_msg "missing module: $mod"
+        return 1
+    }
+
+    log_msg "loading $path"
+    insmod "$path" 2>/tmp/twrp-wifi-insmod.err && return 0
+
+    if module_loaded "$mod"; then
+        log_msg "$mod loaded despite insmod warning"
+        return 0
+    fi
+
+    log_msg "failed loading $mod: $(cat /tmp/twrp-wifi-insmod.err 2>/dev/null)"
+    return 1
+}
+
+set_fs_ready() {
+    for node in /sys/bus/platform/drivers/cnss2/*/fs_ready; do
+        [ -e "$node" ] || continue
+        chmod 222 "$node" 2>/dev/null || true
+        echo 1 > "$node" 2>/dev/null && log_msg "set $node=1"
+    done
+}
+
+wait_for_wlan0() {
+    count=0
+    while [ "$count" -lt 60 ]; do
+        [ -d "/sys/class/net/$IFACE" ] && return 0
+        sleep 1
+        count=$((count + 1))
+    done
+    return 1
+}
+
+wait_for_supplicant() {
+    count=0
+    while [ "$count" -lt 20 ]; do
+        wpa_cli -i "$IFACE" -p "$SOCKET_DIR" ping 2>/dev/null | grep -q PONG && return 0
+        sleep 1
+        count=$((count + 1))
+    done
+    return 1
+}
+
+set_ready false
+set_status preparing
+mkdir -p /tmp/recovery "$SOCKET_DIR" /firmware 2>/dev/null || true
+chmod 0777 /tmp/recovery "$SOCKET_DIR" 2>/dev/null || true
+
+mount | grep -q " /firmware " || mount -t vfat -o ro "/dev/block/bootdevice/by-name/modem$(getprop ro.boot.slot_suffix)" /firmware 2>/dev/null || true
+
+echo 1 > /proc/sys/kernel/firmware_config/force_sysfs_fallback 2>/dev/null || true
+
+set_status loading-cnss
+for mod in qmi_helpers.ko cnss_prealloc.ko cnss_utils.ko cnss_plat_ipc_qmi_svc.ko cnss_nl.ko wlan_firmware_service.ko cnss2.ko; do
+    load_module "$mod" || true
+done
+
+set_fs_ready
+sleep 1
+
+set_status loading-wlan-deps
+for mod in rmnet_mem.ko gsim.ko ipam.ko rfkill.ko cfg80211.ko; do
+    load_module "$mod" || true
+done
+
+set_fs_ready
+sleep 1
+
+set_status loading-wlan-driver
+load_module qca_cld3_peach_v2.ko || true
+set_fs_ready
+
+set_status waiting-wlan0
+if ! wait_for_wlan0; then
+    set_status wlan0-missing
+    set_ready false
+    log_msg "wlan0 did not appear"
+    exit 0
+fi
+
+ifconfig "$IFACE" up 2>/dev/null || true
+
+set_status starting-supplicant
+stop wpa_supplicant 2>/dev/null || true
+sleep 1
+start wpa_supplicant
+
+if wait_for_supplicant; then
+    set_ready true
+    set_status ready
+    log_msg "wpa_supplicant is ready"
+else
+    set_ready false
+    set_status supplicant-timeout
+    log_msg "wpa_supplicant did not answer PONG"
+fi
+
+exit 0
