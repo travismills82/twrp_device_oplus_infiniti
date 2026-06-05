@@ -3,6 +3,7 @@
 IFACE="wlan0"
 SOCKET_DIR="/tmp/recovery/sockets"
 MODULE_DIRS="/system/lib/modules /vendor/lib/modules /vendor_dlkm/lib/modules /lib/modules"
+WPA_CLI="/sbin/wpa_cli"
 
 log_msg() {
     echo "[twrp-wifi] $1"
@@ -83,7 +84,7 @@ wait_for_wlan0() {
 wait_for_supplicant() {
     count=0
     while [ "$count" -lt 20 ]; do
-        wpa_cli -i "$IFACE" -p "$SOCKET_DIR" ping 2>/dev/null | grep -q PONG && return 0
+        "$WPA_CLI" -i "$IFACE" -p "$SOCKET_DIR" ping 2>/dev/null | grep -q PONG && return 0
         sleep 1
         count=$((count + 1))
     done
