@@ -4,7 +4,7 @@
 # modification, are permitted provided that the following conditions are met:
 #     * Redistributions of source code must retain the above copyright
 #       notice, this list of conditions and the following disclaimer.
-#     * Redistributions in binary form must reproduce the above copyright
+#     * Redistributions in binary form must reproduce the above
 #       notice, this list of conditions and the following disclaimer in the
 #       documentation and/or other materials provided with the distribution.
 #     * Neither the name of The Linux Foundation nor
@@ -36,6 +36,13 @@ service post-boot-script /system/bin/sh -c /vendor/bin/init.kernel.post_boot-can
     oneshot
     seclabel u:r:recovery:s0
 
+service twrp-touch-start /system/bin/twrp-touch-start
+    user root
+    group root
+    disabled
+    oneshot
+    seclabel u:r:recovery:s0
+
 on early-fs
     write /proc/sys/walt/sched_lib_name "recovery,Updater,updater,update_engine_sideload"
     write /proc/sys/walt/sched_lib_mask_force 255
@@ -44,6 +51,7 @@ on init
     write /sys/class/backlight/panel0-backlight/brightness 200
     setprop sys.usb.configfs 1
     start vendor.boot-qti
+    start twrp-touch-start
     setprop prepdecrypt.setpatch true
 
 on property:ro.boot.usbcontroller=*
