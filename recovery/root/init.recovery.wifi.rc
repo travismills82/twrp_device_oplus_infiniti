@@ -23,5 +23,6 @@ service twrp-wifi-start /system/bin/sh -c 'setprop wifi.driver.ready false; setp
 service wpa_supplicant /system/bin/wpa_supplicant -Dnl80211 -iwlan0 -dd -O/tmp/recovery/sockets -c/vendor/etc/wifi/wpa_supplicant.conf
     user root
     group root wifi inet
+    setenv LD_LIBRARY_PATH /vendor/lib64:/system/lib64:/system_ext/lib64
     disabled
     seclabel u:r:recovery:s0
