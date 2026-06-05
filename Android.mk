@@ -62,6 +62,14 @@ LOCAL_SRC_FILES := recovery/root/system/bin/twrp-wifi-start
 LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/system/bin
 include $(BUILD_PREBUILT)
 
+include $(CLEAR_VARS)
+LOCAL_MODULE := twrp-touch-start
+LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE_CLASS := EXECUTABLES
+LOCAL_SRC_FILES := recovery/root/system/bin/twrp-touch-start
+LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/system/bin
+include $(BUILD_PREBUILT)
+
 ifneq ($(wildcard $(LOCAL_PATH)/prebuilts/magisk/Magisk.apk),)
 include $(CLEAR_VARS)
 LOCAL_MODULE := bundled-magisk-apk
