@@ -50,7 +50,8 @@ PRODUCT_PACKAGES += \
 # Recovery Wi-Fi userspace tools
 PRODUCT_PACKAGES += \
 	wpa_supplicant \
-	wpa_cli
+	wpa_cli \
+	vendor.qti.hardware.wifi.supplicant-V1-ndk
 
 ifneq ($(wildcard $(DEVICE_PATH)/prebuilts/magisk/Magisk.apk),)
 PRODUCT_PACKAGES += bundled-magisk-apk
