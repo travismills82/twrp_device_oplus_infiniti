@@ -1,0 +1,82 @@
+#!/system/bin/sh
+
+MODULE_DIRS="/system/lib/modules /vendor/lib/modules /vendor_dlkm/lib/modules /lib/modules"
+
+log_msg() {
+    echo "[twrp-touch] $1"
+    echo "[twrp-touch] $1" > /dev/kmsg 2>/dev/null || true
+}
+
+module_name() {
+    echo "${1%.ko}" | tr '-' '_'
+}
+
+module_loaded() {
+    mod="$(module_name "$1")"
+    grep -q "^${mod} " /proc/modules 2>/dev/null
+}
+
+find_module() {
+    mod="$1"
+    for dir in $MODULE_DIRS; do
+        if [ -f "$dir/$mod" ]; then
+            echo "$dir/$mod"
+            return 0
+        fi
+    done
+    return 1
+}
+
+load_module() {
+    mod="$1"
+
+    if module_loaded "$mod"; then
+        log_msg "$mod already loaded"
+        return 0
+    fi
+
+    path="$(find_module "$mod")" || {
+        log_msg "missing module: $mod"
+        return 1
+    }
+
+    log_msg "loading $path"
+    insmod "$path" 2>/tmp/twrp-touch-insmod.err && return 0
+
+    if module_loaded "$mod"; then
+        log_msg "$mod loaded despite insmod warning"
+        return 0
+    fi
+
+    log_msg "failed loading $mod: $(cat /tmp/twrp-touch-insmod.err 2>/dev/null)"
+    return 1
+}
+
+# Load common touch support before panel-specific drivers.
+for mod in \
+    oplus_bsp_tp_common.ko \
+    oplus_bsp_tp_notify.ko \
+    oplus_bsp_tp_custom.ko \
+    oplus_bsp_tp_focal_common.ko \
+    oplus_bsp_tp_goodix_comnon.ko \
+    oplus_bsp_tp_ilitek_common.ko \
+    oplus_bsp_tp_novatek_common.ko \
+    oplus_bsp_tp_syna_common.ko \
+    oplus_bsp_synaptics_tcm2.ko \
+    oplus_bsp_tp_ft3518.ko \
+    oplus_bsp_tp_ft3658u_spi.ko \
+    oplus_bsp_tp_ft3681.ko \
+    oplus_bsp_tp_ft3683g.ko \
+    oplus_bsp_tp_ft8057p.ko \
+    oplus_bsp_tp_gt9916.ko \
+    oplus_bsp_tp_gt9966.ko \
+    oplus_bsp_tp_ilitek7807s.ko \
+    oplus_bsp_tp_nt36528_noflash.ko \
+    oplus_bsp_tp_nt36532_noflash.ko \
+    oplus_bsp_tp_nt36672c_noflash.ko \
+    oplus_bsp_tp_tcm_S3908.ko \
+    oplus_bsp_tp_tcm_S3910.ko; do
+    load_module "$mod" || true
+done
+
+exit 0
