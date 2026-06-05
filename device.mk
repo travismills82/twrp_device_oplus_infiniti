@@ -54,6 +54,15 @@ PRODUCT_PACKAGES += \
 
 # Keep prebuilt WLAN modules visible even after /vendor is mounted over the ramdisk vendor folder.
 PRODUCT_COPY_FILES += \
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/cnss_prealloc.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/cnss_prealloc.ko \
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/cnss_utils.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/cnss_utils.ko \
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/cnss_plat_ipc_qmi_svc.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/cnss_plat_ipc_qmi_svc.ko \
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/cnss_nl.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/cnss_nl.ko \
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/wlan_firmware_service.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/wlan_firmware_service.ko \
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/cnss2.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/cnss2.ko \
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/rmnet_mem.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/rmnet_mem.ko \
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/gsim.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/gsim.ko \
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/ipam.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/ipam.ko \
 	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/rfkill.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/rfkill.ko \
 	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/cfg80211.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/cfg80211.ko \
 	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/qca_cld3_peach_v2.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/qca_cld3_peach_v2.ko
