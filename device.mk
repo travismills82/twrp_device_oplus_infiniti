@@ -46,14 +46,15 @@ PRODUCT_PACKAGES += \
 	twrp-root-patcher \
 	twrp-magisk-bundled \
 	twrp-flash-magisk \
-	twrp-wifi-start
+	twrp-wifi-start \
+	twrp-touch-start
 
 # Recovery Wi-Fi userspace tools
 PRODUCT_PACKAGES += \
 	wpa_supplicant \
 	wpa_cli
 
-# Keep prebuilt WLAN modules visible even after /vendor is mounted over the ramdisk vendor folder.
+# Keep prebuilt WLAN and touch modules visible even after /vendor is mounted over the ramdisk vendor folder.
 PRODUCT_COPY_FILES += \
 	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/cnss_prealloc.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/cnss_prealloc.ko \
 	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/cnss_utils.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/cnss_utils.ko \
@@ -66,7 +67,29 @@ PRODUCT_COPY_FILES += \
 	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/ipam.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/ipam.ko \
 	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/rfkill.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/rfkill.ko \
 	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/cfg80211.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/cfg80211.ko \
-	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/qca_cld3_peach_v2.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/qca_cld3_peach_v2.ko
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/qca_cld3_peach_v2.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/qca_cld3_peach_v2.ko \
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/oplus_bsp_synaptics_tcm2.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/oplus_bsp_synaptics_tcm2.ko \
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/oplus_bsp_tp_common.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/oplus_bsp_tp_common.ko \
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/oplus_bsp_tp_custom.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/oplus_bsp_tp_custom.ko \
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/oplus_bsp_tp_focal_common.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/oplus_bsp_tp_focal_common.ko \
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/oplus_bsp_tp_ft3518.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/oplus_bsp_tp_ft3518.ko \
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/oplus_bsp_tp_ft3658u_spi.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/oplus_bsp_tp_ft3658u_spi.ko \
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/oplus_bsp_tp_ft3681.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/oplus_bsp_tp_ft3681.ko \
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/oplus_bsp_tp_ft3683g.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/oplus_bsp_tp_ft3683g.ko \
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/oplus_bsp_tp_ft8057p.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/oplus_bsp_tp_ft8057p.ko \
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/oplus_bsp_tp_goodix_comnon.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/oplus_bsp_tp_goodix_comnon.ko \
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/oplus_bsp_tp_gt9916.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/oplus_bsp_tp_gt9916.ko \
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/oplus_bsp_tp_gt9966.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/oplus_bsp_tp_gt9966.ko \
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/oplus_bsp_tp_ilitek7807s.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/oplus_bsp_tp_ilitek7807s.ko \
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/oplus_bsp_tp_ilitek_common.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/oplus_bsp_tp_ilitek_common.ko \
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/oplus_bsp_tp_notify.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/oplus_bsp_tp_notify.ko \
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/oplus_bsp_tp_novatek_common.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/oplus_bsp_tp_novatek_common.ko \
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/oplus_bsp_tp_nt36528_noflash.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/oplus_bsp_tp_nt36528_noflash.ko \
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/oplus_bsp_tp_nt36532_noflash.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/oplus_bsp_tp_nt36532_noflash.ko \
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/oplus_bsp_tp_nt36672c_noflash.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/oplus_bsp_tp_nt36672c_noflash.ko \
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/oplus_bsp_tp_syna_common.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/oplus_bsp_tp_syna_common.ko \
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/oplus_bsp_tp_tcm_S3908.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/oplus_bsp_tp_tcm_S3908.ko \
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/oplus_bsp_tp_tcm_S3910.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/oplus_bsp_tp_tcm_S3910.ko
 
 ifneq ($(wildcard $(DEVICE_PATH)/prebuilts/magisk/Magisk.apk),)
 PRODUCT_PACKAGES += bundled-magisk-apk
