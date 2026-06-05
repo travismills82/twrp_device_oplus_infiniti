@@ -45,7 +45,8 @@ PRODUCT_PACKAGES += \
 	twrp-recovery-tools \
 	twrp-root-patcher \
 	twrp-magisk-bundled \
-	twrp-flash-magisk
+	twrp-flash-magisk \
+	twrp-wifi-start
 
 # Recovery Wi-Fi userspace tools
 PRODUCT_PACKAGES += \
