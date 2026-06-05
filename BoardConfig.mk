@@ -162,6 +162,11 @@ TW_NO_EXFAT_FUSE            := true
 TW_BACKUP_EXCLUSIONS        += /data/cache /data/dalvik-cache /data/misc_ce/*/cache /data/system/dropbox
 TW_BACKUP_SELINUX_CONTEXTS  := true
 
+# TWRP Wi-Fi
+TW_INCLUDE_WIFI := true
+TW_WIFI_CTRL_INTERFACE := /tmp/recovery/sockets
+TW_WIFI_SUPPLICANT_CONF := /vendor/etc/wifi/wpa_supplicant.conf
+
 # Version
 PLATFORM_VERSION := 99.87.36
 PLATFORM_VERSION_LAST_STABLE := $(PLATFORM_VERSION)
