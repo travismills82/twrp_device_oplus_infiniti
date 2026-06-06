@@ -15,7 +15,7 @@ set -e
 
 TOOL="$1"
 PACKAGE="$2"
-PARTITION="${3:-init_boot}"
+PARTITION="${3:-boot}"
 WORKDIR="/tmp/twrp-root-patcher"
 OUTDIR="/sdcard/TWRP/root-patcher"
 
