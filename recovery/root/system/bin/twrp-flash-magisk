@@ -4,12 +4,12 @@
 # Intended for use from TWRP Advanced menu or terminal.
 #
 # Usage:
-#   twrp-flash-magisk [init_boot|boot]
+#   twrp-flash-magisk [boot|init_boot]
 #
 
 set -e
 
-PARTITION="${1:-init_boot}"
+PARTITION="${1:-boot}"
 OUTDIR="/sdcard/TWRP/root-patcher"
 MAGISK_APK="/system/etc/magisk/Magisk.apk"
 
@@ -46,16 +46,18 @@ get_size_bytes() {
 }
 
 case "$PARTITION" in
-    init_boot|boot) ;;
-    *) fail "unsupported partition: $PARTITION; use init_boot or boot" ;;
+    boot|init_boot) ;;
+    *) fail "unsupported partition: $PARTITION; use boot or init_boot" ;;
 esac
 
 [ -f "$MAGISK_APK" ] || fail "bundled Magisk APK not found at $MAGISK_APK"
 command -v twrp-root-patcher >/dev/null 2>&1 || fail "twrp-root-patcher not found"
 
 BLOCK="$(find_partition "$PARTITION")" || fail "could not find ${PARTITION} block device"
+SLOT="$(getprop ro.boot.slot_suffix 2>/dev/null || true)"
 
 ui_print "Target partition: $PARTITION"
+ui_print "Active slot suffix: ${SLOT:-none}"
 ui_print "Target block: $BLOCK"
 ui_print "Running Magisk patcher"
 
