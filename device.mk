@@ -56,6 +56,7 @@ PRODUCT_PACKAGES += \
 
 # Keep prebuilt WLAN and touch modules visible even after /vendor is mounted over the ramdisk vendor folder.
 PRODUCT_COPY_FILES += \
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/qmi_helpers.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/qmi_helpers.ko \
 	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/cnss_prealloc.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/cnss_prealloc.ko \
 	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/cnss_utils.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/cnss_utils.ko \
 	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/cnss_plat_ipc_qmi_svc.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/cnss_plat_ipc_qmi_svc.ko \
@@ -89,7 +90,8 @@ PRODUCT_COPY_FILES += \
 	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/oplus_bsp_tp_nt36672c_noflash.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/oplus_bsp_tp_nt36672c_noflash.ko \
 	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/oplus_bsp_tp_syna_common.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/oplus_bsp_tp_syna_common.ko \
 	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/oplus_bsp_tp_tcm_S3908.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/oplus_bsp_tp_tcm_S3908.ko \
-	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/oplus_bsp_tp_tcm_S3910.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/oplus_bsp_tp_tcm_S3910.ko
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/oplus_bsp_tp_tcm_S3910.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/oplus_bsp_tp_tcm_S3910.ko \
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/oplus_bsp_tp_td4377_noflash.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/oplus_bsp_tp_td4377_noflash.ko
 
 ifneq ($(wildcard $(DEVICE_PATH)/prebuilts/magisk/Magisk.apk),)
 PRODUCT_PACKAGES += bundled-magisk-apk
