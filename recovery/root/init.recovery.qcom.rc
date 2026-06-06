@@ -44,6 +44,13 @@ service twrp-touch-start /system/bin/twrp-touch-start
     oneshot
     seclabel u:r:recovery:s0
 
+service twrp-decrypt-prereqs /system/bin/twrp-decrypt-prereqs
+    user root
+    group root system drmrpc
+    disabled
+    oneshot
+    seclabel u:r:recovery:s0
+
 on early-fs
     write /proc/sys/walt/sched_lib_name "recovery,Updater,updater,update_engine_sideload"
     write /proc/sys/walt/sched_lib_mask_force 255
@@ -82,6 +89,10 @@ on property:twrp.modules.loaded=true
     setprop twrp.wifi.enable 1
 
 on property:ro.crypto.state=encrypted && property:ro.boot.dynamic_partitions=true
+    setprop twrp.decrypt.prereq preparing
+    start twrp-decrypt-prereqs
+
+on property:twrp.decrypt.prereq=ready
     start prepdecrypt.vendor
 
 on property:hwservicemanager.ready=true
