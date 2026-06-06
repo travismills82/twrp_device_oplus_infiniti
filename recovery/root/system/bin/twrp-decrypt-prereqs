@@ -1,0 +1,102 @@
+#!/system/bin/sh
+
+PERSIST_BLOCKS="/dev/block/bootdevice/by-name/persist /dev/block/by-name/persist"
+CRYPTO_SERVICES="keystore2 vendor.gatekeeper_default vendor.qseecomd vendor.weaver_nxp vendor.keymint-qti"
+OPTIONAL_SERVICES="vendor.secure_element se_omapi vendor.ssgtzd"
+
+log_msg() {
+    echo "[twrp-decrypt] $1"
+    echo "[twrp-decrypt] $1" > /dev/kmsg 2>/dev/null || true
+}
+
+set_status() {
+    setprop twrp.decrypt.status "$1" 2>/dev/null || true
+}
+
+service_state() {
+    getprop "init.svc.$1" 2>/dev/null
+}
+
+start_service() {
+    svc="$1"
+    state="$(service_state "$svc")"
+    case "$state" in
+        running|restarting)
+            log_msg "$svc already $state"
+            return 0
+            ;;
+    esac
+
+    log_msg "starting $svc"
+    setprop ctl.start "$svc" 2>/dev/null || true
+}
+
+wait_service_running() {
+    svc="$1"
+    timeout="$2"
+    count=0
+
+    while [ "$count" -lt "$timeout" ]; do
+        [ "$(service_state "$svc")" = "running" ] && return 0
+        sleep 1
+        count=$((count + 1))
+    done
+
+    log_msg "$svc not running after ${timeout}s; continuing"
+    return 1
+}
+
+find_persist_block() {
+    for block in $PERSIST_BLOCKS; do
+        [ -e "$block" ] && echo "$block" && return 0
+    done
+    return 1
+}
+
+mount_persist() {
+    mkdir -p /persist 2>/dev/null || true
+
+    if grep -q " /persist " /proc/mounts 2>/dev/null; then
+        log_msg "/persist already mounted"
+        return 0
+    fi
+
+    count=0
+    block=""
+    while [ "$count" -lt 10 ]; do
+        block="$(find_persist_block)" && break
+        sleep 1
+        count=$((count + 1))
+    done
+
+    if [ -z "$block" ]; then
+        log_msg "persist block device not found"
+        return 1
+    fi
+
+    log_msg "mounting /persist from $block"
+    mount -t ext4 -o noatime,nosuid,nodev,barrier=1 "$block" /persist 2>/tmp/twrp-persist-mount.err && return 0
+    mount -t ext4 "$block" /persist 2>/tmp/twrp-persist-mount.err && return 0
+
+    log_msg "failed to mount /persist: $(cat /tmp/twrp-persist-mount.err 2>/dev/null)"
+    return 1
+}
+
+set_status preparing
+mount_persist || true
+
+set_status starting-services
+for svc in $CRYPTO_SERVICES $OPTIONAL_SERVICES; do
+    start_service "$svc"
+done
+
+set_status waiting-services
+for svc in $CRYPTO_SERVICES; do
+    wait_service_running "$svc" 8 || true
+done
+
+set_status ready
+setprop twrp.decrypt.prereq ready 2>/dev/null || true
+log_msg "decrypt prerequisites are ready"
+
+exit 0
