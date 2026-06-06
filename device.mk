@@ -50,6 +50,10 @@ PRODUCT_PACKAGES += \
 	twrp-touch-start \
 	twrp-decrypt-prereqs
 
+# Recovery FBE/decryption userspace
+PRODUCT_PACKAGES += \
+	keystore2
+
 # Recovery Wi-Fi userspace tools
 PRODUCT_PACKAGES += \
 	wpa_supplicant \
