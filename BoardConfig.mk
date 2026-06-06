@@ -198,9 +198,9 @@ TW_INCLUDE_TZDATA                       := true
 TW_INCLUDE_CHARGER                      := true
 TW_INCLUDE_CRASHLOG                     := true
 
-# Keep TWRP's normal module loader focused on non-WLAN, non-touch recovery
-# support modules. Touch-panel modules are loaded by /system/bin/twrp-touch-start
-# from the staged /system/lib/modules path, and WLAN modules are loaded later by
+# Keep TWRP's normal module loader focused only on modules that actually exist
+# in the recovery ramdisk vendor module path. Touch-panel modules are loaded by
+# /system/bin/twrp-touch-start, and WLAN modules are loaded by
 # /system/bin/twrp-wifi-start after CNSS fs_ready is asserted.
-TW_LOAD_VENDOR_MODULES := "q6_pdr_dlkm.ko q6_notifier_dlkm.ko snd_event_dlkm.ko gpr_dlkm.ko spf_core_dlkm.ko adsp_loader_dlkm.ko oplus_chg_v2.ko stm_st54se_gpio.ko nxp-nci.ko smem-mailbox.ko"
+TW_LOAD_VENDOR_MODULES := "q6_pdr_dlkm.ko"
 TW_POST_DECRYPT_MODULES := ""
