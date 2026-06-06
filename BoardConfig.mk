@@ -198,10 +198,9 @@ TW_INCLUDE_TZDATA                       := true
 TW_INCLUDE_CHARGER                      := true
 TW_INCLUDE_CRASHLOG                     := true
 
-# Keep TWRP's normal module loader focused on display, touch, charging, ADSP,
-# and secure element support. WLAN modules are intentionally loaded later by
-# /system/bin/twrp-wifi-start after CNSS fs_ready is asserted. Loading
-# qca_cld3_peach_v2.ko here causes "WLAN register driver deferred for
-# Calibration" before the recovery Wi-Fi environment is ready.
-TW_LOAD_VENDOR_MODULES := "oplus_bsp_synaptics_tcm2.ko oplus_bsp_tp_common.ko oplus_bsp_tp_custom.ko oplus_bsp_tp_focal_common.ko oplus_bsp_tp_ft3518.ko oplus_bsp_tp_ft3658u_spi.ko oplus_bsp_tp_ft3681.ko oplus_bsp_tp_ft3683g.ko oplus_bsp_tp_ft8057p.ko oplus_bsp_tp_goodix_comnon.ko oplus_bsp_tp_gt9916.ko oplus_bsp_tp_gt9966.ko oplus_bsp_tp_ilitek7807s.ko oplus_bsp_tp_ilitek_common.ko oplus_bsp_tp_notify.ko oplus_bsp_tp_novatek_common.ko oplus_bsp_tp_nt36528_noflash.ko oplus_bsp_tp_nt36532_noflash.ko oplus_bsp_tp_nt36672c_noflash.ko oplus_bsp_tp_syna_common.ko oplus_bsp_tp_tcm_S3908.ko oplus_bsp_tp_tcm_S3910.ko oplus_bsp_tp_td4377_noflash.ko q6_pdr_dlkm.ko q6_notifier_dlkm.ko snd_event_dlkm.ko gpr_dlkm.ko spf_core_dlkm.ko adsp_loader_dlkm.ko oplus_chg_v2.ko stm_st54se_gpio.ko nxp-nci.ko smem-mailbox.ko"
+# Keep TWRP's normal module loader focused on non-WLAN, non-touch recovery
+# support modules. Touch-panel modules are loaded by /system/bin/twrp-touch-start
+# from the staged /system/lib/modules path, and WLAN modules are loaded later by
+# /system/bin/twrp-wifi-start after CNSS fs_ready is asserted.
+TW_LOAD_VENDOR_MODULES := "q6_pdr_dlkm.ko q6_notifier_dlkm.ko snd_event_dlkm.ko gpr_dlkm.ko spf_core_dlkm.ko adsp_loader_dlkm.ko oplus_chg_v2.ko stm_st54se_gpio.ko nxp-nci.ko smem-mailbox.ko"
 TW_POST_DECRYPT_MODULES := ""
