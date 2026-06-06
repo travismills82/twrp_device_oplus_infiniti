@@ -75,7 +75,8 @@ for mod in \
     oplus_bsp_tp_nt36532_noflash.ko \
     oplus_bsp_tp_nt36672c_noflash.ko \
     oplus_bsp_tp_tcm_S3908.ko \
-    oplus_bsp_tp_tcm_S3910.ko; do
+    oplus_bsp_tp_tcm_S3910.ko \
+    oplus_bsp_tp_td4377_noflash.ko; do
     load_module "$mod" || true
 done
 
