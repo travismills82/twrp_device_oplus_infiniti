@@ -2,7 +2,7 @@
 # Bundled Magisk launcher helper
 
 MAGISK_APK="/system/etc/magisk/Magisk.apk"
-PARTITION="${1:-init_boot}"
+PARTITION="${1:-boot}"
 
 if [ ! -f "$MAGISK_APK" ]; then
     echo "Bundled Magisk APK not found"
