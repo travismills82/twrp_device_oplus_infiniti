@@ -54,7 +54,7 @@ PRODUCT_PACKAGES += \
 	wpa_supplicant \
 	wpa_cli
 
-# Keep prebuilt WLAN and touch modules visible even after /vendor is mounted over the ramdisk vendor folder.
+# Keep prebuilt WLAN, ADSP, and touch modules visible even after /vendor is mounted over the ramdisk vendor folder.
 PRODUCT_COPY_FILES += \
 	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/qmi_helpers.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/qmi_helpers.ko \
 	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/cnss_prealloc.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/cnss_prealloc.ko \
@@ -69,6 +69,7 @@ PRODUCT_COPY_FILES += \
 	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/rfkill.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/rfkill.ko \
 	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/cfg80211.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/cfg80211.ko \
 	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/qca_cld3_peach_v2.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/qca_cld3_peach_v2.ko \
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/q6_pdr_dlkm.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/q6_pdr_dlkm.ko \
 	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/oplus_bsp_synaptics_tcm2.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/oplus_bsp_synaptics_tcm2.ko \
 	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/oplus_bsp_tp_common.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/oplus_bsp_tp_common.ko \
 	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/oplus_bsp_tp_custom.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/oplus_bsp_tp_custom.ko \
