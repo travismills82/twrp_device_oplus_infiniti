@@ -47,7 +47,8 @@ PRODUCT_PACKAGES += \
 	twrp-magisk-bundled \
 	twrp-flash-magisk \
 	twrp-wifi-start \
-	twrp-touch-start
+	twrp-touch-start \
+	twrp-decrypt-prereqs
 
 # Recovery Wi-Fi userspace tools
 PRODUCT_PACKAGES += \
