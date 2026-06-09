@@ -2,7 +2,9 @@
 
 PERSIST_BLOCKS="/dev/block/bootdevice/by-name/persist /dev/block/by-name/persist"
 CRYPTO_SERVICES="keystore2 vendor.gatekeeper_default vendor.qseecomd vendor.weaver_nxp vendor.keymint-qti"
-OPTIONAL_SERVICES="vendor.secure_element se_omapi vendor.ssgtzd"
+OPTIONAL_SERVICES="vendor.keymint-strongbox vendor.secure_element se_omapi vendor.ssgtzd"
+REQUIRED_BINDER_SERVICES="android.system.keystore2.IKeystoreService/default android.hardware.gatekeeper.IGatekeeper/default android.hardware.security.keymint.IKeyMintDevice/default android.hardware.weaver.IWeaver/default"
+OPTIONAL_BINDER_SERVICES="android.hardware.security.keymint.IKeyMintDevice/strongbox android.hardware.security.sharedsecret.ISharedSecret/default"
 
 log_msg() {
     echo "[twrp-decrypt] $1"
@@ -43,6 +45,40 @@ wait_service_running() {
     done
 
     log_msg "$svc not running after ${timeout}s; continuing"
+    return 1
+}
+
+binder_service_available() {
+    name="$1"
+
+    if command -v service >/dev/null 2>&1; then
+        out="$(service check "$name" 2>/dev/null || true)"
+        echo "$out" | grep -qi "found" && return 0
+        echo "$out" | grep -qi "not found" && return 1
+    fi
+
+    # If the service command is not available in this recovery build, do not
+    # hard fail here. init service-state checks above are still useful.
+    [ ! -x /system/bin/service ] && [ ! -x /sbin/service ] && return 0
+
+    return 1
+}
+
+wait_binder_service() {
+    name="$1"
+    timeout="$2"
+    count=0
+
+    while [ "$count" -lt "$timeout" ]; do
+        binder_service_available "$name" && {
+            log_msg "binder ready: $name"
+            return 0
+        }
+        sleep 1
+        count=$((count + 1))
+    done
+
+    log_msg "binder service not ready after ${timeout}s: $name"
     return 1
 }
 
@@ -90,10 +126,27 @@ for svc in $CRYPTO_SERVICES $OPTIONAL_SERVICES; do
     start_service "$svc"
 done
 
-set_status waiting-services
+set_status waiting-init-services
 for svc in $CRYPTO_SERVICES; do
-    wait_service_running "$svc" 8 || true
+    wait_service_running "$svc" 20 || true
 done
+
+set_status waiting-binder-services
+missing_required=0
+for svc in $REQUIRED_BINDER_SERVICES; do
+    wait_binder_service "$svc" 45 || missing_required=1
+done
+
+for svc in $OPTIONAL_BINDER_SERVICES; do
+    wait_binder_service "$svc" 8 || true
+done
+
+if [ "$missing_required" -ne 0 ]; then
+    set_status failed
+    setprop twrp.decrypt.prereq failed 2>/dev/null || true
+    log_msg "required decrypt binder services are not ready; not starting prepdecrypt"
+    exit 1
+fi
 
 set_status ready
 setprop twrp.decrypt.prereq ready 2>/dev/null || true
