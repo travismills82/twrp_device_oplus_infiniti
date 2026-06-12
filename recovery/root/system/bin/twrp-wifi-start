@@ -4,6 +4,11 @@ IFACE="wlan0"
 SOCKET_DIR="/tmp/recovery/sockets"
 MODULE_DIRS="/system/lib/modules /vendor/lib/modules /vendor_dlkm/lib/modules /lib/modules"
 WPA_CLI="/sbin/wpa_cli"
+INI_NAME="WCNSS_qcom_cfg.ini"
+INI_SOURCES="/vendor/etc/wifi/peach_v2/$INI_NAME /vendor/etc/wifi/peach/$INI_NAME /vendor/odm/etc/wifi/peach_v2/$INI_NAME /vendor/odm/etc/wifi/peach/$INI_NAME"
+PEACH_FIRMWARE_SOURCES="/vendor/odm/etc/wifi/peach /vendor/etc/wifi/peach /vendor/odm/firmware/peach /vendor/firmware/peach"
+PEACH_FIRMWARE_DESTS="/lib/firmware/peach /vendor/firmware/peach /vendor/odm/firmware/peach"
+WLAN_UPDATE_DIR="/data/vendor/firmware/update/wlan"
 
 log_msg() {
     echo "[twrp-wifi] $1"
@@ -63,6 +68,78 @@ load_module() {
     return 1
 }
 
+copy_file_if_present() {
+    src="$1"
+    dst="$2"
+
+    [ -f "$src" ] || return 1
+    mkdir -p "${dst%/*}" 2>/dev/null || true
+    cp -f "$src" "$dst" 2>/tmp/twrp-wifi-copy.err && {
+        chmod 0644 "$dst" 2>/dev/null || true
+        log_msg "copied $src -> $dst"
+        return 0
+    }
+
+    log_msg "failed copying $src -> $dst: $(cat /tmp/twrp-wifi-copy.err 2>/dev/null)"
+    return 1
+}
+
+copy_dir_contents_if_present() {
+    src="$1"
+    dst="$2"
+
+    [ -d "$src" ] || return 1
+    [ "$src" = "$dst" ] && return 0
+
+    mkdir -p "$dst" 2>/dev/null || true
+    cp -af "$src"/. "$dst"/ 2>/tmp/twrp-wifi-copy.err && {
+        log_msg "copied peach firmware $src -> $dst"
+        return 0
+    }
+
+    log_msg "failed copying peach firmware $src -> $dst: $(cat /tmp/twrp-wifi-copy.err 2>/dev/null)"
+    return 1
+}
+
+prepare_wlan_firmware() {
+    set_status staging-firmware
+    mkdir -p "$WLAN_UPDATE_DIR" 2>/dev/null || true
+    chmod 0755 /data /data/vendor /data/vendor/firmware /data/vendor/firmware/update "$WLAN_UPDATE_DIR" 2>/dev/null || true
+
+    ini_src=""
+    for src in $INI_SOURCES; do
+        if [ -f "$src" ]; then
+            ini_src="$src"
+            break
+        fi
+    done
+
+    if [ -n "$ini_src" ]; then
+        copy_file_if_present "$ini_src" "$WLAN_UPDATE_DIR/$INI_NAME" || true
+        for dst in $PEACH_FIRMWARE_DESTS; do
+            copy_file_if_present "$ini_src" "$dst/$INI_NAME" || true
+        done
+    else
+        log_msg "$INI_NAME not found in known recovery paths"
+    fi
+
+    peach_src=""
+    for src in $PEACH_FIRMWARE_SOURCES; do
+        if [ -d "$src" ]; then
+            peach_src="$src"
+            break
+        fi
+    done
+
+    if [ -n "$peach_src" ]; then
+        for dst in $PEACH_FIRMWARE_DESTS; do
+            copy_dir_contents_if_present "$peach_src" "$dst" || true
+        done
+    else
+        log_msg "peach firmware directory not found in known recovery paths"
+    fi
+}
+
 set_fs_ready() {
     for node in /sys/bus/platform/drivers/cnss2/*/fs_ready; do
         [ -e "$node" ] || continue
@@ -99,6 +176,7 @@ chmod 0777 /tmp/recovery "$SOCKET_DIR" 2>/dev/null || true
 mount | grep -q " /firmware " || mount -t vfat -o ro "/dev/block/bootdevice/by-name/modem$(getprop ro.boot.slot_suffix)" /firmware 2>/dev/null || true
 
 echo 1 > /proc/sys/kernel/firmware_config/force_sysfs_fallback 2>/dev/null || true
+prepare_wlan_firmware
 
 set_status loading-cnss
 for mod in qmi_helpers.ko cnss_prealloc.ko cnss_utils.ko cnss_plat_ipc_qmi_svc.ko cnss_nl.ko wlan_firmware_service.ko cnss2.ko; do
