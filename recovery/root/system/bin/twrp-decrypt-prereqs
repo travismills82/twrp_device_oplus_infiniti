@@ -1,10 +1,9 @@
 #!/system/bin/sh
 
 PERSIST_BLOCKS="/dev/block/bootdevice/by-name/persist /dev/block/by-name/persist"
-CRYPTO_SERVICES="keystore2 vendor.gatekeeper_default vendor.qseecomd vendor.weaver_nxp vendor.keymint-qti"
-OPTIONAL_SERVICES="vendor.keymint-strongbox vendor.secure_element se_omapi vendor.ssgtzd"
+SECURE_ELEMENT_SERVICES="vendor.secure_element se_omapi vendor.ssgtzd"
+CRYPTO_SERVICES="vendor.qseecomd vendor.gatekeeper_default vendor.keymint-qti vendor.weaver_nxp keystore2"
 REQUIRED_BINDER_SERVICES="android.system.keystore2.IKeystoreService/default android.hardware.gatekeeper.IGatekeeper/default android.hardware.security.keymint.IKeyMintDevice/default android.hardware.weaver.IWeaver/default"
-OPTIONAL_BINDER_SERVICES="android.hardware.security.keymint.IKeyMintDevice/strongbox android.hardware.security.sharedsecret.ISharedSecret/default"
 
 log_msg() {
     echo "[twrp-decrypt] $1"
@@ -33,6 +32,39 @@ start_service() {
     setprop ctl.start "$svc" 2>/dev/null || true
 }
 
+stop_service() {
+    svc="$1"
+    state="$(service_state "$svc")"
+    case "$state" in
+        running|restarting|starting)
+            log_msg "stopping $svc"
+            setprop ctl.stop "$svc" 2>/dev/null || true
+            ;;
+        *)
+            return 0
+            ;;
+    esac
+
+    count=0
+    while [ "$count" -lt 10 ]; do
+        state="$(service_state "$svc")"
+        case "$state" in
+            stopped|"") return 0 ;;
+        esac
+        sleep 1
+        count=$((count + 1))
+    done
+
+    log_msg "$svc did not stop cleanly; continuing"
+    return 1
+}
+
+restart_service() {
+    svc="$1"
+    stop_service "$svc" || true
+    start_service "$svc"
+}
+
 wait_service_running() {
     svc="$1"
     timeout="$2"
@@ -45,6 +77,21 @@ wait_service_running() {
     done
 
     log_msg "$svc not running after ${timeout}s; continuing"
+    return 1
+}
+
+wait_property() {
+    name="$1"
+    expected="$2"
+    timeout="$3"
+    count=0
+
+    while [ "$count" -lt "$timeout" ]; do
+        [ "$(getprop "$name" 2>/dev/null)" = "$expected" ] && return 0
+        sleep 1
+        count=$((count + 1))
+    done
+
     return 1
 }
 
@@ -121,14 +168,36 @@ mount_persist() {
 set_status preparing
 mount_persist || true
 
-set_status starting-services
-for svc in $CRYPTO_SERVICES $OPTIONAL_SERVICES; do
+# The NXP Weaver transport refuses requests while Android reports that boot is
+# incomplete. Recovery has no framework boot sequence, so mark it complete
+# before bringing up the secure-element and crypto services.
+setprop sys.boot_completed 1 2>/dev/null || true
+wait_property sys.boot_completed 1 5 || log_msg "sys.boot_completed did not settle"
+
+set_status starting-secure-element
+for svc in $SECURE_ELEMENT_SERVICES; do
+    start_service "$svc"
+done
+for svc in $SECURE_ELEMENT_SERVICES; do
+    wait_service_running "$svc" 20 || true
+done
+
+# Give the eSE/OMAPI stack time to publish readers before Weaver initializes.
+sleep 2
+
+set_status starting-crypto-services
+for svc in vendor.qseecomd vendor.gatekeeper_default vendor.keymint-qti keystore2; do
     start_service "$svc"
 done
 
+# Weaver may have been started earlier by vendor init while boot was still
+# incomplete. Restart it after boot-complete and secure-element readiness so
+# getConfig/getSlots can return a valid key size to TWRP.
+restart_service vendor.weaver_nxp
+
 set_status waiting-init-services
 for svc in $CRYPTO_SERVICES; do
-    wait_service_running "$svc" 20 || true
+    wait_service_running "$svc" 30 || true
 done
 
 set_status waiting-binder-services
@@ -137,16 +206,15 @@ for svc in $REQUIRED_BINDER_SERVICES; do
     wait_binder_service "$svc" 45 || missing_required=1
 done
 
-for svc in $OPTIONAL_BINDER_SERVICES; do
-    wait_binder_service "$svc" 8 || true
-done
-
 if [ "$missing_required" -ne 0 ]; then
     set_status failed
     setprop twrp.decrypt.prereq failed 2>/dev/null || true
     log_msg "required decrypt binder services are not ready; not starting prepdecrypt"
     exit 1
 fi
+
+# Let the HALs settle after registration before prepdecrypt and PIN entry.
+sleep 2
 
 set_status ready
 setprop twrp.decrypt.prereq ready 2>/dev/null || true
