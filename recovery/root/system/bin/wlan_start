@@ -1,179 +1,70 @@
 #!/system/bin/sh
 
-export PATH=/system/bin:/vendor/bin:/sbin
-export TMPDIR=/data/local/tmp
-export USER=root
-
-LOG=/tmp/recovery_wifi_init.log
+LOG=/tmp/recovery_wifi_diag.log
 exec >"$LOG" 2>&1
 
-WLAN_MAX_TRIES=30
-MAC_MAX_TRIES=180
-WPA_START_TRIES=5
-WPA_CTRL_MAX_TRIES=120
+echo "=== wlan_start diagnostic ==="
+echo "This script is diagnostic only. It does not mount partitions, write fs_ready, insmod modules, or start wpa_supplicant."
+echo "Use the init-managed Wi-Fi path instead: setprop twrp.wifi.enable 1"
+echo
 
-echo "=== wlan_start ==="
-echo "context: $(id -Z 2>/dev/null)"
-echo "uid/gid: $(id 2>/dev/null)"
-echo "PATH: $PATH"
-echo "TMPDIR=$TMPDIR"
-echo "USER=$USER"
+echo "--- identity ---"
+id 2>/dev/null || true
+id -Z 2>/dev/null || true
 
-rm -f /tmp/oem_wpa.log
-mkdir -p /tmp/recovery/sockets
-mkdir -p /tmp/wlan/list
-mkdir -p /vendor_dlkm /system_dlkm
-mkdir -p /data/vendor/firmware/update/wlan
+echo
 
-mount -t erofs -o ro /dev/block/dm-6 /vendor_dlkm 2>/dev/null || true
-mount -t erofs -o ro /dev/block/dm-3 /system_dlkm 2>/dev/null || true
+echo "--- Wi-Fi props ---"
+getprop twrp.wifi.enable 2>/dev/null || true
+getprop twrp.wifi.status 2>/dev/null || true
+getprop wifi.driver.ready 2>/dev/null || true
 
-if [ -S /tmp/recovery/sockets/wlan0 ] && \
-   /system/bin/wpa_cli -p /tmp/recovery/sockets -i wlan0 ping 2>/dev/null | grep -q PONG; then
-    echo "wpa_supplicant already ready"
-    echo "Wi-Fi already started"
-    exit 0
-fi
+echo
 
-cp /vendor/etc/wifi/peach_v2/WCNSS_qcom_cfg.ini \
-   /data/vendor/firmware/update/wlan/WCNSS_qcom_cfg.ini 2>/dev/null || {
-    echo "failed to copy WCNSS_qcom_cfg.ini"
-    exit 1
-}
-
-FS_READY=/sys/bus/platform/drivers/cnss2/b0000000.qcom,cnss-peach/fs_ready
-if [ ! -e "$FS_READY" ]; then
-    echo "fs_ready node missing"
-    dmesg | grep -i 'cnss\|firmware\|wlan\|qca\|cld3' | tail -n 120
-    exit 1
-fi
-
-chmod 222 "$FS_READY" 2>/dev/null || true
-echo 1 > "$FS_READY"
-
-sleep 3
-
-insmod /system_dlkm/lib/modules/rfkill.ko 2>/dev/null || true
-insmod /vendor_dlkm/lib/modules/cfg80211.ko 2>/dev/null || true
-insmod /vendor_dlkm/lib/modules/qca_cld3_peach_v2.ko 2>/dev/null || true
-
-i=1
-while [ "$i" -le "$WLAN_MAX_TRIES" ]; do
-    if ifconfig wlan0 >/dev/null 2>&1 || grep -q "wlan0:" /proc/net/dev 2>/dev/null; then
-        echo "wlan0 detected at attempt $i"
-        break
+echo "--- firmware/config paths ---"
+for path in \
+    /vendor/etc/wifi/peach_v2/WCNSS_qcom_cfg.ini \
+    /vendor/etc/wifi/peach/WCNSS_qcom_cfg.ini \
+    /vendor/odm/etc/wifi/peach_v2/WCNSS_qcom_cfg.ini \
+    /vendor/odm/etc/wifi/peach/WCNSS_qcom_cfg.ini \
+    /data/vendor/firmware/update/wlan/WCNSS_qcom_cfg.ini \
+    /lib/firmware/peach/WCNSS_qcom_cfg.ini \
+    /vendor/firmware/peach/WCNSS_qcom_cfg.ini \
+    /vendor/odm/firmware/peach/WCNSS_qcom_cfg.ini; do
+    if [ -e "$path" ]; then
+        ls -l "$path" 2>/dev/null || true
+    else
+        echo "missing: $path"
     fi
-    echo "waiting for wlan0... $i/$WLAN_MAX_TRIES"
-    sleep 1
-    i=$((i + 1))
 done
 
-if ! ifconfig wlan0 >/dev/null 2>&1 && ! grep -q "wlan0:" /proc/net/dev 2>/dev/null; then
-    echo "wlan0 not present"
-    dmesg | grep -i 'cnss\|firmware\|wlan\|qca\|cld3\|cal\|qmi\|dms' | tail -n 240
-    exit 1
-fi
+echo
 
-i=1
-while [ "$i" -le "$MAC_MAX_TRIES" ]; do
-    MAC_ADDR="$(cat /sys/class/net/wlan0/address 2>/dev/null)"
-    if [ -n "$MAC_ADDR" ] && [ "$MAC_ADDR" != "00:00:00:00:00:00" ]; then
-        echo "wlan0 MAC ready at attempt $i: $MAC_ADDR"
-        break
-    fi
-    echo "waiting for wlan0 MAC/QMI... $i/$MAC_MAX_TRIES current='${MAC_ADDR:-none}'"
-    dmesg | grep -i 'cnss\|qmi\|dms\|mac' | tail -n 10
-    sleep 1
-    i=$((i + 1))
+echo "--- fs_ready nodes ---"
+for node in /sys/bus/platform/drivers/cnss2/*/fs_ready; do
+    [ -e "$node" ] && ls -l "$node" && cat "$node" 2>/dev/null || true
 done
 
-MAC_ADDR="$(cat /sys/class/net/wlan0/address 2>/dev/null)"
-if [ -z "$MAC_ADDR" ] || [ "$MAC_ADDR" = "00:00:00:00:00:00" ]; then
-    echo "wlan0 MAC never became valid"
-    dmesg | grep -i 'cnss\|qmi\|dms\|wlan\|qca\|cld3\|mac' | tail -n 240
-    exit 1
-fi
+echo
 
-echo "bringing wlan0 up"
-ifconfig wlan0 up >/dev/null 2>&1 || true
+echo "--- loaded wlan modules ---"
+cat /proc/modules 2>/dev/null | grep -E 'qca|cnss|cfg80211|wlan|rfkill|qmi|ipam|gsim|rmnet' || true
 
-echo "waiting extra time for driver readiness"
-sleep 3
+echo
 
-start_try=1
-while [ "$start_try" -le "$WPA_START_TRIES" ]; do
-    echo "starting wpa_supplicant attempt $start_try/$WPA_START_TRIES"
+echo "--- net devices ---"
+ls -l /sys/class/net 2>/dev/null || true
+cat /proc/net/dev 2>/dev/null || true
 
-    pkill -x wpa_supplicant 2>/dev/null || true
-    sleep 1
+echo
 
-    rm -f /tmp/recovery/sockets/wlan0
-    rm -f /tmp/recovery/sockets/* 2>/dev/null || true
-    : > /tmp/oem_wpa.log
+echo "--- supplicant sockets ---"
+ls -la /tmp/recovery/sockets 2>/dev/null || true
 
-    (
-        export LD_LIBRARY_PATH=/system/lib64:/vendor/lib64
-        exec /vendor/bin/hw/wpa_supplicant \
-            -iwlan0 \
-            -Dnl80211 \
-            -c /vendor/etc/wifi/wpa_supplicant.conf \
-            -O /tmp/recovery/sockets \
-            -dd
-    ) >/tmp/oem_wpa.log 2>&1 &
+echo
 
-    WPA_PID=$!
-    echo "wpa_supplicant pid: $WPA_PID"
+echo "--- dmesg wlan tail ---"
+dmesg 2>/dev/null | grep -i 'wpa\|supplicant\|nl80211\|wlan\|qca\|cld3\|cnss\|qmi\|dms\|firmware\|cal\|avc\|selinux' | tail -n 240 || true
 
-    sleep 1
-
-    echo "=== post-launch state ==="
-    ps -A 2>/dev/null | grep wpa_supplicant || echo "wpa_supplicant not visible in ps"
-    ls -l /tmp/recovery/sockets 2>/dev/null || true
-    tail -n 60 /tmp/oem_wpa.log 2>/dev/null || true
-
-    if ! kill -0 "$WPA_PID" 2>/dev/null; then
-        echo "wpa_supplicant exited immediately on start try $start_try"
-        echo "=== dmesg wlan tail ==="
-        dmesg | grep -i 'wpa\|supplicant\|nl80211\|wlan\|qca\|cld3\|cnss\|qmi\|dms\|avc\|selinux' | tail -n 240
-        echo "=== tail of wpa_supplicant log ==="
-        tail -n 120 /tmp/oem_wpa.log 2>/dev/null || true
-        start_try=$((start_try + 1))
-        sleep 2
-        continue
-    fi
-
-    i=1
-    while [ "$i" -le "$WPA_CTRL_MAX_TRIES" ]; do
-        if ! kill -0 "$WPA_PID" 2>/dev/null; then
-            echo "wpa_supplicant is no longer running at attempt $i on start try $start_try"
-            echo "=== socket dir ==="
-            ls -l /tmp/recovery/sockets 2>/dev/null || true
-            echo "=== dmesg wlan tail ==="
-            dmesg | grep -i 'wpa\|supplicant\|nl80211\|wlan\|qca\|cld3\|cnss\|qmi\|dms\|avc\|selinux' | tail -n 240
-            echo "=== tail of wpa_supplicant log ==="
-            tail -n 120 /tmp/oem_wpa.log 2>/dev/null || true
-            break
-        fi
-
-        if /system/bin/wpa_cli -p /tmp/recovery/sockets -i wlan0 ping 2>/dev/null | grep -q PONG; then
-            echo "wpa_cli responded at attempt $i on start try $start_try"
-            echo "Wi-Fi prepared successfully"
-            exit 0
-        fi
-
-        echo "waiting for wpa_supplicant control... $i/$WPA_CTRL_MAX_TRIES (start $start_try/$WPA_START_TRIES)"
-        sleep 1
-        i=$((i + 1))
-    done
-
-    echo "wpa_supplicant start try $start_try failed"
-    start_try=$((start_try + 1))
-    sleep 2
-done
-
-echo "=== final tail of wpa_supplicant log ==="
-tail -n 120 /tmp/oem_wpa.log 2>/dev/null || true
-echo "=== final dmesg wlan tail ==="
-dmesg | grep -i 'wpa\|supplicant\|nl80211\|wlan\|qca\|cld3\|cnss\|qmi\|dms\|avc\|selinux' | tail -n 240
-echo "wpa_supplicant control socket not ready after all retries"
-exit 1
+echo "diagnostic log written to $LOG"
+exit 0
