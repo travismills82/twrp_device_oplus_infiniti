@@ -2,8 +2,9 @@
 
 IFACE="wlan0"
 SOCKET_DIR="/tmp/recovery/sockets"
+VENDOR_DLKM_MOUNT="/tmp/vendor_dlkm"
 MODULE_DIRS="/system/lib/modules /vendor/lib/modules /vendor_dlkm/lib/modules /lib/modules"
-WPA_CLI="/sbin/wpa_cli"
+WPA_CLI="/system/bin/wpa_cli"
 INI_NAME="WCNSS_qcom_cfg.ini"
 INI_SOURCES="/vendor/etc/wifi/peach_v2/$INI_NAME /vendor/etc/wifi/peach/$INI_NAME /vendor/odm/etc/wifi/peach_v2/$INI_NAME /vendor/odm/etc/wifi/peach/$INI_NAME"
 PEACH_FIRMWARE_SOURCES="/vendor/odm/etc/wifi/peach /vendor/etc/wifi/peach /vendor/odm/firmware/peach /vendor/firmware/peach"
@@ -69,6 +70,67 @@ load_module() {
 
     log_msg "failed loading $mod: $(cat /tmp/twrp-wifi-insmod.err 2>/dev/null)"
     return 1
+}
+
+is_mounted() (
+    target="$1"
+    grep -q " $target " /proc/mounts 2>/dev/null
+)
+
+find_vendor_dlkm_block() (
+    slot="$(getprop ro.boot.slot_suffix 2>/dev/null)"
+    for block in \
+        "/dev/block/mapper/vendor_dlkm${slot}" \
+        "/dev/block/mapper/vendor_dlkm" \
+        "/dev/block/by-name/vendor_dlkm${slot}" \
+        "/dev/block/by-name/vendor_dlkm" \
+        "/dev/block/bootdevice/by-name/vendor_dlkm${slot}" \
+        "/dev/block/bootdevice/by-name/vendor_dlkm"
+    do
+        if [ -e "$block" ]; then
+            echo "$block"
+            return 0
+        fi
+    done
+    return 1
+)
+
+mount_vendor_dlkm_modules() {
+    if find_module smem-mailbox.ko >/dev/null 2>&1; then
+        return 0
+    fi
+
+    mkdir -p "$VENDOR_DLKM_MOUNT" 2>/dev/null || true
+
+    if ! is_mounted "$VENDOR_DLKM_MOUNT"; then
+        vdlkm_block="$(find_vendor_dlkm_block)" || {
+            log_msg "vendor_dlkm block device not found"
+            return 1
+        }
+
+        log_msg "mounting vendor_dlkm from $vdlkm_block"
+        mount -t erofs -o ro "$vdlkm_block" "$VENDOR_DLKM_MOUNT" 2>/tmp/twrp-wifi-vendor-dlkm.err || \
+        mount -t ext4 -o ro "$vdlkm_block" "$VENDOR_DLKM_MOUNT" 2>>/tmp/twrp-wifi-vendor-dlkm.err || \
+        mount -o ro "$vdlkm_block" "$VENDOR_DLKM_MOUNT" 2>>/tmp/twrp-wifi-vendor-dlkm.err || {
+            log_msg "failed mounting vendor_dlkm: $(cat /tmp/twrp-wifi-vendor-dlkm.err 2>/dev/null)"
+            return 1
+        }
+    fi
+
+    if [ ! -d "$VENDOR_DLKM_MOUNT/lib/modules" ]; then
+        log_msg "vendor_dlkm module directory missing after mount"
+        return 1
+    fi
+
+    MODULE_DIRS="$VENDOR_DLKM_MOUNT/lib/modules $MODULE_DIRS"
+    log_msg "vendor_dlkm modules ready at $VENDOR_DLKM_MOUNT/lib/modules"
+
+    if [ ! -f "$VENDOR_DLKM_MOUNT/lib/modules/smem-mailbox.ko" ]; then
+        log_msg "smem-mailbox.ko missing from mounted vendor_dlkm"
+        return 1
+    fi
+
+    return 0
 }
 
 copy_file_if_present() {
@@ -180,9 +242,10 @@ mount | grep -q " /firmware " || mount -t vfat -o ro "/dev/block/bootdevice/by-n
 
 echo 1 > /proc/sys/kernel/firmware_config/force_sysfs_fallback 2>/dev/null || true
 prepare_wlan_firmware
+mount_vendor_dlkm_modules || true
 
 set_status loading-cnss
-for mod in qmi_helpers.ko cnss_prealloc.ko cnss_utils.ko cnss_plat_ipc_qmi_svc.ko cnss_nl.ko wlan_firmware_service.ko cnss2.ko; do
+for mod in qmi_helpers.ko cnss_prealloc.ko smem-mailbox.ko cnss_utils.ko cnss_plat_ipc_qmi_svc.ko cnss_nl.ko wlan_firmware_service.ko cnss2.ko; do
     load_module "$mod" || true
 done
 
