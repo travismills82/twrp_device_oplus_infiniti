@@ -46,9 +46,9 @@ PRODUCT_PACKAGES += \
 	twrp-root-patcher \
 	twrp-magisk-bundled \
 	twrp-flash-magisk \
-	twrp-wifi-start \
+	twrp-wifi-start-v2 \
 	twrp-touch-start \
-	twrp-decrypt-prereqs
+	twrp-decrypt-prereqs-v2
 
 # Recovery FBE/decryption userspace
 PRODUCT_PACKAGES += \
