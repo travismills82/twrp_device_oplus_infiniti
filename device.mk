@@ -59,8 +59,11 @@ PRODUCT_PACKAGES += \
 	wpa_supplicant \
 	wpa_cli
 
-# Keep prebuilt WLAN, ADSP, and touch modules visible even after /vendor is mounted over the ramdisk vendor folder.
+# Keep prebuilt WLAN, secure-element, ADSP, and touch modules visible even after
+# /vendor is mounted over the ramdisk vendor folder.
 PRODUCT_COPY_FILES += \
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/nxp-nci.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/nxp-nci.ko \
+	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/smcinvoke_dlkm.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/smcinvoke_dlkm.ko \
 	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/qmi_helpers.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/qmi_helpers.ko \
 	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/cnss_prealloc.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/cnss_prealloc.ko \
 	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/cnss_utils.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/cnss_utils.ko \
