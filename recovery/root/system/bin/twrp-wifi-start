@@ -27,12 +27,15 @@ module_name() {
     echo "${1%.ko}" | tr '-' '_'
 }
 
-module_loaded() {
+# Recovery shell variables are global across functions. Keep temporary module
+# names in subshells so normalizing a loaded-module name cannot overwrite the
+# original .ko filename used for the filesystem lookup.
+module_loaded() (
     mod="$(module_name "$1")"
     grep -q "^${mod} " /proc/modules 2>/dev/null
-}
+)
 
-find_module() {
+find_module() (
     mod="$1"
     for dir in $MODULE_DIRS; do
         if [ -f "$dir/$mod" ]; then
@@ -41,7 +44,7 @@ find_module() {
         fi
     done
     return 1
-}
+)
 
 load_module() {
     mod="$1"
