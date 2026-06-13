@@ -125,12 +125,15 @@ module_name() {
     echo "${1%.ko}" | tr '-' '_'
 }
 
-module_loaded() {
+# Android's recovery shell does not provide function-local variables by
+# default. Keep temporary names in subshells so checking a normalized module
+# name cannot overwrite the original filename used by the caller.
+module_loaded() (
     mod="$(module_name "$1")"
     grep -q "^${mod} " /proc/modules 2>/dev/null
-}
+)
 
-find_module() {
+find_module() (
     mod="$1"
     for dir in $MODULE_DIRS; do
         if [ -f "$dir/$mod" ]; then
@@ -139,7 +142,7 @@ find_module() {
         fi
     done
     return 1
-}
+)
 
 load_module_if_available() {
     mod="$1"
