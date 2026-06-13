@@ -3,7 +3,10 @@
 PERSIST_BLOCKS="/dev/block/bootdevice/by-name/persist /dev/block/by-name/persist"
 PERSIST_VENDOR_MOUNT="/mnt/vendor/persist"
 PERSIST_TWRP_MOUNT="/persist"
-SECURE_ELEMENT_SERVICES="vendor.secure_element se_omapi vendor.ssgtzd"
+MODULE_DIRS="/system/lib/modules /vendor/lib/modules /vendor_dlkm/lib/modules /lib/modules"
+NFC_DEVICE="/dev/nq-nci"
+SECURE_ELEMENT_BINDER="android.hardware.secure_element.ISecureElement/eSE1"
+OMAPI_BINDER="android.se.omapi.ISecureElementService/default"
 CRYPTO_SERVICES="vendor.qseecomd vendor.gatekeeper_default vendor.keymint-qti vendor.weaver_nxp keystore2"
 REQUIRED_BINDER_SERVICES="android.system.keystore2.IKeystoreService/default android.hardware.gatekeeper.IGatekeeper/default android.hardware.security.keymint.IKeyMintDevice/default android.hardware.weaver.IWeaver/default"
 
@@ -14,6 +17,13 @@ log_msg() {
 
 set_status() {
     setprop twrp.decrypt.status "$1" 2>/dev/null || true
+}
+
+fail_prereq() {
+    set_status "$1"
+    setprop twrp.decrypt.prereq failed 2>/dev/null || true
+    log_msg "$2"
+    exit 1
 }
 
 service_state() {
@@ -78,7 +88,7 @@ wait_service_running() {
         count=$((count + 1))
     done
 
-    log_msg "$svc not running after ${timeout}s; continuing"
+    log_msg "$svc not running after ${timeout}s"
     return 1
 }
 
@@ -97,6 +107,68 @@ wait_property() {
     return 1
 }
 
+wait_path() {
+    path="$1"
+    timeout="$2"
+    count=0
+
+    while [ "$count" -lt "$timeout" ]; do
+        [ -e "$path" ] && return 0
+        sleep 1
+        count=$((count + 1))
+    done
+
+    return 1
+}
+
+module_name() {
+    echo "${1%.ko}" | tr '-' '_'
+}
+
+module_loaded() {
+    mod="$(module_name "$1")"
+    grep -q "^${mod} " /proc/modules 2>/dev/null
+}
+
+find_module() {
+    mod="$1"
+    for dir in $MODULE_DIRS; do
+        if [ -f "$dir/$mod" ]; then
+            echo "$dir/$mod"
+            return 0
+        fi
+    done
+    return 1
+}
+
+load_module_if_available() {
+    mod="$1"
+
+    if module_loaded "$mod"; then
+        log_msg "$mod already loaded"
+        return 0
+    fi
+
+    path="$(find_module "$mod")" || {
+        log_msg "$mod not found in runtime module paths"
+        return 1
+    }
+
+    log_msg "loading $path"
+    if insmod "$path" 2>/tmp/twrp-decrypt-insmod.err; then
+        log_msg "loaded $mod"
+        return 0
+    fi
+
+    if module_loaded "$mod"; then
+        log_msg "$mod loaded despite insmod warning"
+        return 0
+    fi
+
+    log_msg "failed loading $mod: $(cat /tmp/twrp-decrypt-insmod.err 2>/dev/null)"
+    return 1
+}
+
 binder_service_available() {
     name="$1"
 
@@ -107,7 +179,7 @@ binder_service_available() {
     fi
 
     # If the service command is not available in this recovery build, do not
-    # hard fail here. init service-state checks above are still useful.
+    # hard fail here. init service-state checks are still useful.
     [ ! -x /system/bin/service ] && [ ! -x /sbin/service ] && return 0
 
     return 1
@@ -209,38 +281,55 @@ mount_persist() {
 }
 
 set_status preparing
-if ! mount_persist; then
-    set_status persist-mount-failed
-    setprop twrp.decrypt.prereq failed 2>/dev/null || true
-    log_msg "persist mount setup failed; not starting decrypt services"
-    exit 1
-fi
+mount_persist || fail_prereq persist-mount-failed "persist mount setup failed; not starting decrypt services"
 
-# The NXP Weaver transport refuses requests while Android reports that boot is
-# incomplete. Recovery has no framework boot sequence, so mark it complete
-# before bringing up the secure-element and crypto services.
+# The NXP services reject requests while Android reports boot incomplete.
 setprop sys.boot_completed 1 2>/dev/null || true
 wait_property sys.boot_completed 1 5 || log_msg "sys.boot_completed did not settle"
 
-set_status starting-secure-element
-for svc in $SECURE_ELEMENT_SERVICES; do
-    start_service "$svc"
-done
-for svc in $SECURE_ELEMENT_SERVICES; do
-    wait_service_running "$svc" 20 || true
-done
+# The secure-element HAL requires the Qualcomm secure channel and the NXP NFC
+# device. Older successful boots loaded nxp-nci before the HAL initialized;
+# current vendor init can start the HAL before that device is ready.
+set_status preparing-nfc
+start_service vendor.qseecomd
+wait_service_running vendor.qseecomd 20 || fail_prereq qseecomd-failed "vendor.qseecomd did not become ready"
+start_service vendor.ssgtzd
+wait_service_running vendor.ssgtzd 20 || true
 
-# Give the eSE/OMAPI stack time to publish readers before Weaver initializes.
+if [ ! -e "$NFC_DEVICE" ]; then
+    load_module_if_available smcinvoke_dlkm.ko || true
+    load_module_if_available nxp-nci.ko || true
+fi
+
+wait_path "$NFC_DEVICE" 20 || fail_prereq nfc-device-missing "$NFC_DEVICE did not appear; cannot initialize the embedded secure element"
+log_msg "NFC secure-element device ready: $NFC_DEVICE"
+
+# Both daemons may already be running with a cached failed eSE probe. Stop the
+# OMAPI client first, then reinitialize the HAL after persist/QSEE/NFC readiness.
+set_status restarting-secure-element
+stop_service se_omapi || true
+stop_service vendor.secure_element || true
+sleep 1
+start_service vendor.secure_element
+wait_service_running vendor.secure_element 20 || fail_prereq secure-element-failed "vendor.secure_element did not become ready"
+wait_binder_service "$SECURE_ELEMENT_BINDER" 30 || fail_prereq secure-element-binder-failed "secure-element binder did not become ready"
+
+# Allow the HAL's chip/vendor detection and trusted-app initialization to finish
+# before OMAPI opens a reader.
+sleep 6
+
+set_status restarting-omapi
+start_service se_omapi
+wait_service_running se_omapi 20 || fail_prereq omapi-failed "se_omapi did not become ready"
+wait_binder_service "$OMAPI_BINDER" 30 || fail_prereq omapi-binder-failed "OMAPI binder did not become ready"
 sleep 2
 
 set_status starting-crypto-services
-for svc in vendor.qseecomd vendor.gatekeeper_default vendor.keymint-qti keystore2; do
+for svc in vendor.gatekeeper_default vendor.keymint-qti keystore2; do
     start_service "$svc"
 done
 
-# Weaver may have been started earlier by vendor init while boot was still
-# incomplete. Restart it after boot-complete, persist mounting, and
-# secure-element readiness so getConfig/getSlots can return a valid key size.
+# Restart Weaver only after the refreshed eSE and OMAPI services are available.
 restart_service vendor.weaver_nxp
 
 set_status waiting-init-services
@@ -255,10 +344,7 @@ for svc in $REQUIRED_BINDER_SERVICES; do
 done
 
 if [ "$missing_required" -ne 0 ]; then
-    set_status failed
-    setprop twrp.decrypt.prereq failed 2>/dev/null || true
-    log_msg "required decrypt binder services are not ready; not starting prepdecrypt"
-    exit 1
+    fail_prereq failed "required decrypt binder services are not ready; not starting prepdecrypt"
 fi
 
 # Let the HALs settle after registration before prepdecrypt and PIN entry.
