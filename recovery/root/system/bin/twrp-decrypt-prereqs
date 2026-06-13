@@ -1,6 +1,8 @@
 #!/system/bin/sh
 
 PERSIST_BLOCKS="/dev/block/bootdevice/by-name/persist /dev/block/by-name/persist"
+PERSIST_VENDOR_MOUNT="/mnt/vendor/persist"
+PERSIST_TWRP_MOUNT="/persist"
 SECURE_ELEMENT_SERVICES="vendor.secure_element se_omapi vendor.ssgtzd"
 CRYPTO_SERVICES="vendor.qseecomd vendor.gatekeeper_default vendor.keymint-qti vendor.weaver_nxp keystore2"
 REQUIRED_BINDER_SERVICES="android.system.keystore2.IKeystoreService/default android.hardware.gatekeeper.IGatekeeper/default android.hardware.security.keymint.IKeyMintDevice/default android.hardware.weaver.IWeaver/default"
@@ -129,6 +131,11 @@ wait_binder_service() {
     return 1
 }
 
+is_mounted() {
+    target="$1"
+    grep -q " $target " /proc/mounts 2>/dev/null
+}
+
 find_persist_block() {
     for block in $PERSIST_BLOCKS; do
         [ -e "$block" ] && echo "$block" && return 0
@@ -136,37 +143,78 @@ find_persist_block() {
     return 1
 }
 
-mount_persist() {
-    mkdir -p /persist 2>/dev/null || true
+bind_persist_mount() {
+    src="$1"
+    dst="$2"
 
-    if grep -q " /persist " /proc/mounts 2>/dev/null; then
-        log_msg "/persist already mounted"
-        return 0
-    fi
+    is_mounted "$dst" && return 0
+    mkdir -p "$dst" 2>/dev/null || true
 
-    count=0
-    block=""
-    while [ "$count" -lt 10 ]; do
-        block="$(find_persist_block)" && break
-        sleep 1
-        count=$((count + 1))
-    done
+    log_msg "binding $src to $dst"
+    mount -o bind "$src" "$dst" 2>/tmp/twrp-persist-bind.err && return 0
 
-    if [ -z "$block" ]; then
-        log_msg "persist block device not found"
-        return 1
-    fi
-
-    log_msg "mounting /persist from $block"
-    mount -t ext4 -o noatime,nosuid,nodev,barrier=1 "$block" /persist 2>/tmp/twrp-persist-mount.err && return 0
-    mount -t ext4 "$block" /persist 2>/tmp/twrp-persist-mount.err && return 0
-
-    log_msg "failed to mount /persist: $(cat /tmp/twrp-persist-mount.err 2>/dev/null)"
+    log_msg "failed binding $src to $dst: $(cat /tmp/twrp-persist-bind.err 2>/dev/null)"
     return 1
 }
 
+mount_persist() {
+    mkdir -p "$PERSIST_VENDOR_MOUNT" "$PERSIST_TWRP_MOUNT" 2>/dev/null || true
+
+    if is_mounted "$PERSIST_VENDOR_MOUNT"; then
+        log_msg "$PERSIST_VENDOR_MOUNT already mounted"
+        bind_persist_mount "$PERSIST_VENDOR_MOUNT" "$PERSIST_TWRP_MOUNT" || true
+    elif is_mounted "$PERSIST_TWRP_MOUNT"; then
+        log_msg "$PERSIST_TWRP_MOUNT already mounted"
+        bind_persist_mount "$PERSIST_TWRP_MOUNT" "$PERSIST_VENDOR_MOUNT" || true
+    else
+        count=0
+        block=""
+        while [ "$count" -lt 10 ]; do
+            block="$(find_persist_block)" && break
+            sleep 1
+            count=$((count + 1))
+        done
+
+        if [ -z "$block" ]; then
+            log_msg "persist block device not found"
+            return 1
+        fi
+
+        log_msg "mounting $PERSIST_VENDOR_MOUNT from $block"
+        if ! mount -t ext4 -o noatime,nosuid,nodev,barrier=1 "$block" "$PERSIST_VENDOR_MOUNT" 2>/tmp/twrp-persist-mount.err; then
+            mount -t ext4 "$block" "$PERSIST_VENDOR_MOUNT" 2>/tmp/twrp-persist-mount.err || {
+                log_msg "failed to mount $PERSIST_VENDOR_MOUNT: $(cat /tmp/twrp-persist-mount.err 2>/dev/null)"
+                return 1
+            }
+        fi
+
+        bind_persist_mount "$PERSIST_VENDOR_MOUNT" "$PERSIST_TWRP_MOUNT" || {
+            log_msg "bind mount failed; mounting persist directly at $PERSIST_TWRP_MOUNT"
+            mount -t ext4 "$block" "$PERSIST_TWRP_MOUNT" 2>/tmp/twrp-persist-mount.err || true
+        }
+    fi
+
+    if ! is_mounted "$PERSIST_VENDOR_MOUNT"; then
+        log_msg "$PERSIST_VENDOR_MOUNT is not mounted after setup"
+        return 1
+    fi
+
+    if ! is_mounted "$PERSIST_TWRP_MOUNT"; then
+        log_msg "$PERSIST_TWRP_MOUNT is not mounted after setup"
+        return 1
+    fi
+
+    log_msg "persist ready at $PERSIST_VENDOR_MOUNT and $PERSIST_TWRP_MOUNT"
+    return 0
+}
+
 set_status preparing
-mount_persist || true
+if ! mount_persist; then
+    set_status persist-mount-failed
+    setprop twrp.decrypt.prereq failed 2>/dev/null || true
+    log_msg "persist mount setup failed; not starting decrypt services"
+    exit 1
+fi
 
 # The NXP Weaver transport refuses requests while Android reports that boot is
 # incomplete. Recovery has no framework boot sequence, so mark it complete
@@ -191,8 +239,8 @@ for svc in vendor.qseecomd vendor.gatekeeper_default vendor.keymint-qti keystore
 done
 
 # Weaver may have been started earlier by vendor init while boot was still
-# incomplete. Restart it after boot-complete and secure-element readiness so
-# getConfig/getSlots can return a valid key size to TWRP.
+# incomplete. Restart it after boot-complete, persist mounting, and
+# secure-element readiness so getConfig/getSlots can return a valid key size.
 restart_service vendor.weaver_nxp
 
 set_status waiting-init-services
