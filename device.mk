@@ -43,7 +43,7 @@ PRODUCT_PACKAGES += \
 	twrp-dynamic-flash-helper \
 	twrp-partition-backup \
 	twrp-recovery-tools \
-	twrp-root-patcher \
+	twrp-root-patcher-v2 \
 	twrp-magisk-bundled \
 	twrp-flash-magisk \
 	twrp-wifi-start-v2 \
