@@ -31,7 +31,8 @@ LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/system/bin
 include $(BUILD_PREBUILT)
 
 include $(CLEAR_VARS)
-LOCAL_MODULE := twrp-root-patcher
+LOCAL_MODULE := twrp-root-patcher-v2
+LOCAL_MODULE_STEM := twrp-root-patcher
 LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE_CLASS := EXECUTABLES
 LOCAL_SRC_FILES := recovery/root/system/bin/twrp-root-patcher
