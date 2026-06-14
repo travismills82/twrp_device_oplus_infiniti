@@ -36,6 +36,7 @@ Works:
 - [X] Touch
 - [X] USB OTG
 - [X] Vibrator
+- [X] Wireless LAN
 
 ## To use it:
 
