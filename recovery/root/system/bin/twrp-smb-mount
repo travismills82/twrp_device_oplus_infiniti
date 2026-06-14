@@ -1,0 +1,323 @@
+#!/system/bin/sh
+
+SMB_ROOT="/mnt/smb"
+MODULE_DIRS="/system/lib/modules /vendor/lib/modules /vendor_dlkm/lib/modules /tmp/vendor_dlkm/lib/modules /lib/modules"
+STATUS_PROP="twrp.smb.status"
+MOUNT_PROP="twrp.smb.mountpoint"
+TTY_STATE=""
+
+log_msg() {
+    echo "[twrp-smb] $1"
+    echo "[twrp-smb] $1" > /dev/kmsg 2>/dev/null || true
+}
+
+set_status() {
+    setprop "$STATUS_PROP" "$1" 2>/dev/null || true
+}
+
+usage() {
+    cat <<'HELP'
+TWRP SMB mounting utility
+
+Usage:
+  twrp-smb-mount mount //<server>/<share> [name] [username] [domain] [vers]
+  twrp-smb-mount guest //<server>/<share> [name] [vers]
+  twrp-smb-mount unmount [name|all]
+  twrp-smb-mount status
+  twrp-smb-mount help
+
+Defaults:
+  mount root: /mnt/smb
+  SMB version: auto (tries 3.1.1, 3.0, then 2.1)
+  access mode: rw
+
+Environment overrides:
+  TWRP_SMB_USERNAME
+  TWRP_SMB_PASSWORD
+  TWRP_SMB_DOMAIN
+  TWRP_SMB_VERS
+  TWRP_SMB_MODE=rw|ro
+
+Example:
+  twrp-smb-mount mount //192.168.1.25/Backups backups travis WORKGROUP
+
+Passwords are requested at runtime and are not written to disk. Passwords
+containing commas are not supported by the recovery mount command.
+HELP
+}
+
+is_mounted() {
+    grep -q " $1 " /proc/mounts 2>/dev/null
+}
+
+filesystem_available() {
+    grep -qw cifs /proc/filesystems 2>/dev/null
+}
+
+module_loaded() (
+    mod="${1%.ko}"
+    mod="$(echo "$mod" | tr '-' '_')"
+    grep -q "^${mod} " /proc/modules 2>/dev/null
+)
+
+find_module() (
+    mod="$1"
+    for dir in $MODULE_DIRS; do
+        [ -d "$dir" ] || continue
+        [ -f "$dir/$mod" ] && { echo "$dir/$mod"; return 0; }
+        path="$(find "$dir" -type f -name "$mod" 2>/dev/null | head -n 1)"
+        [ -n "$path" ] && { echo "$path"; return 0; }
+    done
+    return 1
+)
+
+try_load_module() {
+    mod="$1"
+    module_loaded "$mod" && return 0
+
+    if command -v modprobe >/dev/null 2>&1; then
+        modprobe "${mod%.ko}" >/tmp/twrp-smb-module.err 2>&1 && return 0
+    fi
+
+    path="$(find_module "$mod")" || return 1
+    log_msg "loading $path"
+    insmod "$path" >/tmp/twrp-smb-module.err 2>&1
+}
+
+ensure_cifs_support() {
+    filesystem_available && return 0
+    try_load_module dns_resolver.ko || true
+    try_load_module cifs_md4.ko || true
+    try_load_module cifs.ko || true
+    filesystem_available && return 0
+
+    set_status cifs-unavailable
+    log_msg "CIFS filesystem support is unavailable"
+    echo "CIFS is not present in /proc/filesystems and cifs.ko could not be loaded."
+    echo "The recovery kernel must provide CONFIG_CIFS=y or a compatible cifs.ko."
+    return 1
+}
+
+sanitize_name() {
+    name="$(echo "$1" | tr '/: ' '___' | tr -cd 'A-Za-z0-9._-')"
+    case "$name" in ""|"."|"..") return 1 ;; esac
+    echo "$name"
+}
+
+validate_source() {
+    case "$1" in //*/*) return 0 ;; esac
+    echo "Invalid SMB source: $1"
+    echo "Use //<server>/<share>."
+    return 1
+}
+
+validate_mode() {
+    case "$1" in rw|ro) return 0 ;; esac
+    echo "Invalid access mode: $1"
+    return 1
+}
+
+validate_version() {
+    case "$1" in auto|3.1.1|3.0|2.1) return 0 ;; esac
+    [ "$1" = "1.0" ] && echo "SMB1 is intentionally disabled." || echo "Unsupported SMB version: $1"
+    return 1
+}
+
+restore_tty() {
+    if [ -n "$TTY_STATE" ] && command -v stty >/dev/null 2>&1; then
+        stty "$TTY_STATE" 2>/dev/null || true
+        TTY_STATE=""
+    fi
+}
+
+prompt_password() {
+    password="${TWRP_SMB_PASSWORD:-}"
+    [ -n "$password" ] && { echo "$password"; return 0; }
+
+    printf "SMB password: " >&2
+    command -v stty >/dev/null 2>&1 && TTY_STATE="$(stty -g 2>/dev/null || true)"
+    [ -n "$TTY_STATE" ] && stty -echo 2>/dev/null || true
+    IFS= read -r password
+    restore_tty
+    echo >&2
+    echo "$password"
+}
+
+prepare_target() {
+    mkdir -p "$SMB_ROOT" "$1" 2>/dev/null || return 1
+    chmod 0755 "$SMB_ROOT" "$1" 2>/dev/null || true
+}
+
+mount_share() {
+    source="$1"
+    name="${2:-}"
+    username="${3:-${TWRP_SMB_USERNAME:-}}"
+    domain="${4:-${TWRP_SMB_DOMAIN:-}}"
+    requested_vers="${5:-${TWRP_SMB_VERS:-auto}}"
+    mode="${TWRP_SMB_MODE:-rw}"
+
+    validate_source "$source" || return 1
+    validate_mode "$mode" || return 1
+    validate_version "$requested_vers" || return 1
+    ensure_cifs_support || return 1
+
+    [ -n "$name" ] || name="${source#//}"
+    name="$(sanitize_name "$name")" || { echo "Invalid mount name."; return 1; }
+    target="$SMB_ROOT/$name"
+
+    if is_mounted "$target"; then
+        set_status ready
+        setprop "$MOUNT_PROP" "$target" 2>/dev/null || true
+        echo "Already mounted: $target"
+        return 0
+    fi
+
+    if [ -z "$username" ]; then
+        printf "SMB username: "
+        IFS= read -r username
+    fi
+    [ -n "$username" ] || { echo "A username is required. Use guest for anonymous access."; return 1; }
+
+    password="$(prompt_password)"
+    case "$password" in *,*) unset password; echo "Passwords containing commas are not supported."; return 1 ;; esac
+
+    prepare_target "$target" || { unset password; echo "Could not create $target."; return 1; }
+    [ "$requested_vers" = "auto" ] && versions="3.1.1 3.0 2.1" || versions="$requested_vers"
+
+    set_status mounting
+    rm -f /tmp/twrp-smb-mount.err
+
+    for vers in $versions; do
+        opts="$mode,vers=$vers,username=$username,password=$password,uid=0,gid=0,file_mode=0777,dir_mode=0777,nounix,noserverino"
+        [ -n "$domain" ] && opts="$opts,domain=$domain"
+        log_msg "mounting $source at $target with SMB $vers"
+        set +x
+        if mount -t cifs -o "$opts" "$source" "$target" 2>/tmp/twrp-smb-mount.err; then
+            unset password opts
+            set_status ready
+            setprop "$MOUNT_PROP" "$target" 2>/dev/null || true
+            log_msg "SMB share ready at $target"
+            echo "Mounted successfully: $target"
+            echo "Browse in TWRP File Manager: $target"
+            return 0
+        fi
+        unset opts
+    done
+
+    unset password
+    set_status mount-failed
+    log_msg "failed mounting $source at $target"
+    cat /tmp/twrp-smb-mount.err 2>/dev/null || true
+    rmdir "$target" 2>/dev/null || true
+    return 1
+}
+
+mount_guest() {
+    source="$1"
+    name="${2:-}"
+    requested_vers="${3:-${TWRP_SMB_VERS:-auto}}"
+    mode="${TWRP_SMB_MODE:-rw}"
+
+    validate_source "$source" || return 1
+    validate_mode "$mode" || return 1
+    validate_version "$requested_vers" || return 1
+    ensure_cifs_support || return 1
+
+    [ -n "$name" ] || name="${source#//}"
+    name="$(sanitize_name "$name")" || { echo "Invalid mount name."; return 1; }
+    target="$SMB_ROOT/$name"
+
+    is_mounted "$target" && { echo "Already mounted: $target"; return 0; }
+    prepare_target "$target" || { echo "Could not create $target."; return 1; }
+    [ "$requested_vers" = "auto" ] && versions="3.1.1 3.0 2.1" || versions="$requested_vers"
+
+    set_status mounting
+    rm -f /tmp/twrp-smb-mount.err
+
+    for vers in $versions; do
+        opts="$mode,guest,vers=$vers,uid=0,gid=0,file_mode=0777,dir_mode=0777,nounix,noserverino"
+        log_msg "mounting guest share $source at $target with SMB $vers"
+        if mount -t cifs -o "$opts" "$source" "$target" 2>/tmp/twrp-smb-mount.err; then
+            unset opts
+            set_status ready
+            setprop "$MOUNT_PROP" "$target" 2>/dev/null || true
+            log_msg "SMB guest share ready at $target"
+            echo "Mounted successfully: $target"
+            echo "Browse in TWRP File Manager: $target"
+            return 0
+        fi
+        unset opts
+    done
+
+    set_status mount-failed
+    log_msg "failed mounting guest share $source at $target"
+    cat /tmp/twrp-smb-mount.err 2>/dev/null || true
+    rmdir "$target" 2>/dev/null || true
+    return 1
+}
+
+unmount_one() {
+    name="$1"
+    case "$name" in
+        "$SMB_ROOT"/*) target="$name" ;;
+        *) name="$(sanitize_name "$name")" || return 1; target="$SMB_ROOT/$name" ;;
+    esac
+
+    if ! is_mounted "$target"; then
+        echo "Not mounted: $target"
+        rmdir "$target" 2>/dev/null || true
+        return 0
+    fi
+
+    set_status unmounting
+    if umount "$target" 2>/tmp/twrp-smb-umount.err || umount -l "$target" 2>>/tmp/twrp-smb-umount.err; then
+        rmdir "$target" 2>/dev/null || true
+        setprop "$MOUNT_PROP" "" 2>/dev/null || true
+        set_status idle
+        echo "Unmounted: $target"
+        return 0
+    fi
+
+    set_status unmount-failed
+    cat /tmp/twrp-smb-umount.err 2>/dev/null || true
+    return 1
+}
+
+unmount_all() {
+    mounts="$(awk -v root="$SMB_ROOT/" '$2 ~ "^" root {print $2}' /proc/mounts 2>/dev/null)"
+    [ -n "$mounts" ] || { echo "No SMB shares mounted under $SMB_ROOT."; return 0; }
+    rc=0
+    for target in $mounts; do unmount_one "$target" || rc=1; done
+    return "$rc"
+}
+
+show_status() {
+    echo "SMB status: $(getprop "$STATUS_PROP" 2>/dev/null)"
+    echo "Last mount: $(getprop "$MOUNT_PROP" 2>/dev/null)"
+    echo "CIFS support: $(filesystem_available && echo available || echo unavailable)"
+    echo "Mounted SMB shares:"
+    awk -v root="$SMB_ROOT/" '$2 ~ "^" root {print "  " $1 " -> " $2 " (" $3 ")"}' /proc/mounts 2>/dev/null
+}
+
+trap restore_tty EXIT HUP INT TERM
+
+command="${1:-help}"
+case "$command" in
+    mount)
+        [ "$#" -ge 2 ] || { usage; exit 2; }
+        shift
+        mount_share "$@"
+        ;;
+    guest)
+        [ "$#" -ge 2 ] || { usage; exit 2; }
+        shift
+        mount_guest "$@"
+        ;;
+    unmount|umount)
+        target="${2:-all}"
+        [ "$target" = "all" ] && unmount_all || unmount_one "$target"
+        ;;
+    status|list) show_status ;;
+    help|-h|--help) usage ;;
+    *) echo "Unknown command: $command"; echo; usage; exit 2 ;;
+esac
