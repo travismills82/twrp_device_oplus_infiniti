@@ -2,21 +2,19 @@
 #
 # Recovery-side Magisk/APatch boot image patch helper.
 #
-# This script intentionally does not bundle Magisk/APatch binaries.
-# Place the official Magisk APK/ZIP or APatch APK/ZIP on /sdcard and pass it
-# as the second argument.
-#
 # Usage:
-#   twrp-root-patcher magisk /sdcard/Magisk.apk [boot|init_boot]
-#   twrp-root-patcher apatch /sdcard/APatch.apk [boot|init_boot]
+#   twrp-root-patcher magisk /path/to/Magisk.apk [boot|init_boot]
+#   twrp-root-patcher apatch /path/to/APatch.apk [boot|init_boot]
 #
 
 set -e
 
-TOOL="$1"
-PACKAGE="$2"
+TOOL="${1:-}"
+PACKAGE="${2:-}"
 PARTITION="${3:-boot}"
 WORKDIR="/tmp/twrp-root-patcher"
+PACKAGE_DIR="$WORKDIR/package"
+MAGISK_DIR="$WORKDIR/magisk"
 OUTDIR="/sdcard/TWRP/root-patcher"
 
 ui_print() {
@@ -46,6 +44,126 @@ find_partition() {
     return 1
 }
 
+get_abi() {
+    abi="$(getprop ro.product.cpu.abi 2>/dev/null || true)"
+    case "$abi" in
+        arm64-v8a|armeabi-v7a|x86_64|x86) echo "$abi"; return 0 ;;
+    esac
+
+    case "$(uname -m 2>/dev/null)" in
+        aarch64|arm64) echo arm64-v8a ;;
+        armv7*|armv8l) echo armeabi-v7a ;;
+        x86_64) echo x86_64 ;;
+        i?86) echo x86 ;;
+        *) return 1 ;;
+    esac
+}
+
+extract_required() {
+    entry="$1"
+    destination="$2"
+    mode="$3"
+
+    rm -f "$destination"
+    unzip -p "$PACKAGE" "$entry" > "$destination" 2>/tmp/twrp-root-patcher-unzip.err || {
+        rm -f "$destination"
+        fail "missing or unreadable Magisk APK entry: $entry"
+    }
+
+    [ -s "$destination" ] || fail "empty Magisk APK entry: $entry"
+    chmod "$mode" "$destination" || fail "could not set permissions on $destination"
+}
+
+extract_optional() {
+    entry="$1"
+    destination="$2"
+    mode="$3"
+
+    rm -f "$destination"
+    if unzip -p "$PACKAGE" "$entry" > "$destination" 2>/dev/null && [ -s "$destination" ]; then
+        chmod "$mode" "$destination" || true
+        return 0
+    fi
+
+    rm -f "$destination"
+    return 1
+}
+
+stage_magisk_tools() {
+    abi="$(get_abi)" || fail "could not determine recovery CPU ABI"
+    ui_print "Staging Magisk patch tools for $abi"
+
+    rm -rf "$MAGISK_DIR"
+    mkdir -p "$MAGISK_DIR" || fail "could not create Magisk work directory"
+
+    extract_required assets/boot_patch.sh "$MAGISK_DIR/boot_patch.sh" 0755
+    extract_required assets/util_functions.sh "$MAGISK_DIR/util_functions.sh" 0755
+    extract_required assets/stub.apk "$MAGISK_DIR/stub.apk" 0644
+
+    extract_required "lib/$abi/libmagiskboot.so" "$MAGISK_DIR/magiskboot" 0755
+    extract_required "lib/$abi/libmagiskinit.so" "$MAGISK_DIR/magiskinit" 0755
+    extract_required "lib/$abi/libmagisk.so" "$MAGISK_DIR/magisk" 0755
+    extract_required "lib/$abi/libbusybox.so" "$MAGISK_DIR/busybox" 0755
+    extract_required "lib/$abi/libinit-ld.so" "$MAGISK_DIR/init-ld" 0755
+    extract_optional "lib/$abi/libmagiskpolicy.so" "$MAGISK_DIR/magiskpolicy" 0755 || true
+
+    [ -x "$MAGISK_DIR/magiskboot" ] || fail "staged magiskboot is not executable"
+    [ -x "$MAGISK_DIR/busybox" ] || fail "staged Magisk BusyBox is not executable"
+}
+
+patch_with_magisk() {
+    image="$1"
+
+    stage_magisk_tools
+    cp "$image" "$MAGISK_DIR/boot.img" || fail "could not stage source image"
+
+    ui_print "Running Magisk boot patch script"
+    cd "$MAGISK_DIR"
+
+    # Magisk APKs store executable patch tools as native libraries. Run the
+    # script in the APK's own BusyBox environment and emulate Magisk app file
+    # patching mode. BOOTMODE=true makes ui_print write to stdout instead of an
+    # unset recovery OUTFD, while OUTFD=1 remains available for compatibility.
+    BOOTMODE=true \
+    OUTFD=1 \
+    ASH_STANDALONE=1 \
+    TMPDIR="$MAGISK_DIR" \
+    MAGISKBIN="$MAGISK_DIR" \
+    PATH="$MAGISK_DIR:/system/bin:/system/xbin:/sbin" \
+    KEEPVERITY=true \
+    KEEPFORCEENCRYPT=true \
+    PATCHVBMETAFLAG=false \
+    RECOVERYMODE=false \
+        "$MAGISK_DIR/busybox" sh "$MAGISK_DIR/boot_patch.sh" "$MAGISK_DIR/boot.img" || \
+        fail "Magisk patch failed"
+
+    patched="$MAGISK_DIR/new-boot.img"
+    [ -f "$patched" ] || fail "Magisk did not create new-boot.img"
+    [ -s "$patched" ] || fail "Magisk created an empty new-boot.img"
+
+    cp "$patched" "$OUTDIR/${PARTITION}-magisk-patched.img" || \
+        fail "could not save patched Magisk image"
+    ui_print "Created: $OUTDIR/${PARTITION}-magisk-patched.img"
+}
+
+patch_with_apatch() {
+    image="$1"
+
+    ui_print "APatch package extracted. Searching for patch binary"
+    apatch_bin="$(find "$PACKAGE_DIR" -type f \( -name apatch -o -name kptools -o -name kpimg \) 2>/dev/null | head -n 1)"
+    [ -n "$apatch_bin" ] || fail "APatch CLI/kptools binary not found in package"
+    chmod 0755 "$apatch_bin"
+
+    ui_print "Attempting APatch command-line patch"
+    "$apatch_bin" patch "$image" "$OUTDIR/${PARTITION}-apatch-patched.img" || \
+        "$apatch_bin" -p "$image" -o "$OUTDIR/${PARTITION}-apatch-patched.img" || \
+        fail "APatch CLI invocation failed; patch manually with the saved stock image"
+
+    [ -s "$OUTDIR/${PARTITION}-apatch-patched.img" ] || \
+        fail "patched APatch image not created"
+    ui_print "Created: $OUTDIR/${PARTITION}-apatch-patched.img"
+}
+
 [ -n "$TOOL" ] || fail "missing patcher type: magisk or apatch"
 [ -n "$PACKAGE" ] || fail "missing Magisk/APatch APK or ZIP path"
 [ -f "$PACKAGE" ] || fail "package not found: $PACKAGE"
@@ -63,47 +181,22 @@ esac
 BLOCK="$(find_partition "$PARTITION")" || fail "could not find ${PARTITION} block device"
 
 rm -rf "$WORKDIR"
-mkdir -p "$WORKDIR" "$OUTDIR"
+mkdir -p "$WORKDIR" "$PACKAGE_DIR" "$OUTDIR" || fail "could not create patcher directories"
 
 ui_print "Source partition: $BLOCK"
 ui_print "Dumping ${PARTITION}.img"
-dd if="$BLOCK" of="$WORKDIR/${PARTITION}.img" bs=4M
-cp "$WORKDIR/${PARTITION}.img" "$OUTDIR/${PARTITION}-stock.img"
-
-ui_print "Extracting patcher package"
-unzip -q "$PACKAGE" -d "$WORKDIR/package" || fail "failed to extract package"
+dd if="$BLOCK" of="$WORKDIR/${PARTITION}.img" bs=4M || fail "failed to dump ${PARTITION}"
+cp "$WORKDIR/${PARTITION}.img" "$OUTDIR/${PARTITION}-stock.img" || \
+    fail "failed to save stock image"
 
 if [ "$TOOL" = "magisk" ]; then
-    BOOTPATCH="$(find "$WORKDIR/package" -name boot_patch.sh | head -n 1)"
-    [ -n "$BOOTPATCH" ] || fail "Magisk boot_patch.sh not found in package"
-
-    ui_print "Running Magisk boot patch script"
-    cp "$WORKDIR/${PARTITION}.img" "$WORKDIR/boot.img"
-    cd "$(dirname "$BOOTPATCH")"
-    KEEPVERITY=true KEEPFORCEENCRYPT=true RECOVERYMODE=false sh "$BOOTPATCH" "$WORKDIR/boot.img" || fail "Magisk patch failed"
-
-    PATCHED="$(find /tmp "$WORKDIR" -name 'magisk_patched*.img' -o -name 'new-boot.img' 2>/dev/null | head -n 1)"
-    [ -n "$PATCHED" ] || fail "patched Magisk image not found"
-    cp "$PATCHED" "$OUTDIR/${PARTITION}-magisk-patched.img"
-    ui_print "Created: $OUTDIR/${PARTITION}-magisk-patched.img"
-fi
-
-if [ "$TOOL" = "apatch" ]; then
-    ui_print "APatch package extracted. Searching for patch binary"
-    APATCH_BIN="$(find "$WORKDIR/package" -type f \( -name 'apatch' -o -name 'kptools' -o -name 'kpimg' \) | head -n 1)"
-
-    [ -n "$APATCH_BIN" ] || fail "APatch CLI/kptools binary not found in package; use an APatch package that includes CLI patch tools"
-    chmod 755 "$APATCH_BIN"
-
-    ui_print "Attempting APatch command-line patch"
-    "$APATCH_BIN" patch "$WORKDIR/${PARTITION}.img" "$OUTDIR/${PARTITION}-apatch-patched.img" || \
-        "$APATCH_BIN" -p "$WORKDIR/${PARTITION}.img" -o "$OUTDIR/${PARTITION}-apatch-patched.img" || \
-        fail "APatch CLI invocation failed; patch manually with the saved stock image"
-
-    [ -f "$OUTDIR/${PARTITION}-apatch-patched.img" ] || fail "patched APatch image not created"
-    ui_print "Created: $OUTDIR/${PARTITION}-apatch-patched.img"
+    patch_with_magisk "$WORKDIR/${PARTITION}.img"
+else
+    ui_print "Extracting APatch package"
+    unzip -q "$PACKAGE" -d "$PACKAGE_DIR" || fail "failed to extract APatch package"
+    patch_with_apatch "$WORKDIR/${PARTITION}.img"
 fi
 
 ui_print "Stock backup saved: $OUTDIR/${PARTITION}-stock.img"
-ui_print "Flash the patched image manually from TWRP only after verifying it is correct."
-ui_print "Example: dd if=<patched.img> of=$BLOCK bs=4M"
+ui_print "Flash the patched image manually only after verifying it is correct."
+ui_print "Target block: $BLOCK"
