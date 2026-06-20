@@ -48,6 +48,7 @@ PRODUCT_PACKAGES += \
 	twrp-flash-magisk \
 	twrp-wifi-start-v2 \
 	twrp-dhcpcd-run-hooks \
+	twrp-resolv-conf \
 	twrp-ping \
 	twrp-smb-mount-v1 \
 	twrp-touch-start \
