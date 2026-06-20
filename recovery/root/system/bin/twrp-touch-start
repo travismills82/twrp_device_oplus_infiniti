@@ -1,6 +1,7 @@
 #!/system/bin/sh
 
 MODULE_DIRS="/system/lib/modules /vendor/lib/modules /vendor_dlkm/lib/modules /lib/modules"
+TOUCH_SERVICE="vendor.touch-aidl-2"
 
 log_msg() {
     echo "[twrp-touch] $1"
@@ -52,8 +53,55 @@ load_module() {
     return 1
 }
 
-# OnePlus 15 current panel is synaptics-s3910. Keep only common support,
-# Synaptics support, and the active S3910 panel driver.
+stop_touch_hal() {
+    setprop ctl.stop "$TOUCH_SERVICE" 2>/dev/null || true
+
+    count=0
+    while [ "$count" -lt 10 ]; do
+        state="$(getprop "init.svc.${TOUCH_SERVICE}" 2>/dev/null)"
+        case "$state" in
+            ""|stopped|disabled)
+                return 0
+                ;;
+        esac
+        sleep 1
+        count=$((count + 1))
+    done
+
+    log_msg "warning: $TOUCH_SERVICE did not stop cleanly"
+    return 1
+}
+
+start_touch_hal() {
+    setprop ctl.start "$TOUCH_SERVICE" 2>/dev/null || true
+
+    count=0
+    while [ "$count" -lt 15 ]; do
+        state="$(getprop "init.svc.${TOUCH_SERVICE}" 2>/dev/null)"
+        if [ "$state" = "running" ]; then
+            log_msg "$TOUCH_SERVICE is running"
+            return 0
+        fi
+        sleep 1
+        count=$((count + 1))
+    done
+
+    log_msg "failed to start $TOUCH_SERVICE; state=$(getprop "init.svc.${TOUCH_SERVICE}" 2>/dev/null)"
+    return 1
+}
+
+setprop twrp.touch.status starting
+setprop twrp.touch.modules.ready 0
+
+# Prevent the ODM trigger from racing the touch-module loader. Stop the HAL
+# before insertion and stop it again after insertion in case a vendor property
+# attempted to restart it while the modules were still being initialized.
+stop_touch_hal || true
+
+load_failed=0
+
+# OnePlus 15 current panel is Synaptics S3910. Load the common Oplus touch
+# framework, Synaptics support, and the active panel driver before starting HAL.
 for mod in \
     oplus_bsp_tp_common.ko \
     oplus_bsp_tp_notify.ko \
@@ -62,7 +110,34 @@ for mod in \
     oplus_bsp_tp_syna_common.ko \
     oplus_bsp_synaptics_tcm2.ko \
     oplus_bsp_tp_tcm_S3910.ko; do
-    load_module "$mod" || true
+    load_module "$mod" || load_failed=1
 done
 
-exit 0
+stop_touch_hal || true
+
+for required in \
+    oplus_bsp_tp_common.ko \
+    oplus_bsp_tp_syna_common.ko \
+    oplus_bsp_synaptics_tcm2.ko \
+    oplus_bsp_tp_tcm_S3910.ko; do
+    if ! module_loaded "$required"; then
+        log_msg "required module is not loaded: $required"
+        load_failed=1
+    fi
+done
+
+if [ "$load_failed" -ne 0 ]; then
+    setprop twrp.touch.status module-error
+    log_msg "touch HAL left stopped because required modules are incomplete"
+    exit 1
+fi
+
+setprop twrp.touch.modules.ready 1
+
+if start_touch_hal; then
+    setprop twrp.touch.status ready
+    exit 0
+fi
+
+setprop twrp.touch.status hal-error
+exit 1
