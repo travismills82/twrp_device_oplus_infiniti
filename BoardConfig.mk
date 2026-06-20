@@ -159,7 +159,7 @@ TW_INCLUDE_FUSE_EXFAT       := true
 TW_INCLUDE_FUSE_NTFS        := true
 TW_INCLUDE_NTFS_3G          := true
 TW_NO_EXFAT_FUSE            := true
-TW_BACKUP_EXCLUSIONS        += /data/cache /data/dalvik-cache /data/misc_ce/*/cache /data/system/dropbox
+TW_BACKUP_EXCLUSIONS        += /data/cache /data/dalvik-cache /data/misc_ce/*/cache /data/system/dropbox /data/nandswap
 TW_BACKUP_SELINUX_CONTEXTS  := true
 
 # TWRP Wi-Fi
