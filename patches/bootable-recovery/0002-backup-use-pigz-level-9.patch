@@ -1,0 +1,40 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Travis Mills <travismills82@gmail.com>
+Date: Sat, 20 Jun 2026 18:30:00 -0400
+Subject: [PATCH] backup: use maximum pigz compression level
+
+TWRP currently launches pigz without an explicit level, which selects pigz's
+default compression setting. Pass -9 for both compressed backup pipelines so
+normal compressed backups and compressed-plus-encrypted backups consistently
+use the maximum gzip/deflate compression level.
+
+Restore compatibility is unchanged because the archive format remains gzip.
+Only compression time and resulting archive size are affected.
+---
+ twrpTar.cpp | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/twrpTar.cpp b/twrpTar.cpp
+index 71a5b151..00000000 100644
+--- a/twrpTar.cpp
++++ b/twrpTar.cpp
+@@ -942,7 +942,7 @@ int twrpTar::createTar() {
+ 			// pigz Child
+ 			dup2(pipes[0], STDIN_FILENO);
+ 			dup2(pipes[3], STDOUT_FILENO);
+-			if (execlp("pigz", "pigz", "-", NULL) < 0) {
++			if (execlp("pigz", "pigz", "-9", "-", NULL) < 0) {
+ 				LOGINFO("execlp pigz ERROR!\n");
+ 				gui_err("backup_error=Error creating backup.");
+ 				_exit(-1);
+@@ -1020,7 +1020,7 @@ int twrpTar::createTar() {
+ 			// Child
+ 			dup2(pigzfd[0], STDIN_FILENO); // remap stdin
+ 			dup2(output_fd, STDOUT_FILENO); // remap stdout to output file
+-			if (execlp("pigz", "pigz", "-", NULL) < 0) {
++			if (execlp("pigz", "pigz", "-9", "-", NULL) < 0) {
+ 				LOGINFO("execlp pigz ERROR!\n");
+ 				gui_err("backup_error=Error creating backup.");
+ 				_exit(-1);
+-- 
+2.43.0
