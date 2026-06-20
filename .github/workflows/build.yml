@@ -35,10 +35,10 @@ on:
         description: "Build partition"
         required: true
         default: "recovery"
-      FLASHABLE_ZIP_TEMPLATE:
-        description: "Device-tree path to flashable ZIP template"
+      FLASHABLE_INSTALLER_BUILDER:
+        description: "Device-tree path to flashable TWRP installer builder"
         required: true
-        default: "prebuilts/flashable/TWRP-infinity.zip"
+        default: "prebuilts/flashable/build-twrp-installer.sh"
 
 jobs:
   build:
@@ -63,13 +63,15 @@ jobs:
           echo Device path: ${{ github.event.inputs.DEVICE_PATH }}
           echo Device name: ${{ github.event.inputs.DEVICE_NAME }}
           echo Lunch target: ${{ github.event.inputs.LUNCH_TARGET }}
+          echo TWRP version: 3.7.1-16
           echo Build target: ${{ github.event.inputs.BUILD_PARTITION }}.img
-          echo Flashable ZIP template: ${{ github.event.inputs.FLASHABLE_ZIP_TEMPLATE }}
+          echo Flashable installer builder: ${{ github.event.inputs.FLASHABLE_INSTALLER_BUILDER }}
           echo Build date: `date`
           echo
           echo EOF
         } >> "$GITHUB_ENV"
         echo BUILD_DATE=`date +%F` >> "$GITHUB_ENV"
+        echo "TWRP_VERSION=3.7.1-16" >> "$GITHUB_ENV"
         echo "REPO_NAME=$(basename ${{ github.event.inputs.TWRP_MANIFEST_URL }})" >> "$GITHUB_ENV"
 
     - name: Cleanup
@@ -153,27 +155,45 @@ jobs:
         TIP_PID=$!
         m ${{ github.event.inputs.BUILD_PARTITION }}image
         OUT_DIR="out/target/product/${{ github.event.inputs.DEVICE_NAME }}"
-        IMAGE_NAME="TWRP-3.7.1-16-${{ github.event.inputs.DEVICE_NAME }}-${{ env.BUILD_DATE }}.img"
+        IMAGE_NAME="TWRP-${TWRP_VERSION}-${{ github.event.inputs.DEVICE_NAME }}-${BUILD_DATE}.img"
         mv "$OUT_DIR/${{ github.event.inputs.BUILD_PARTITION }}.img" "$OUT_DIR/$IMAGE_NAME"
         echo "TWRP_IMAGE=$OUT_DIR/$IMAGE_NAME" >> "$GITHUB_ENV"
         echo "TWRP_ZIP=$OUT_DIR/${IMAGE_NAME%.img}.zip" >> "$GITHUB_ENV"
         kill $TIP_PID && exit 0
 
-    - name: Package flashable ZIP
+    - name: Build clean dual-slot flashable ZIP
       run: |
-        TEMPLATE="device/${{ github.event.inputs.DEVICE_PATH }}/${{ github.event.inputs.FLASHABLE_ZIP_TEMPLATE }}"
+        BUILDER="device/${{ github.event.inputs.DEVICE_PATH }}/${{ github.event.inputs.FLASHABLE_INSTALLER_BUILDER }}"
 
-        if [ ! -f "$TEMPLATE" ]; then
-          echo "Flashable ZIP template was not found: $TEMPLATE"
-          echo "Place your uploaded TWRP-infinity.zip at this path in the device tree."
+        if [ ! -f "$BUILDER" ]; then
+          echo "Flashable installer builder was not found: $BUILDER"
           exit 1
         fi
 
-        cp "$TEMPLATE" "$TWRP_ZIP"
-        TMP_RECOVERY="$(mktemp -d)/recovery.img"
-        cp "$TWRP_IMAGE" "$TMP_RECOVERY"
-        zip -j -u "$TWRP_ZIP" "$TMP_RECOVERY"
-        unzip -l "$TWRP_ZIP" | grep -q " recovery.img$"
+        bash "$BUILDER" \
+          "$TWRP_IMAGE" \
+          "$TWRP_ZIP" \
+          "TWRP $TWRP_VERSION" \
+          "OnePlus 15 (infiniti)"
+
+        unzip -t "$TWRP_ZIP"
+        unzip -p "$TWRP_ZIP" META-INF/com/google/android/twrp-version
+        unzip -p "$TWRP_ZIP" META-INF/com/google/android/update-binary | grep -q 'find_partition recovery_a'
+        unzip -p "$TWRP_ZIP" META-INF/com/google/android/update-binary | grep -q 'find_partition recovery_b'
+
+        if unzip -Z1 "$TWRP_ZIP" | grep -i -E -q 'OrangeFox|OFRP'; then
+          echo "OrangeFox/OFRP filename found in generated installer"
+          exit 1
+        fi
+
+        if unzip -p "$TWRP_ZIP" META-INF/com/google/android/update-binary \
+          META-INF/com/google/android/updater-script \
+          META-INF/com/google/android/twrp-version \
+          INSTALL.txt | grep -a -i -E -q 'OrangeFox|OFRP'; then
+          echo "OrangeFox/OFRP branding found in generated installer"
+          exit 1
+        fi
+
         ls -lh "$TWRP_IMAGE" "$TWRP_ZIP"
 
     - name: Upload to Release
@@ -184,7 +204,7 @@ jobs:
           ${{ env.TWRP_ZIP }}
         fail_on_unmatched_files: true
         overwrite_files: true
-        name: TWRP-3.7.1-16-${{ github.event.inputs.DEVICE_NAME }}-${{ env.BUILD_DATE }}-${{ github.run_id }}
+        name: TWRP-${{ env.TWRP_VERSION }}-${{ github.event.inputs.DEVICE_NAME }}-${{ env.BUILD_DATE }}-${{ github.run_id }}
         tag_name: ${{ env.BUILD_DATE }}-${{ github.run_id }}
         body_path: device/${{ github.event.inputs.DEVICE_PATH }}/INFO.txt
       env:
