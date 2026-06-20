@@ -25,6 +25,14 @@ fail() {
 command -v zip >/dev/null 2>&1 || fail "zip is not installed"
 command -v unzip >/dev/null 2>&1 || fail "unzip is not installed"
 
+# Resolve the output before entering the temporary package directory. GitHub
+# Actions supplies a workspace-relative artifact path.
+OUTPUT_DIR="$(dirname "$OUTPUT_ZIP")"
+OUTPUT_NAME="$(basename "$OUTPUT_ZIP")"
+mkdir -p "$OUTPUT_DIR"
+OUTPUT_DIR="$(cd "$OUTPUT_DIR" && pwd)"
+OUTPUT_ZIP="$OUTPUT_DIR/$OUTPUT_NAME"
+
 # Reject images that still contain branding from the package this installer
 # replaces. This check scans the actual recovery image, not only ZIP metadata.
 if LC_ALL=C grep -a -i -E -q 'OrangeFox|OFRP' "$RECOVERY_IMAGE"; then
@@ -185,7 +193,6 @@ if LC_ALL=C grep -R -a -i -E -q 'OrangeFox|OFRP' "$WORK_DIR/META-INF" "$WORK_DIR
     fail "Generated installer contains OrangeFox/OFRP branding"
 fi
 
-mkdir -p "$(dirname "$OUTPUT_ZIP")"
 rm -f "$OUTPUT_ZIP"
 (
     cd "$WORK_DIR"
