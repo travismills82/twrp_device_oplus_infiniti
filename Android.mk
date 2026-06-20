@@ -71,6 +71,16 @@ LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE_CLASS := EXECUTABLES
 LOCAL_SRC_FILES := recovery/root/system/etc/dhcpcd/dhcpcd-run-hooks
 LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/system/etc/dhcpcd
+LOCAL_POST_INSTALL_CMD := chmod 0755 $(LOCAL_INSTALLED_MODULE)
+include $(BUILD_PREBUILT)
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := twrp-resolv-conf
+LOCAL_MODULE_STEM := resolv.conf
+LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE_CLASS := ETC
+LOCAL_SRC_FILES := recovery/root/system/etc/resolv.conf
+LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/system/etc
 include $(BUILD_PREBUILT)
 
 include $(CLEAR_VARS)
