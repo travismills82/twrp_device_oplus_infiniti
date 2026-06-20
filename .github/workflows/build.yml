@@ -112,6 +112,14 @@ jobs:
       run: |
         git clone ${{ github.event.inputs.DEVICE_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} device/${{ github.event.inputs.DEVICE_PATH }}
 
+    - name: Apply device recovery patches
+      run: |
+        bash device/${{ github.event.inputs.DEVICE_PATH }}/scripts/apply-recovery-patches.sh
+        git -C bootable/recovery diff --check
+        git -C bootable/recovery status --short
+        grep -n "Supplicant network ID" bootable/recovery/gui/action.cpp
+        grep -n 'const char\* ping_bin = "/system/bin/ping"' bootable/recovery/gui/action.cpp
+
     - name: Patch TWRP theme
       run: |
         python3 device/${{ github.event.inputs.DEVICE_PATH }}/tools/patch_twrp_magisk_theme.py bootable/recovery/gui/theme/common/portrait.xml
