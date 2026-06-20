@@ -1,0 +1,263 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Travis Mills <travismills82@gmail.com>
+Date: Sat, 20 Jun 2026 15:30:00 -0400
+Subject: [PATCH] gui: make recovery Wi-Fi reconnects use returned network ID
+
+wpa_supplicant allocates the next available network ID when ADD_NETWORK is
+called. The recovery UI currently ignores that return value and always sends
+SET_NETWORK and ENABLE_NETWORK commands for ID 0. Reconnects fail as soon as
+another network object has consumed ID 0.
+
+Remove stale network objects, validate the ID returned by ADD_NETWORK, and use
+that ID for all subsequent configuration and selection commands. Validate each
+control-interface response, safely quote SSIDs and passphrases, restart DHCP
+after association, and wait for an assigned IPv4 address instead of sleeping a
+fixed five seconds.
+
+Use the packaged /system/bin/ping wrapper for connectivity checks instead of
+the absent BusyBox binary. Test gateway reachability, raw Internet
+connectivity, and hostname resolution as separate checks.
+---
+ gui/action.cpp | 171 ++++++++++++++++++++++++++++++++++++++++---------
+ 1 file changed, 142 insertions(+), 29 deletions(-)
+
+diff --git a/gui/action.cpp b/gui/action.cpp
+index 2abba536..00000000 100644
+--- a/gui/action.cpp
++++ b/gui/action.cpp
+@@ -2717,14 +2717,71 @@ int GUIAction::wlanconnect(std::string arg __unused) {
+     const char* IFACE = "wlan0";
+     const char* CTRL_DIR = "/tmp/recovery/sockets";
+     const char* WPACLI = "wpa_cli";
+-
+-    // 先移除 network 0，保证干净
+-    run_command_get_output(std::string(WPACLI) + " -i" + IFACE + " -p" + CTRL_DIR + " remove_network 0");
+-    run_command_get_output(std::string(WPACLI) + " -i" + IFACE + " -p" + CTRL_DIR + " add_network");
+-
+-    // 设置 SSID
+-    std::string cmd_set_ssid = std::string(WPACLI) + " -i" + IFACE + " -p" + CTRL_DIR + " set_network 0 ssid '\"" + selectedWlan + "\"'";
+-    run_command_get_output(cmd_set_ssid);
++
++    const std::string wpa_prefix = std::string(WPACLI) + " -i" + IFACE + " -p" + CTRL_DIR + " ";
++
++    auto trim_output = [](std::string value) -> std::string {
++        const size_t first = value.find_first_not_of(" \t\r\n");
++        if (first == std::string::npos)
++            return "";
++
++        const size_t last = value.find_last_not_of(" \t\r\n");
++        return value.substr(first, last - first + 1);
++    };
++
++    auto shell_quote = [](const std::string& value) -> std::string {
++        std::string quoted = "'";
++        for (char ch : value) {
++            if (ch == '\'')
++                quoted += "'\\''";
++            else
++                quoted += ch;
++        }
++        quoted += "'";
++        return quoted;
++    };
++
++    auto run_wpa_ok = [&](const std::string& args, const std::string& description) -> bool {
++        const std::string reply = trim_output(run_command_get_output(wpa_prefix + args));
++        if (reply == "OK")
++            return true;
++
++        const std::string shown_reply = reply.empty() ? "(empty)" : reply;
++        logBox->AddLogLine("[ERROR] " + description + " failed", "error");
++        logBox->AddLogLine("        Reply: " + shown_reply, "error");
++        gui_forceRender();
++        return false;
++    };
++
++    if (encryption != "Open" && password.empty()) {
++        logBox->AddLogLine("[ERROR] Password is required for " + encryption + " network", "error");
++        gui_forceRender();
++        return -1;
++    }
++
++    if (encryption == "Open" && !password.empty())
++        logBox->AddLogLine("[WARNING] Open network password will be ignored", "warning");
++
++    // Start from a clean supplicant network list, but still use the ID that
++    // ADD_NETWORK actually returns instead of assuming it will be zero.
++    const std::string remove_reply = trim_output(run_command_get_output(wpa_prefix + "remove_network all"));
++    if (remove_reply != "OK")
++        logBox->AddLogLine("[WARNING] Could not clear stale network entries: " + remove_reply, "warning");
++
++    const std::string network_id = trim_output(run_command_get_output(wpa_prefix + "add_network"));
++    if (network_id.empty() || network_id.find_first_not_of("0123456789") != std::string::npos) {
++        logBox->AddLogLine("[ERROR] ADD_NETWORK returned an invalid ID: " +
++                           (network_id.empty() ? std::string("(empty)") : network_id), "error");
++        gui_forceRender();
++        return -1;
++    }
++
++    logBox->AddLogLine("[INFO] Supplicant network ID: " + network_id, "normal");
++
++    const std::string ssid_value = "\"" + selectedWlan + "\"";
++    if (!run_wpa_ok("set_network " + network_id + " ssid " + shell_quote(ssid_value),
++                    "Setting SSID"))
++        return -1;
+ 
+     // ========= 根据加密方式设置 key_mgmt =========
+     std::string key_mgmt;
+@@ -2751,40 +2823,30 @@ int GUIAction::wlanconnect(std::string arg __unused) {
+         logBox->AddLogLine("[INFO] Using default WPA-PSK authentication", "normal");
+     }
+ 
+-    std::string cmd_set_key_mgmt = std::string(WPACLI) + " -i" + IFACE + " -p" + CTRL_DIR + " set_network 0 key_mgmt " + key_mgmt;
+-    run_command_get_output(cmd_set_key_mgmt);
++    if (!run_wpa_ok("set_network " + network_id + " key_mgmt " + key_mgmt,
++                    "Setting authentication mode"))
++        return -1;
+ 
+     // 设置 PSK（仅当需要密码时）
+-    if (!password.empty()) {
+-        if (encryption == "Open") {
+-            logBox->AddLogLine("[WARNING] Open network should not have password, ignoring password", "warning");
+-        } else {
+-            uint8_t psk[32];
+-			std::string cmd_set_psk = std::string(WPACLI) + " -i" + IFACE + " -p" + CTRL_DIR + " set_network 0 psk '\"" + password + "\"'";
+-            run_command_get_output(cmd_set_psk);
+-        }
+-    } else {
+-        if (encryption != "Open") {
+-            logBox->AddLogLine("[WARNING] Password required for encrypted network", "warning");
+-            // 对于加密网络但没有密码的情况，可能需要特殊处理
+-            if (encryption == "WPA3" || encryption == "WPA2" || encryption == "WPA") {
+-                logBox->AddLogLine("[ERROR] Password is required for " + encryption + " network", "error");
+-                gui_forceRender();
+-                return -1;
+-            }
+-        }
++    if (encryption != "Open") {
++        const std::string psk_value = "\"" + password + "\"";
++        if (!run_wpa_ok("set_network " + network_id + " psk " + shell_quote(psk_value),
++                        "Setting network password"))
++            return -1;
+     }
+ 
+-    // 启用 network 0
+-    run_command_get_output(std::string(WPACLI) + " -i" + IFACE + " -p" + CTRL_DIR + " enable_network 0");
++    if (!run_wpa_ok("enable_network " + network_id, "Enabling network") ||
++        !run_wpa_ok("select_network " + network_id, "Selecting network") ||
++        !run_wpa_ok("reassociate", "Starting association"))
++        return -1;
+ 
+     logBox->AddLogLine("[INFO] Authenticating...", "normal");
+     gui_forceRender();
+ 
+     // 等待连接完成
+     bool connected = false;
+-    for (int i = 0; i < 20; i++) {
+-        std::string status = run_command_get_output(std::string(WPACLI) + " -i" + IFACE + " -p" + CTRL_DIR + " status");
++    for (int i = 0; i < 30; i++) {
++        std::string status = run_command_get_output(wpa_prefix + "status");
+         if (status.find("wpa_state=COMPLETED") != std::string::npos) {
+             connected = true;
+             break;
+@@ -2796,13 +2862,38 @@ int GUIAction::wlanconnect(std::string arg __unused) {
+     // 请求 IP
+     logBox->AddLogLine("[INFO] Wi-Fi link established, requesting IP with dhcpcd...", "normal");
+     gui_forceRender();
++
++    run_command_get_output("PIDS=\"$(pidof dhcpcd 2>/dev/null)\"; [ -z \"$PIDS\" ] || kill $PIDS");
++    run_command_get_output("rm -f /data/misc/dhcp/dhcpcd-wlan0.pid");
+     run_command_get_output("dhcpcd wlan0");
+-    ::sleep(5); // 等 dhcpcd 配置完成
+ 
+-    // 获取 IP 地址
+-    std::string ip_address = run_command_get_output("ifconfig wlan0 | grep 'inet ' | awk -F'[: ]+' '{print $4}'");
+-    while (!ip_address.empty() && (ip_address.back() == '\n' || ip_address.back() == '\r'))
+-        ip_address.pop_back();
++    std::string ip_address;
++    for (int i = 0; i < 30 && ip_address.empty(); ++i) {
++        const std::string status = run_command_get_output(wpa_prefix + "status");
++        std::istringstream status_stream(status);
++        std::string status_line;
++
++        while (std::getline(status_stream, status_line)) {
++            if (status_line.find("ip_address=") == 0) {
++                ip_address = trim_output(status_line.substr(11));
++                break;
++            }
++        }
++
++        if (ip_address.empty()) {
++            ip_address = trim_output(run_command_get_output(
++                "ifconfig wlan0 | awk '/inet addr:/ {sub(\"addr:\", \"\", $2); print $2; exit}'"));
++        }
++
++        if (ip_address.empty())
++            ::sleep(1);
++    }
++
++    if (ip_address.empty()) {
++        logBox->AddLogLine("[ERROR] DHCP did not assign an IPv4 address", "error");
++        gui_forceRender();
++        return -1;
++    }
+ 
+     // 获取网关
+     std::string gateway = run_command_get_output("netstat -rn | grep wlan0 | grep UG | awk '{print $2}'");
+@@ -2909,11 +2996,11 @@ int GUIAction::wlantest(std::string arg __unused) {
+     logBox->AddLogLine("[INFO] Testing network connectivity...", "normal");
+     gui_forceRender();
+ 
+-    const char* ping_bin = "/system/bin/busybox";
++    const char* ping_bin = "/system/bin/ping";
+     const char* iface = "wlan0";
+ 
+     auto run_ping = [&](const std::string& target, int count = 4) -> std::string {
+-        std::string cmd = std::string(ping_bin) + " ping -I " + iface + " -c " + std::to_string(count) + " " + target;
++        std::string cmd = std::string(ping_bin) + " -I " + iface + " -c " + std::to_string(count) + " -W 3 " + target + " 2>&1";
+         FILE* fp = popen(cmd.c_str(), "r");
+         if (!fp) return "";
+         char buf[256];
+@@ -2947,26 +3034,26 @@ int GUIAction::wlantest(std::string arg __unused) {
+         logBox->AddLogLine("[ERROR] Could not determine gateway", "error");
+     }
+ 
+-    // ping DNS
+-    std::string dns = "8.8.8.8";
+-    logBox->AddLogLine("[INFO] Testing DNS (" + dns + ")...", "normal");
++    // Test raw Internet reachability independently of DNS.
++    std::string internet = "1.1.1.1";
++    logBox->AddLogLine("[INFO] Testing internet connectivity (" + internet + ")...", "normal");
+     gui_forceRender();
+-    std::string dns_result = run_ping(dns, 1);
+-    if (!dns_result.empty() && dns_result.find("0% packet loss") != std::string::npos)
+-        logBox->AddLogLine("[INFO] DNS ping: OK", "normal");
++    std::string internet_result = run_ping(internet, 1);
++    if (!internet_result.empty() && internet_result.find("0% packet loss") != std::string::npos)
++        logBox->AddLogLine("[INFO] Internet ping: OK", "normal");
+     else
+-        logBox->AddLogLine("[ERROR] DNS ping failed", "error");
++        logBox->AddLogLine("[ERROR] Internet ping failed", "error");
+     gui_forceRender();
+ 
+-    // ping Internet
+-    std::string internet = "bing.com";
+-    logBox->AddLogLine("[INFO] Testing internet connectivity (" + internet + ")...", "normal");
++    // Test hostname resolution and routed connectivity together.
++    std::string dns_host = "github.com";
++    logBox->AddLogLine("[INFO] Testing DNS resolution (" + dns_host + ")...", "normal");
+     gui_forceRender();
+-    std::string internet_result = run_ping(internet, 1);
+-    if (!internet_result.empty() && internet_result.find("0% packet loss") != std::string::npos)
+-        logBox->AddLogLine("[INFO] Internet: OK", "normal");
++    std::string dns_result = run_ping(dns_host, 1);
++    if (!dns_result.empty() && dns_result.find("0% packet loss") != std::string::npos)
++        logBox->AddLogLine("[INFO] DNS resolution: OK", "normal");
+     else
+-        logBox->AddLogLine("[ERROR] Internet ping failed", "error");
++        logBox->AddLogLine("[ERROR] DNS resolution failed", "error");
+     gui_forceRender();
+ 
+     logBox->AddLogLine("[INFO] Network test completed", "normal");
+-- 
+2.43.0
