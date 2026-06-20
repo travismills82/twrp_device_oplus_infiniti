@@ -151,10 +151,32 @@ jobs:
         export CCACHE_MAXSIZE=5G
         export USE_CCACHE=1
         lunch twrp_${{ env.LUNCH_TARGET }}
+        OUT_DIR="out/target/product/${{ github.event.inputs.DEVICE_NAME }}"
         (while true; do echo `date +%T` "Building TWRP..."; free -h; sleep 10; done) &
         TIP_PID=$!
         m ${{ github.event.inputs.BUILD_PARTITION }}image
-        OUT_DIR="out/target/product/${{ github.event.inputs.DEVICE_NAME }}"
+
+        HOOK_PATH="$(find "$OUT_DIR" -type f -path '*/system/etc/dhcpcd/dhcpcd-run-hooks' -print -quit)"
+        RESOLV_PATH="$(find "$OUT_DIR" -type f -path '*/system/etc/resolv.conf' -print -quit)"
+
+        if [ -z "$HOOK_PATH" ]; then
+          echo "Built recovery is missing dhcpcd-run-hooks"
+          exit 1
+        fi
+        if [ ! -x "$HOOK_PATH" ]; then
+          echo "Built dhcpcd-run-hooks is not executable: $(stat -c '%a %n' "$HOOK_PATH")"
+          exit 1
+        fi
+        if [ -z "$RESOLV_PATH" ]; then
+          echo "Built recovery is missing /system/etc/resolv.conf"
+          exit 1
+        fi
+
+        echo "DNS hook: $(stat -c '%a %n' "$HOOK_PATH")"
+        echo "Resolver target: $(stat -c '%a %n' "$RESOLV_PATH")"
+        grep -q 'twrp.wifi.dns.ready' "$HOOK_PATH"
+        grep -q '/tmp/twrp-resolv.conf' "$HOOK_PATH"
+
         IMAGE_NAME="TWRP-${TWRP_VERSION}-${{ github.event.inputs.DEVICE_NAME }}-${BUILD_DATE}.img"
         mv "$OUT_DIR/${{ github.event.inputs.BUILD_PARTITION }}.img" "$OUT_DIR/$IMAGE_NAME"
         echo "TWRP_IMAGE=$OUT_DIR/$IMAGE_NAME" >> "$GITHUB_ENV"
