@@ -16,6 +16,7 @@ SOURCE_ROOT="${1:-$DEFAULT_SOURCE_ROOT}"
 RECOVERY_DIR="$SOURCE_ROOT/bootable/recovery"
 PATCH_DIR="$DEVICE_DIR/patches/bootable-recovery"
 EXPECTED_BASE="6bd8134ec8ff4cb29eb25797cbb20796f8455204"
+PIGZ_MAX_CALL='execlp("pigz", "pigz", "-9", "-", NULL)'
 
 fail() {
     echo "ERROR: $*" >&2
@@ -61,6 +62,17 @@ for patch in "${PATCHES[@]}"; do
 done
 
 git -C "$RECOVERY_DIR" diff --check
+
+PIGZ_MAX_COUNT="$(grep -F -c "$PIGZ_MAX_CALL" "$RECOVERY_DIR/twrpTar.cpp" 2>/dev/null || true)"
+if [ "$PIGZ_MAX_COUNT" -ne 2 ]; then
+    fail "Expected two pigz -9 backup paths in twrpTar.cpp; found $PIGZ_MAX_COUNT"
+fi
+
+if grep -F -q 'execlp("pigz", "pigz", "-", NULL)' "$RECOVERY_DIR/twrpTar.cpp"; then
+    fail "A default-level pigz backup path remains in twrpTar.cpp"
+fi
+
+echo "[verified] pigz -9 is active for compressed and compressed-encrypted backups"
 
 echo
 echo "Recovery patches are ready for the next build."
