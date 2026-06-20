@@ -78,27 +78,28 @@ jobs:
     - name: Maximize build space
       uses: easimon/maximize-build-space@master
 
+    - name: Setup environment
+      run: |
+        export DEBIAN_FRONTEND=noninteractive
+        sudo apt-get update
+        sudo apt-get install -y repo python3 zip unzip
+        git config --global user.name ${{ github.actor }}
+        git config --global user.email ${{ github.actor }}@users.noreply.github.com
+
     - name: Setup ccache
-      uses: hendrikmuhs/ccache-action@v1.2
+      uses: hendrikmuhs/ccache-action@v1.2.23
       with:
         create-symlink: true
+        max-size: 5G
 
     - name: Setup zram
       run: |
-        sudo apt install linux-modules-extra-$(uname -r) zram-tools -y
+        sudo apt-get install -y linux-modules-extra-$(uname -r) zram-tools
         sudo modprobe zram
         sudo sed -i 's/^#PERCENT=50/PERCENT=90/' /etc/default/zramswap
         sudo sed -i 's/^#PRIORITY=100/PRIORITY=1000/' /etc/default/zramswap
         sudo systemctl restart zramswap
         zramctl
-
-    - name: Setup environment
-      run: |
-        export DEBIAN_FRONTEND=noninteractive
-        sudo apt update
-        sudo apt install repo python3 zip unzip -y
-        git config --global user.name ${{ github.actor }}
-        git config --global user.email ${{ github.actor }}@users.noreply.github.com
 
     - name: Sync source
       run: |
@@ -144,7 +145,7 @@ jobs:
         source build/envsetup.sh
         export ALLOW_MISSING_DEPENDENCIES=true
         export CCACHE_DIR=.ccache
-        export CCACHE_EXEC=$(command -v ccache)        
+        export CCACHE_EXEC=$(command -v ccache)
         export CCACHE_MAXSIZE=5G
         export USE_CCACHE=1
         lunch twrp_${{ env.LUNCH_TARGET }}
@@ -156,7 +157,7 @@ jobs:
         mv "$OUT_DIR/${{ github.event.inputs.BUILD_PARTITION }}.img" "$OUT_DIR/$IMAGE_NAME"
         echo "TWRP_IMAGE=$OUT_DIR/$IMAGE_NAME" >> "$GITHUB_ENV"
         echo "TWRP_ZIP=$OUT_DIR/${IMAGE_NAME%.img}.zip" >> "$GITHUB_ENV"
-        kill $TIP_PID && exit 0        
+        kill $TIP_PID && exit 0
 
     - name: Package flashable ZIP
       run: |
@@ -176,11 +177,13 @@ jobs:
         ls -lh "$TWRP_IMAGE" "$TWRP_ZIP"
 
     - name: Upload to Release
-      uses: softprops/action-gh-release@v2
+      uses: softprops/action-gh-release@v3.0.1
       with:
-        files: | 
+        files: |
           ${{ env.TWRP_IMAGE }}
           ${{ env.TWRP_ZIP }}
+        fail_on_unmatched_files: true
+        overwrite_files: true
         name: TWRP-3.7.1-16-${{ github.event.inputs.DEVICE_NAME }}-${{ env.BUILD_DATE }}-${{ github.run_id }}
         tag_name: ${{ env.BUILD_DATE }}-${{ github.run_id }}
         body_path: device/${{ github.event.inputs.DEVICE_PATH }}/INFO.txt
