@@ -17,6 +17,7 @@ RECOVERY_DIR="$SOURCE_ROOT/bootable/recovery"
 PATCH_DIR="$DEVICE_DIR/patches/bootable-recovery"
 EXPECTED_BASE="6bd8134ec8ff4cb29eb25797cbb20796f8455204"
 PIGZ_MAX_CALL='execlp("pigz", "pigz", "-9", "-", NULL)'
+DNS_PUBLISH_CALL='/system/bin/twrp-dns-publish wlan0 2>&1'
 
 fail() {
     echo "ERROR: $*" >&2
@@ -76,8 +77,18 @@ if grep -i -q 'orangefox' "$RECOVERY_DIR/gui/fileselector.cpp"; then
     fail "OrangeFox filename compatibility remains in gui/fileselector.cpp"
 fi
 
+DNS_PUBLISH_COUNT="$(grep -F -c "$DNS_PUBLISH_CALL" "$RECOVERY_DIR/gui/action.cpp" 2>/dev/null || true)"
+if [ "$DNS_PUBLISH_COUNT" -ne 2 ]; then
+    fail "Expected two root DNS publisher calls in gui/action.cpp; found $DNS_PUBLISH_COUNT"
+fi
+
+if ! grep -F -q 'DNS resolver setup failed' "$RECOVERY_DIR/gui/action.cpp"; then
+    fail "Wi-Fi connection path does not verify DNS resolver setup"
+fi
+
 echo "[verified] pigz -9 is active for compressed and compressed-encrypted backups"
 echo "[verified] OrangeFox filename compatibility is removed from the file selector"
+echo "[verified] Wi-Fi connection and test paths publish DNS from the root recovery process"
 
 echo
 echo "Recovery patches are ready for the next build."
