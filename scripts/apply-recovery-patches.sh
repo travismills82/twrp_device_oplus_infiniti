@@ -18,6 +18,7 @@ PATCH_DIR="$DEVICE_DIR/patches/bootable-recovery"
 EXPECTED_BASE="6bd8134ec8ff4cb29eb25797cbb20796f8455204"
 PIGZ_MAX_CALL='execlp("pigz", "pigz", "-9", "-", NULL)'
 DNS_PUBLISH_CALL='/system/bin/twrp-dns-publish wlan0 2>&1'
+NANDSWAP_EXCLUSION='ExcludeAll(Mount_Point + "/nandswap")'
 
 fail() {
     echo "ERROR: $*" >&2
@@ -86,9 +87,14 @@ if ! grep -F -q 'DNS resolver setup failed' "$RECOVERY_DIR/gui/action.cpp"; then
     fail "Wi-Fi connection path does not verify DNS resolver setup"
 fi
 
+if ! grep -F -q "$NANDSWAP_EXCLUSION" "$RECOVERY_DIR/partition.cpp"; then
+    fail "FBE backup path does not directly exclude /data/nandswap"
+fi
+
 echo "[verified] pigz -9 is active for compressed and compressed-encrypted backups"
 echo "[verified] OrangeFox filename compatibility is removed from the file selector"
 echo "[verified] Wi-Fi connection and test paths publish DNS from the root recovery process"
+echo "[verified] FBE backups exclude regeneratable /data/nandswap data"
 
 echo
 echo "Recovery patches are ready for the next build."
