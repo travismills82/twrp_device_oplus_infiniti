@@ -5,7 +5,7 @@ SOCKET_DIR="/tmp/recovery/sockets"
 VENDOR_DLKM_MOUNT="/tmp/vendor_dlkm"
 MODULE_DIRS="/system/lib/modules /vendor/lib/modules /vendor_dlkm/lib/modules /lib/modules"
 WPA_CLI="/system/bin/wpa_cli"
-DNS_HOOK="/system/etc/dhcpcd/dhcpcd-run-hooks"
+DNS_PUBLISHER="/system/bin/twrp-dns-publish"
 INI_NAME="WCNSS_qcom_cfg.ini"
 INI_SOURCES="/vendor/etc/wifi/peach_v2/$INI_NAME /vendor/etc/wifi/peach/$INI_NAME /vendor/odm/etc/wifi/peach_v2/$INI_NAME /vendor/odm/etc/wifi/peach/$INI_NAME"
 PEACH_FIRMWARE_SOURCES="/vendor/odm/etc/wifi/peach /vendor/etc/wifi/peach /vendor/odm/firmware/peach /vendor/firmware/peach"
@@ -26,28 +26,27 @@ set_ready() {
 }
 
 prepare_fallback_dns() {
-    if [ ! -x "$DNS_HOOK" ]; then
-        log_msg "DNS hook is missing or not executable: $DNS_HOOK"
+    if [ ! -x "$DNS_PUBLISHER" ]; then
+        log_msg "DNS publisher is missing or not executable: $DNS_PUBLISHER"
         setprop twrp.wifi.dns.ready 0 2>/dev/null || true
         return 1
     fi
 
-    interface="$IFACE" \
-    reason="PREINIT" \
-    TWRP_DNS1="1.1.1.1" \
-    TWRP_DNS2="8.8.8.8" \
-        "$DNS_HOOK" >/tmp/twrp-dns-preinit.log 2>&1 || {
-            log_msg "fallback DNS initialization failed: $(cat /tmp/twrp-dns-preinit.log 2>/dev/null)"
-            setprop twrp.wifi.dns.ready 0 2>/dev/null || true
-            return 1
-        }
+    setprop twrp.wifi.dns1 1.1.1.1 2>/dev/null || true
+    setprop twrp.wifi.dns2 8.8.8.8 2>/dev/null || true
+
+    "$DNS_PUBLISHER" "$IFACE" >/tmp/twrp-dns-preinit.log 2>&1 || {
+        log_msg "fallback DNS initialization failed: $(cat /tmp/twrp-dns-preinit.log 2>/dev/null)"
+        setprop twrp.wifi.dns.ready 0 2>/dev/null || true
+        return 1
+    }
 
     if [ "$(getprop twrp.wifi.dns.ready 2>/dev/null)" = "1" ]; then
         log_msg "fallback DNS resolver initialized before DHCP"
         return 0
     fi
 
-    log_msg "fallback DNS hook returned without setting ready state"
+    log_msg "fallback DNS publisher returned without setting ready state"
     return 1
 }
 
