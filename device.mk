@@ -47,6 +47,7 @@ PRODUCT_PACKAGES += \
 	twrp-magisk-bundled \
 	twrp-flash-magisk \
 	twrp-wifi-start-v2 \
+	twrp-dns-publish \
 	twrp-dhcpcd-run-hooks \
 	twrp-resolv-conf \
 	twrp-ping \
