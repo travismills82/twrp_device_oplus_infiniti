@@ -122,6 +122,7 @@ jobs:
         git -C bootable/recovery status --short
         grep -n "Supplicant network ID" bootable/recovery/gui/action.cpp
         grep -n 'const char\* ping_bin = "/system/bin/ping"' bootable/recovery/gui/action.cpp
+        grep -n '/system/bin/twrp-dns-publish wlan0' bootable/recovery/gui/action.cpp
 
     - name: Patch TWRP theme
       run: |
@@ -158,7 +159,9 @@ jobs:
         m ${{ github.event.inputs.BUILD_PARTITION }}image
 
         HOOK_PATH="$(find "$OUT_DIR" -type f -path '*/system/etc/dhcpcd/dhcpcd-run-hooks' -print -quit)"
+        DNS_PUBLISH_PATH="$(find "$OUT_DIR" -type f -path '*/system/bin/twrp-dns-publish' -print -quit)"
         RESOLV_PATH="$(find "$OUT_DIR" -type f -path '*/system/etc/resolv.conf' -print -quit)"
+        INIT_WIFI_RC="$RECOVERY_ROOT/init.recovery.wifi.rc"
 
         if [ -z "$HOOK_PATH" ]; then
           echo "Built recovery is missing dhcpcd-run-hooks"
@@ -168,15 +171,32 @@ jobs:
           echo "Built dhcpcd-run-hooks is not executable: $(stat -c '%a %n' "$HOOK_PATH")"
           exit 1
         fi
+        if [ -z "$DNS_PUBLISH_PATH" ]; then
+          echo "Built recovery is missing twrp-dns-publish"
+          exit 1
+        fi
+        if [ ! -x "$DNS_PUBLISH_PATH" ]; then
+          echo "Built twrp-dns-publish is not executable: $(stat -c '%a %n' "$DNS_PUBLISH_PATH")"
+          exit 1
+        fi
         if [ -z "$RESOLV_PATH" ]; then
           echo "Built recovery is missing /system/etc/resolv.conf"
           exit 1
         fi
+        if [ ! -f "$INIT_WIFI_RC" ]; then
+          echo "Built recovery is missing init.recovery.wifi.rc"
+          exit 1
+        fi
 
         echo "DNS hook: $(stat -c '%a %n' "$HOOK_PATH")"
+        echo "DNS publisher: $(stat -c '%a %n' "$DNS_PUBLISH_PATH")"
         echo "Resolver target: $(stat -c '%a %n' "$RESOLV_PATH")"
-        grep -q 'twrp.wifi.dns.ready' "$HOOK_PATH"
+        grep -q 'twrp.wifi.dns.request' "$HOOK_PATH"
         grep -q '/tmp/twrp-resolv.conf' "$HOOK_PATH"
+        grep -q 'mount -o bind' "$DNS_PUBLISH_PATH"
+        grep -q 'twrp.wifi.dns.ready 1' "$DNS_PUBLISH_PATH"
+        grep -q 'service twrp-dns-publish' "$INIT_WIFI_RC"
+        grep -q 'on property:twrp.wifi.dns.request=1' "$INIT_WIFI_RC"
 
         if [ ! -d "$RECOVERY_ROOT" ]; then
           echo "Built recovery staging root was not found: $RECOVERY_ROOT"
