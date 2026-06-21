@@ -84,7 +84,7 @@ jobs:
       run: |
         export DEBIAN_FRONTEND=noninteractive
         sudo apt-get update
-        sudo apt-get install -y repo python3 zip unzip
+        sudo apt-get install -y repo python3 zip unzip binutils
         git config --global user.name ${{ github.actor }}
         git config --global user.email ${{ github.actor }}@users.noreply.github.com
 
@@ -152,6 +152,7 @@ jobs:
         export USE_CCACHE=1
         lunch twrp_${{ env.LUNCH_TARGET }}
         OUT_DIR="out/target/product/${{ github.event.inputs.DEVICE_NAME }}"
+        RECOVERY_ROOT="$OUT_DIR/recovery/root"
         (while true; do echo `date +%T` "Building TWRP..."; free -h; sleep 10; done) &
         TIP_PID=$!
         m ${{ github.event.inputs.BUILD_PARTITION }}image
@@ -176,6 +177,41 @@ jobs:
         echo "Resolver target: $(stat -c '%a %n' "$RESOLV_PATH")"
         grep -q 'twrp.wifi.dns.ready' "$HOOK_PATH"
         grep -q '/tmp/twrp-resolv.conf' "$HOOK_PATH"
+
+        if [ ! -d "$RECOVERY_ROOT" ]; then
+          echo "Built recovery staging root was not found: $RECOVERY_ROOT"
+          exit 1
+        fi
+
+        BRANDED_PATHS="$(find "$RECOVERY_ROOT" -print | grep -i -E '(^|/)[^/]*(orangefox|ofrp)[^/]*$' || true)"
+        if [ -n "$BRANDED_PATHS" ]; then
+          echo "Recovery staging tree contains branded filenames:"
+          echo "$BRANDED_PATHS"
+          exit 1
+        fi
+
+        BRANDED_TEXT="$(grep -R -I -n -i -E 'OrangeFox|Orange Fox|OFRP' "$RECOVERY_ROOT" 2>/dev/null || true)"
+        if [ -n "$BRANDED_TEXT" ]; then
+          echo "Recovery staging tree contains branded text:"
+          echo "$BRANDED_TEXT"
+          exit 1
+        fi
+
+        BINARY_BRANDING=0
+        while IFS= read -r -d '' FILE; do
+          MATCHES="$(strings -a "$FILE" 2>/dev/null | grep -i -E 'OrangeFox|Orange Fox|OrangeFox Recovery Project' || true)"
+          if [ -n "$MATCHES" ]; then
+            echo "Recovery binary contains branded printable strings: $FILE"
+            echo "$MATCHES"
+            BINARY_BRANDING=1
+          fi
+        done < <(find "$RECOVERY_ROOT" -type f -print0)
+
+        if [ "$BINARY_BRANDING" -ne 0 ]; then
+          exit 1
+        fi
+
+        echo "Recovery branding scan: clean"
 
         IMAGE_NAME="TWRP-${TWRP_VERSION}-${{ github.event.inputs.DEVICE_NAME }}-${BUILD_DATE}.img"
         mv "$OUT_DIR/${{ github.event.inputs.BUILD_PARTITION }}.img" "$OUT_DIR/$IMAGE_NAME"
@@ -203,7 +239,7 @@ jobs:
         unzip -p "$TWRP_ZIP" META-INF/com/google/android/update-binary | grep -q 'find_partition recovery_a'
         unzip -p "$TWRP_ZIP" META-INF/com/google/android/update-binary | grep -q 'find_partition recovery_b'
 
-        if unzip -Z1 "$TWRP_ZIP" | grep -i -E -q 'OrangeFox|OFRP'; then
+        if unzip -Z1 "$TWRP_ZIP" | grep -i -E -q 'OrangeFox|Orange Fox|OFRP'; then
           echo "OrangeFox/OFRP filename found in generated installer"
           exit 1
         fi
@@ -211,7 +247,7 @@ jobs:
         if unzip -p "$TWRP_ZIP" META-INF/com/google/android/update-binary \
           META-INF/com/google/android/updater-script \
           META-INF/com/google/android/twrp-version \
-          INSTALL.txt | grep -a -i -E -q 'OrangeFox|OFRP'; then
+          INSTALL.txt | grep -a -i -E -q 'OrangeFox|Orange Fox|OFRP'; then
           echo "OrangeFox/OFRP branding found in generated installer"
           exit 1
         fi
