@@ -72,7 +72,12 @@ if grep -F -q 'execlp("pigz", "pigz", "-", NULL)' "$RECOVERY_DIR/twrpTar.cpp"; t
     fail "A default-level pigz backup path remains in twrpTar.cpp"
 fi
 
+if grep -i -q 'orangefox' "$RECOVERY_DIR/gui/fileselector.cpp"; then
+    fail "OrangeFox filename compatibility remains in gui/fileselector.cpp"
+fi
+
 echo "[verified] pigz -9 is active for compressed and compressed-encrypted backups"
+echo "[verified] OrangeFox filename compatibility is removed from the file selector"
 
 echo
 echo "Recovery patches are ready for the next build."
