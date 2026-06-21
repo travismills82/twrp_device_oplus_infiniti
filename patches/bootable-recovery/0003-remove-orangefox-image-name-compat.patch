@@ -1,0 +1,30 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Travis Mills <travismills82@gmail.com>
+Date: Sat, 20 Jun 2026 23:15:00 -0400
+Subject: [PATCH] gui: remove OrangeFox image-name compatibility
+
+The file selector automatically assigns the recovery partition to image files
+whose names begin with recovery, twrp, or orangefox. Remove the OrangeFox-only
+compatibility branch so the compiled recovery binary no longer carries that
+branding string.
+
+Recovery and TWRP image-name detection remains unchanged.
+---
+ gui/fileselector.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/gui/fileselector.cpp b/gui/fileselector.cpp
+index b571cb60..00000000 100644
+--- a/gui/fileselector.cpp
++++ b/gui/fileselector.cpp
+@@ -452,7 +452,7 @@ void GUIFileSelector::NotifySelect(size_t item_selected)
+ 					DataManager::SetValue("tw_flash_partition", "/init_boot;");
+ 				} else if (str_lower == "vendor_boot.img" || str_lower == "vendor_boot_a.img" || str_lower == "vendor_boot_b.img") {
+ 					DataManager::SetValue("tw_flash_partition", "/vendor_boot;");
+-				} else if ((str_lower.find("recovery") == 0) || (str_lower.find("twrp") == 0) || (str_lower.find("orangefox") == 0)) {
++				} else if ((str_lower.find("recovery") == 0) || (str_lower.find("twrp") == 0)) {
+ 					DataManager::SetValue("tw_flash_partition", "/recovery;");
+ 				} else if (str_lower == "dtbo.img" || str_lower == "dtbo_a.img" || str_lower == "dtbo_b.img") {
+ 					DataManager::SetValue("tw_flash_partition", "/dtbo;");
+-- 
+2.43.0
