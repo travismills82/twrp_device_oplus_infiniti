@@ -5,6 +5,7 @@ on property:twrp.wifi.enable=1
     setprop wifi.driver.ready false
     setprop twrp.wifi.status starting
     setprop twrp.wifi.dns.ready 0
+    setprop twrp.wifi.dns.request 0
     mkdir /firmware 0755 root root
     mount vfat /dev/block/bootdevice/by-name/modem${ro.boot.slot_suffix} /firmware ro
     write /proc/sys/kernel/firmware_config/force_sysfs_fallback 1
@@ -13,11 +14,23 @@ on property:twrp.wifi.enable=1
     chmod 0777 /tmp/recovery
     chmod 0777 /tmp/recovery/sockets
     chmod 0755 /system/etc/dhcpcd/dhcpcd-run-hooks
+    chmod 0755 /system/bin/twrp-dns-publish
     chmod 0644 /system/etc/resolv.conf
+    start twrp-dns-publish
     start twrp-wifi-start
+
+on property:twrp.wifi.dns.request=1
+    start twrp-dns-publish
 
 on property:post.decrypt.modules=true
     setprop twrp.wifi.enable 1
+
+service twrp-dns-publish /system/bin/twrp-dns-publish wlan0
+    user root
+    group root
+    disabled
+    oneshot
+    seclabel u:r:recovery:s0
 
 service twrp-wifi-start /system/bin/twrp-wifi-start
     user root
