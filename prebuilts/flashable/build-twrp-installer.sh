@@ -33,11 +33,10 @@ mkdir -p "$OUTPUT_DIR"
 OUTPUT_DIR="$(cd "$OUTPUT_DIR" && pwd)"
 OUTPUT_ZIP="$OUTPUT_DIR/$OUTPUT_NAME"
 
-# Reject images that still contain branding from the package this installer
-# replaces. This check scans the actual recovery image, not only ZIP metadata.
-if LC_ALL=C grep -a -i -E -q 'OrangeFox|OFRP' "$RECOVERY_IMAGE"; then
-    fail "Recovery image contains OrangeFox/OFRP branding"
-fi
+# Do not scan the compressed recovery image as arbitrary compressed bytes can
+# coincidentally match a branding token. GitHub Actions scans the uncompressed
+# recovery staging tree before this builder is invoked and reports exact files
+# for any genuine filename, text, or printable binary-string match.
 
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
@@ -188,8 +187,9 @@ EOF
 
 cp "$RECOVERY_IMAGE" "$WORK_DIR/recovery.img"
 
-# Scan every generated text file before packaging. The image was scanned above.
-if LC_ALL=C grep -R -a -i -E -q 'OrangeFox|OFRP' "$WORK_DIR/META-INF" "$WORK_DIR/INSTALL.txt"; then
+# Scan the generated installer text. The recovery ramdisk itself was already
+# checked in its uncompressed staging tree by the workflow.
+if LC_ALL=C grep -R -I -i -E -q 'OrangeFox|Orange Fox|OFRP' "$WORK_DIR/META-INF" "$WORK_DIR/INSTALL.txt"; then
     fail "Generated installer contains OrangeFox/OFRP branding"
 fi
 
@@ -209,7 +209,7 @@ unzip -p "$OUTPUT_ZIP" META-INF/com/google/android/update-binary | grep -q 'find
 unzip -p "$OUTPUT_ZIP" META-INF/com/google/android/update-binary | grep -q 'find_partition recovery_b'
 unzip -p "$OUTPUT_ZIP" META-INF/com/google/android/update-binary | grep -q 'Successfully installed'
 
-if unzip -Z1 "$OUTPUT_ZIP" | grep -i -E -q 'OrangeFox|OFRP'; then
+if unzip -Z1 "$OUTPUT_ZIP" | grep -i -E -q 'OrangeFox|Orange Fox|OFRP'; then
     fail "ZIP filenames contain OrangeFox/OFRP branding"
 fi
 
