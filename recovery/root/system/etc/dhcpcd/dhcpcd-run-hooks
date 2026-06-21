@@ -1,23 +1,13 @@
 #!/system/bin/sh
 #
 # TWRP dhcpcd hook for wlan0.
-# Publish DHCP-provided DNS servers to Android recovery properties and expose
-# a writable resolver file at /system/etc/resolv.conf for Bionic/Toybox tools.
+# Publish DHCP-provided DNS servers and request a root-owned resolver publish.
 #
 
 IFACE="${interface:-wlan0}"
 FALLBACK_DNS1="${TWRP_DNS1:-1.1.1.1}"
 FALLBACK_DNS2="${TWRP_DNS2:-8.8.8.8}"
 RESOLV_SOURCE="/tmp/twrp-resolv.conf"
-RESOLV_TARGET="/system/etc/resolv.conf"
-
-log_msg() {
-    echo "[twrp-dhcp] $1" > /dev/kmsg 2>/dev/null || true
-}
-
-is_bind_mounted() {
-    grep -q " $RESOLV_TARGET " /proc/mounts 2>/dev/null
-}
 
 DNS_LIST="${new_domain_name_servers:-${domain_name_servers:-}}"
 
@@ -28,48 +18,36 @@ set -- $DNS_LIST
 DNS1="${1:-$FALLBACK_DNS1}"
 DNS2="${2:-$FALLBACK_DNS2}"
 
-setprop "dhcp.${IFACE}.dns1" "$DNS1"
-setprop "dhcp.${IFACE}.dns2" "$DNS2"
-setprop "net.${IFACE}.dns1" "$DNS1"
-setprop "net.${IFACE}.dns2" "$DNS2"
-setprop net.dns1 "$DNS1"
-setprop net.dns2 "$DNS2"
-setprop twrp.wifi.dns1 "$DNS1"
-setprop twrp.wifi.dns2 "$DNS2"
+setprop twrp.wifi.dns.ready 0 2>/dev/null || true
+setprop "dhcp.${IFACE}.dns1" "$DNS1" 2>/dev/null || true
+setprop "dhcp.${IFACE}.dns2" "$DNS2" 2>/dev/null || true
+setprop "net.${IFACE}.dns1" "$DNS1" 2>/dev/null || true
+setprop "net.${IFACE}.dns2" "$DNS2" 2>/dev/null || true
+setprop net.dns1 "$DNS1" 2>/dev/null || true
+setprop net.dns2 "$DNS2" 2>/dev/null || true
+setprop twrp.wifi.dns1 "$DNS1" 2>/dev/null || true
+setprop twrp.wifi.dns2 "$DNS2" 2>/dev/null || true
 
 DNSCHANGE="$(getprop net.dnschange 2>/dev/null)"
 case "$DNSCHANGE" in
     ''|*[!0-9]*) DNSCHANGE=0 ;;
 esac
-setprop net.dnschange "$((DNSCHANGE + 1))"
+setprop net.dnschange "$((DNSCHANGE + 1))" 2>/dev/null || true
 
 {
     echo "nameserver $DNS1"
     [ "$DNS2" = "$DNS1" ] || echo "nameserver $DNS2"
     echo "options timeout:2 attempts:2"
-} > "$RESOLV_SOURCE" 2>/dev/null || {
-    setprop twrp.wifi.dns.ready 0
-    log_msg "failed writing $RESOLV_SOURCE"
-    exit 1
-}
+} > "$RESOLV_SOURCE" 2>/dev/null || exit 1
+
 chmod 0644 "$RESOLV_SOURCE" 2>/dev/null || true
 
-# /etc is a symlink to /system/etc in this recovery. Keep a packaged target
-# file and bind the writable /tmp resolver over it so libc and Toybox can read
-# current DNS servers even though the recovery system tree is immutable.
-if ! is_bind_mounted; then
-    mount -o bind "$RESOLV_SOURCE" "$RESOLV_TARGET" 2>/dev/null || {
-        # Ramdisk builds may expose /system/etc as writable. Fall back to a
-        # normal copy there rather than leaving name resolution unavailable.
-        cp -f "$RESOLV_SOURCE" "$RESOLV_TARGET" 2>/dev/null || {
-            setprop twrp.wifi.dns.ready 0
-            log_msg "failed publishing resolver file to $RESOLV_TARGET"
-            exit 1
-        }
-    }
-fi
+# dhcpcd runs hooks with reduced privileges and therefore cannot perform the
+# bind mount itself. Toggle a property that init watches to start the root
+# resolver publisher service.
+setprop twrp.wifi.dns.request 0 2>/dev/null || true
+setprop twrp.wifi.dns.request 1 2>/dev/null || true
 
-setprop twrp.wifi.dns.ready 1
-log_msg "reason=${reason:-unknown} iface=$IFACE dns1=$DNS1 dns2=$DNS2 resolver=$RESOLV_TARGET"
-
+# Publishing is asynchronous. A successful hook means DNS data was collected;
+# the root helper owns the mount and ready-state verification.
 exit 0
