@@ -45,6 +45,10 @@ echo
 for patch in "${PATCHES[@]}"; do
     name="$(basename "$patch")"
 
+    if ! git apply --numstat "$patch" >/dev/null; then
+        fail "Patch syntax validation failed: $name"
+    fi
+
     if git -C "$RECOVERY_DIR" apply --reverse --check "$patch" >/dev/null 2>&1; then
         echo "[already applied] $name"
         continue
@@ -52,7 +56,7 @@ for patch in "${PATCHES[@]}"; do
 
     if ! git -C "$RECOVERY_DIR" apply --check "$patch"; then
         echo >&2
-        echo "Patch validation failed: $name" >&2
+        echo "Patch applicability validation failed: $name" >&2
         echo "The recovery checkout may have moved beyond the source revision this patch targets." >&2
         echo "Current HEAD:   $CURRENT_HEAD" >&2
         echo "Reference HEAD: $EXPECTED_BASE" >&2
