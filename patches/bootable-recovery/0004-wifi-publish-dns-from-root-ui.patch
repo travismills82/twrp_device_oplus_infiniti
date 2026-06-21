@@ -1,0 +1,67 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Travis Mills <travismills82@gmail.com>
+Date: Sat, 20 Jun 2026 23:55:00 -0400
+Subject: [PATCH] gui: publish DNS from the root recovery process
+
+The dhcpcd hook runs with reduced privileges. It can collect lease DNS servers
+and write /tmp/twrp-resolv.conf, but it cannot bind-mount that file over the
+read-only recovery resolver target.
+
+Invoke the packaged root DNS publisher synchronously after DHCP assigns an IP
+and again before the connectivity test. Require twrp.wifi.dns.ready=1 before a
+connection is reported as fully configured, and show the helper output when
+publication fails.
+---
+ gui/action.cpp | 27 +++++++++++++++++++++++++++
+ 1 file changed, 27 insertions(+)
+
+diff --git a/gui/action.cpp b/gui/action.cpp
+index 00000000..00000000 100644
+--- a/gui/action.cpp
++++ b/gui/action.cpp
+@@ -2891,6 +2891,20 @@ int GUIAction::wlanconnect(std::string arg __unused) {
+         return -1;
+     }
+ 
++    logBox->AddLogLine("[INFO] Publishing DNS resolver state...", "normal");
++    gui_forceRender();
++
++    const std::string dns_publish_result = trim_output(run_command_get_output(
++        "/system/bin/twrp-dns-publish wlan0 2>&1"));
++    const std::string dns_ready = trim_output(run_command_get_output(
++        "getprop twrp.wifi.dns.ready"));
++
++    if (dns_ready != "1") {
++        logBox->AddLogLine("[ERROR] DNS resolver setup failed", "error");
++        if (!dns_publish_result.empty())
++            logBox->AddLogLine("        " + dns_publish_result, "error");
++        gui_forceRender();
++        return -1;
++    }
++
+     // 获取网关
+     std::string gateway = run_command_get_output("netstat -rn | grep wlan0 | grep UG | awk '{print $2}'");
+     while (!gateway.empty() && (gateway.back() == '\n' || gateway.back() == '\r'))
+@@ -2994,6 +3008,19 @@ int GUIAction::wlantest(std::string arg __unused) {
+     logBox->AddLogLine("[INFO] Testing network connectivity...", "normal");
+     gui_forceRender();
+ 
++    const std::string dns_publish_result = run_command_get_output(
++        "/system/bin/twrp-dns-publish wlan0 2>&1");
++    const std::string dns_ready = run_command_get_output(
++        "getprop twrp.wifi.dns.ready | tr -d '\\r\\n'");
++
++    if (dns_ready == "1") {
++        logBox->AddLogLine("[INFO] DNS resolver state: ready", "normal");
++    } else {
++        logBox->AddLogLine("[ERROR] DNS resolver state is not ready", "error");
++        if (!dns_publish_result.empty())
++            logBox->AddLogLine("        " + dns_publish_result, "error");
++    }
++    gui_forceRender();
++
+     const char* ping_bin = "/system/bin/ping";
+     const char* iface = "wlan0";
+ 
+-- 
+2.43.0
