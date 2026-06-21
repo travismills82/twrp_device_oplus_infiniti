@@ -65,6 +65,15 @@ LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/system/bin
 include $(BUILD_PREBUILT)
 
 include $(CLEAR_VARS)
+LOCAL_MODULE := twrp-dns-publish
+LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE_CLASS := EXECUTABLES
+LOCAL_SRC_FILES := recovery/root/system/bin/twrp-dns-publish
+LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/system/bin
+LOCAL_POST_INSTALL_CMD = chmod 0755 $(LOCAL_INSTALLED_MODULE)
+include $(BUILD_PREBUILT)
+
+include $(CLEAR_VARS)
 LOCAL_MODULE := twrp-dhcpcd-run-hooks
 LOCAL_MODULE_STEM := dhcpcd-run-hooks
 LOCAL_MODULE_TAGS := optional
