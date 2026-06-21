@@ -1,0 +1,77 @@
+#!/system/bin/sh
+# Publish TWRP DNS resolver state from a root-owned process.
+
+IFACE="${1:-wlan0}"
+RESOLV_SOURCE="/tmp/twrp-resolv.conf"
+RESOLV_TARGET="/system/etc/resolv.conf"
+
+log_msg() {
+    echo "[twrp-dns] $1"
+    echo "[twrp-dns] $1" > /dev/kmsg 2>/dev/null || true
+}
+
+first_nonempty() {
+    for value in "$@"; do
+        [ -n "$value" ] && {
+            echo "$value"
+            return 0
+        }
+    done
+    return 1
+}
+
+DNS1="$(first_nonempty \
+    "$(getprop twrp.wifi.dns1 2>/dev/null)" \
+    "$(getprop dhcp.${IFACE}.dns1 2>/dev/null)" \
+    "$(getprop net.${IFACE}.dns1 2>/dev/null)" \
+    "$(getprop net.dns1 2>/dev/null)" \
+    "1.1.1.1")"
+
+DNS2="$(first_nonempty \
+    "$(getprop twrp.wifi.dns2 2>/dev/null)" \
+    "$(getprop dhcp.${IFACE}.dns2 2>/dev/null)" \
+    "$(getprop net.${IFACE}.dns2 2>/dev/null)" \
+    "$(getprop net.dns2 2>/dev/null)" \
+    "8.8.8.8")"
+
+setprop twrp.wifi.dns.ready 0 2>/dev/null || true
+mkdir -p /tmp 2>/dev/null || true
+
+{
+    echo "nameserver $DNS1"
+    [ "$DNS2" = "$DNS1" ] || echo "nameserver $DNS2"
+    echo "options timeout:2 attempts:2"
+} > "$RESOLV_SOURCE" || {
+    log_msg "failed writing $RESOLV_SOURCE"
+    exit 1
+}
+
+chown root root "$RESOLV_SOURCE" 2>/dev/null || true
+chmod 0644 "$RESOLV_SOURCE" 2>/dev/null || true
+
+if ! grep -q " $RESOLV_TARGET " /proc/mounts 2>/dev/null; then
+    mount -o bind "$RESOLV_SOURCE" "$RESOLV_TARGET" 2>/tmp/twrp-dns-mount.err || {
+        log_msg "bind mount failed: $(cat /tmp/twrp-dns-mount.err 2>/dev/null)"
+        exit 1
+    }
+fi
+
+if ! grep -q "^nameserver $DNS1$" "$RESOLV_TARGET" 2>/dev/null; then
+    log_msg "resolver target does not expose $DNS1"
+    exit 1
+fi
+
+setprop "dhcp.${IFACE}.dns1" "$DNS1" 2>/dev/null || true
+setprop "dhcp.${IFACE}.dns2" "$DNS2" 2>/dev/null || true
+setprop "net.${IFACE}.dns1" "$DNS1" 2>/dev/null || true
+setprop "net.${IFACE}.dns2" "$DNS2" 2>/dev/null || true
+setprop net.dns1 "$DNS1" 2>/dev/null || true
+setprop net.dns2 "$DNS2" 2>/dev/null || true
+setprop twrp.wifi.dns1 "$DNS1" 2>/dev/null || true
+setprop twrp.wifi.dns2 "$DNS2" 2>/dev/null || true
+setprop twrp.wifi.dns.request 0 2>/dev/null || true
+setprop twrp.wifi.dns.ready 1 2>/dev/null || true
+
+log_msg "resolver ready iface=$IFACE dns1=$DNS1 dns2=$DNS2 target=$RESOLV_TARGET"
+cat "$RESOLV_TARGET"
+exit 0
