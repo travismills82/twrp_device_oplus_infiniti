@@ -15,6 +15,7 @@ DEFAULT_SOURCE_ROOT="$(CDPATH= cd -- "$DEVICE_DIR/../../.." && pwd)"
 SOURCE_ROOT="${1:-$DEFAULT_SOURCE_ROOT}"
 RECOVERY_DIR="$SOURCE_ROOT/bootable/recovery"
 PATCH_DIR="$DEVICE_DIR/patches/bootable-recovery"
+HELPER_VALIDATOR="$SCRIPT_DIR/validate-helper-modules.sh"
 EXPECTED_BASE="6bd8134ec8ff4cb29eb25797cbb20796f8455204"
 PIGZ_MAX_CALL='execlp("pigz", "pigz", "-9", "-", NULL)'
 DNS_PUBLISH_CALL='/system/bin/twrp-dns-publish wlan0 2>&1'
@@ -24,6 +25,9 @@ fail() {
     echo "ERROR: $*" >&2
     exit 1
 }
+
+[ -f "$HELPER_VALIDATOR" ] || fail "Helper module validator was not found: $HELPER_VALIDATOR"
+bash "$HELPER_VALIDATOR"
 
 [ -d "$RECOVERY_DIR/.git" ] ||
     fail "TWRP recovery source was not found at $RECOVERY_DIR"
@@ -95,6 +99,7 @@ if ! grep -F -q "$NANDSWAP_EXCLUSION" "$RECOVERY_DIR/partition.cpp"; then
     fail "FBE backup path does not directly exclude /data/nandswap"
 fi
 
+echo "[verified] helper module identities and runtime paths are unversioned"
 echo "[verified] pigz -9 is active for compressed and compressed-encrypted backups"
 echo "[verified] OrangeFox filename compatibility is removed from the file selector"
 echo "[verified] Wi-Fi connection and test paths publish DNS from the root recovery process"
