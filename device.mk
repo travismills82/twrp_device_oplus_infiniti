@@ -43,17 +43,17 @@ PRODUCT_PACKAGES += \
 	twrp-dynamic-flash-helper \
 	twrp-partition-backup \
 	twrp-recovery-tools \
-	twrp-root-patcher-v2 \
+	twrp-root-patcher \
 	twrp-magisk-bundled \
 	twrp-flash-magisk \
-	twrp-wifi-start-v2 \
+	twrp-wifi-start \
 	twrp-dns-publish \
 	twrp-dhcpcd-run-hooks \
 	twrp-resolv-conf \
 	twrp-ping \
-	twrp-smb-mount-v1 \
+	twrp-smb-mount \
 	twrp-touch-start \
-	twrp-decrypt-prereqs-v2
+	twrp-decrypt-prereqs
 
 # Recovery FBE/decryption userspace
 PRODUCT_PACKAGES += \
