@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <algo>
-	<version>2025092601</version>
-	<algo-version>v2.0.9.85</algo-version>
+	<version>2025121601</version>
+	<algo-version>v2.0.10.186</algo-version>
 		<modules id="AlgoParam" enable="true" hint="">
 			<param name="prjId" type="u32" hint="">
 				<value>24831</value>
@@ -32,6 +32,10 @@
 			</param>
 		</modules>
 		<modules id="Touch Threshold" enable="true" hint="">
+			<param name="enterIdleThd" type="u32" hint="">
+				<value>150</value>
+				<range>0,300</range>
+			</param>
 			<param name="posPeakThd" type="u32" hint="">
 				<value>180</value>
 				<range>0,300</range>
@@ -55,6 +59,20 @@
 			<param name="filmPeakMinLimitThd" type="u32" hint="">
 				<value>110</value>
 				<range>0,900</range>
+			</param>
+		</modules>
+		<modules id="FwFloatCompensate" enable="true" hint="">
+			<param name="exitFwFloatCompensateEn" type="u32" hint=""><!-- 退出固件悬浮补偿判断逻辑使能开关 -->
+				<value>1</value>
+				<range>0,10</range>
+			</param>
+			<param name="thickFilmThd" type="u32" hint=""><!-- 信号量阈值 -->
+				<value>700</value>
+				<range>0,10</range>
+			</param>
+			<param name="reduceFloatCompensateEn" type="u32" hint=""><!-- 贴膜游戏下悬浮补偿减弱使能开关 -->
+				<value>1</value>
+				<range>0,10</range>
 			</param>
 		</modules>
 		<modules id="Coord" enable="true" hint="">
@@ -163,6 +181,14 @@
 				<range>0,1000</range>
 			</param>
 			<param name="frontFilterEn" type="u32" hint="">
+				<value>1</value>
+				<range>0,10</range>
+			</param>
+			<param name="coordKalmForAbnormalFingerEn" type="u32" hint=""><!-- 是否对于异形手指全程开启前端卡尔曼滤波 -->
+				<value>1</value>
+				<range>0,10</range>
+			</param>
+			<param name="disAttenuationProjectionEn" type="u32" hint=""><!-- 是否使用根据距离对电容值进行衰减 -->
 				<value>1</value>
 				<range>0,10</range>
 			</param>
@@ -885,6 +911,9 @@
 			<param name="prevention,large_exit_condition" type="u32" hint="" >
 				<value>8,8,2</value>
 			</param>
+			<param name="prevention,large_exit_condition_game" type="u32" hint="" >
+				<value>100,8,1,0</value>
+			</param>
 			<param name="prevention,single_channel_width" type="u32" hint="" >
 				<value>603,603</value>
 			</param>
@@ -912,11 +941,17 @@
 			<param name="prevention,long_strict_edge_condition" type="u32" hint="" >
 				<value>190,80</value>
 			</param>
+			<param name="prevention,long_strict_edge_condition_game" type="u32" hint="" >
+				<value>255,120</value>
+			</param>
 			<param name="prevention,short_strict_edge_condition" type="u32" hint="" >
 				<value>160,80</value>
 			</param>
 			<param name="prevention,large_strict_exit_condition" type="u32" hint="" >
 				<value>6,6</value>
+			</param>
+			<param name="prevention,large_strict_exit_condition_game" type="u32" hint="" >
+				<value>100,6</value>
 			</param>
 			<param name="prevention,corner_move_rejected" type="u32" hint="" >
 				<value>0</value>
@@ -986,6 +1021,9 @@
 			</param>
 			<param name="prevention,long_edge_condition_recli" type="u32" hint="" >
 				<value>210,90,120,80</value>
+			</param>
+			<param name="prevention,long_edge_condition_game" type="u32" hint="" >
+				<value>255,90,120,80,0</value>
 			</param>
 			<param name="prevention,large_corner_judge_condition_ime" type="u32" hint="" >
 				<value>300,0,0,0,0</value>

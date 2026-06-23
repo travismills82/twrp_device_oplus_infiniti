@@ -1,5 +1,5 @@
 ﻿<filter-conf>
-    <version>2025100901</version>
+    <version>2026010401</version>
     <isOpen>1</isOpen>
     <filter-name>sys_scene_touch_config</filter-name>
 
@@ -7,7 +7,8 @@
 			<default>
 				<!-- HBP框架应用调整触控效果参数 -->
 				<!-- 优化触控锁点参数 -->
-				<command name="sensitive_level"	value="mod para_effect sensitive_level:16"/>
+				<!-- sensitive_level default 0xFFFF -->
+				<command name="sensitive_level"	value="mod para_effect sensitive_level:65535"/>
 				<command name="set_package_type"	value="mod para_effect set_package_type:0"/>
 			</default>
 
@@ -15,8 +16,8 @@
 			<packages>
 				<!--本配置针对应用的包名列表 -->
 				<pkg_list>
-					<item name="com.oneplus.calculator" /><!---计算器-->
 					<item name="com.coloros.calculator" /><!---计算器-->
+					<item name="com.oneplus.calculator" /><!---计算器-->
 					<item name="oplus.inputting_method" /><!---输入法-->
 				</pkg_list>
 					<!--包名列表中，某个包的默认配置，基于外层的default配置增量修改，如果配置了某个包名的场景，必须配置一个如下对应的默认配置 -->
@@ -83,6 +84,33 @@
 			<packages>
 				<!--本配置针对应用的包名列表 -->
 				<pkg_list>
+					<item name="com.tencent.ig" /> <!--PUBG-->
+				</pkg_list>
+				<default>
+					<command name="set_package_type"	value="mod para_effect set_package_type:4118"/>
+				</default>
+			</packages>
+			<packages>
+				<!--本配置针对应用的包名列表 -->
+				<pkg_list>
+					<item name="com.dts.freefireth" /> <!--Free Fire-->
+				</pkg_list>
+				<default>
+					<command name="set_package_type"	value="mod para_effect set_package_type:4119"/>
+				</default>
+			</packages>
+			<packages>
+				<!--本配置针对应用的包名列表 -->
+				<pkg_list>
+					<item name="com.tencent.tmgp.codev" /> <!--无畏契约-->
+				</pkg_list>
+				<default>
+					<command name="set_package_type"	value="mod para_effect set_package_type:4120"/>
+				</default>
+			</packages>
+			<packages>
+				<!--本配置针对应用的包名列表 -->
+				<pkg_list>
 					<item name="com.tencent.tmgp.sgame" /> <!--王者荣耀-->
 				</pkg_list>
 				<default>
@@ -119,6 +147,15 @@
 			<packages>
 				<!--本配置针对应用的包名列表 -->
 				<pkg_list>
+					<item name="com.tencent.nfsonline" /> <!--极品飞车-->
+				</pkg_list>
+				<default>
+					<command name="set_package_type"	value="mod para_effect set_package_type:4146"/>
+				</default>
+			</packages>
+			<packages>
+				<!--本配置针对应用的包名列表 -->
+				<pkg_list>
 					<item name="com.android.launcher" /> <!--桌面-->
 				</pkg_list>
 				<default>
@@ -141,6 +178,24 @@
 				</pkg_list>
 				<default>
 					<command name="set_package_type"	value="mod para_effect set_package_type:28674"/>
+				</default>
+			</packages>
+			<packages>
+				<!--本配置针对应用的包名列表 -->
+				<pkg_list>
+					<item name="com.antutu.ABenchMark" /> <!--安兔兔-->
+				</pkg_list>
+				<default>
+					<command name="set_package_type"	value="mod para_effect set_package_type:32768"/>
+				</default>
+			</packages>
+			<packages>
+				<!--本配置针对应用的包名列表 -->
+				<pkg_list>
+					<item name="com.ludashi.benchmark" /> <!--鲁大师-->
+				</pkg_list>
+				<default>
+					<command name="set_package_type"	value="mod para_effect set_package_type:32769"/>
 				</default>
 			</packages>
 		</device>

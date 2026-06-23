@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <custom>
-	<version>2025082501</version>
+	<version>2025091101</version>
 	<fwk-version>v5.0.0</fwk-version>
 	<modules id="charger" enable="true" hint="support charger detect?">
 		<param name="default" type="bool" hint="charger off: 0, charger on: 1">
@@ -203,7 +203,7 @@
 			<value>1</value>
 		</param>
 	</modules>
-	<modules id="idlefreq_support" enable="true" hint="">
+	<modules id="idle_freq_support" enable="true" hint="">
 		<param name="default" type="bool" hint="">
 			<value>0</value>
 		</param>
@@ -213,12 +213,12 @@
 	</modules>
 	<modules id="vsync_test_support" enable="true" hint="">
 		<param name="default" type="bool" hint="">
-			<value>1</value>
+			<value>0</value>
 		</param>
 	</modules>
 	<modules id="hsync_test_support" enable="true" hint="">
 		<param name="default" type="bool" hint="">
-			<value>1</value>
+			<value>0</value>
 		</param>
 	</modules>
 </custom>
