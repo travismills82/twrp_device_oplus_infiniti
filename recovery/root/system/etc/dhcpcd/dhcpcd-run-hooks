@@ -7,7 +7,6 @@
 IFACE="${interface:-wlan0}"
 FALLBACK_DNS1="${TWRP_DNS1:-1.1.1.1}"
 FALLBACK_DNS2="${TWRP_DNS2:-8.8.8.8}"
-RESOLV_SOURCE="/tmp/twrp-resolv.conf"
 
 DNS_LIST="${new_domain_name_servers:-${domain_name_servers:-}}"
 
@@ -34,20 +33,13 @@ case "$DNSCHANGE" in
 esac
 setprop net.dnschange "$((DNSCHANGE + 1))" 2>/dev/null || true
 
-{
-    echo "nameserver $DNS1"
-    [ "$DNS2" = "$DNS1" ] || echo "nameserver $DNS2"
-    echo "options timeout:2 attempts:2"
-} > "$RESOLV_SOURCE" 2>/dev/null || exit 1
-
-chmod 0644 "$RESOLV_SOURCE" 2>/dev/null || true
-
-# dhcpcd runs hooks with reduced privileges and therefore cannot perform the
-# bind mount itself. Toggle a property that init watches to start the root
-# resolver publisher service.
+# dhcpcd runs hooks with reduced privileges and cannot safely create or replace
+# /tmp/twrp-resolv.conf. Toggle the property watched by init instead; the
+# root-owned twrp-dns-publish service creates the resolver file, bind-mounts it
+# onto /system/etc/resolv.conf, and verifies the resulting DNS state.
 setprop twrp.wifi.dns.request 0 2>/dev/null || true
 setprop twrp.wifi.dns.request 1 2>/dev/null || true
 
 # Publishing is asynchronous. A successful hook means DNS data was collected;
-# the root helper owns the mount and ready-state verification.
+# the root helper owns resolver creation, the bind mount, and ready-state checks.
 exit 0
