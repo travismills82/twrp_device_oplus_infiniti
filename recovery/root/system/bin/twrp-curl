@@ -1,0 +1,17 @@
+#!/system/bin/sh
+# TWRP curl wrapper.
+#
+# Credentials and SSH host keys should be staged only under /tmp/twrp-network.
+# Do not bake private keys or passwords into the recovery image.
+
+CURL_BIN="${TWRP_CURL_BIN:-/system/bin/curl}"
+TWRP_NET_HOME="${HOME:-/tmp/twrp-network}"
+
+mkdir -p "$TWRP_NET_HOME/.ssh" 2>/dev/null || true
+chmod 0700 "$TWRP_NET_HOME" "$TWRP_NET_HOME/.ssh" 2>/dev/null || true
+
+export HOME="$TWRP_NET_HOME"
+export SSL_CERT_FILE="${SSL_CERT_FILE:-/system/etc/security/cacerts/cacert.pem}"
+export CURL_CA_BUNDLE="${CURL_CA_BUNDLE:-/system/etc/security/cacerts/cacert.pem}"
+
+exec "$CURL_BIN" "$@"

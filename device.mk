@@ -52,6 +52,10 @@ PRODUCT_PACKAGES += \
 	twrp-resolv-conf \
 	twrp-ping \
 	twrp-smb-mount \
+	twrp-curl-bin \
+	twrp-curl \
+	twrp-sftp \
+	twrp-curl-cacert \
 	twrp-touch-start \
 	twrp-decrypt-prereqs
 

@@ -123,6 +123,44 @@ LOCAL_SRC_FILES := recovery/root/system/bin/twrp-decrypt-prereqs
 LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/system/bin
 include $(BUILD_PREBUILT)
 
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := twrp-curl-bin
+LOCAL_MODULE_STEM := curl
+LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE_CLASS := EXECUTABLES
+LOCAL_SRC_FILES := recovery/root/system/bin/curl
+LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/system/bin
+LOCAL_POST_INSTALL_CMD = chmod 0755 $(LOCAL_INSTALLED_MODULE)
+include $(BUILD_PREBUILT)
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := twrp-curl
+LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE_CLASS := EXECUTABLES
+LOCAL_SRC_FILES := recovery/root/system/bin/twrp-curl
+LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/system/bin
+LOCAL_POST_INSTALL_CMD = chmod 0755 $(LOCAL_INSTALLED_MODULE)
+include $(BUILD_PREBUILT)
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := twrp-sftp
+LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE_CLASS := EXECUTABLES
+LOCAL_SRC_FILES := recovery/root/system/bin/twrp-sftp
+LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/system/bin
+LOCAL_POST_INSTALL_CMD = chmod 0755 $(LOCAL_INSTALLED_MODULE)
+include $(BUILD_PREBUILT)
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := twrp-curl-cacert
+LOCAL_MODULE_STEM := cacert.pem
+LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE_CLASS := ETC
+LOCAL_SRC_FILES := recovery/root/system/etc/security/cacerts/cacert.pem
+LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/system/etc/security/cacerts
+include $(BUILD_PREBUILT)
+
 ifneq ($(wildcard $(LOCAL_PATH)/prebuilts/magisk/Magisk.apk),)
 include $(CLEAR_VARS)
 LOCAL_MODULE := bundled-magisk-apk

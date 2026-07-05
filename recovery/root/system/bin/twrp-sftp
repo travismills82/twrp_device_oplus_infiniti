@@ -1,0 +1,186 @@
+#!/system/bin/sh
+# Small SFTP/SCP-oriented helper for TWRP recovery.
+#
+# Examples:
+#   twrp-sftp list travis@192.168.3.10:/home/travis/twrp-sftp-test/
+#   twrp-sftp download travis@192.168.3.10:/home/travis/file.zip /sdcard/Download/file.zip
+#   twrp-sftp upload /tmp/recovery.log travis@192.168.3.10:/home/travis/recovery.log
+#
+# Optional:
+#   --known-hosts /tmp/twrp-network/known_hosts
+#   --key /tmp/twrp-network/id_rsa
+#   --pubkey /tmp/twrp-network/id_rsa.pub
+#   --password PASSWORD
+#   --port 2222
+#   --insecure
+
+set -u
+
+CURL="${TWRP_CURL_WRAPPER:-/system/bin/twrp-curl}"
+KNOWN_HOSTS="${TWRP_SFTP_KNOWN_HOSTS:-/tmp/twrp-network/known_hosts}"
+KEY="${TWRP_SFTP_KEY:-/tmp/twrp-network/id_rsa}"
+PUBKEY="${TWRP_SFTP_PUBKEY:-/tmp/twrp-network/id_rsa.pub}"
+PORT="${TWRP_SFTP_PORT:-22}"
+PASSWORD=""
+INSECURE=0
+
+die() {
+    echo "twrp-sftp: $*" >&2
+    exit 1
+}
+
+usage() {
+    cat >&2 <<USAGE
+Usage:
+  twrp-sftp [options] list USER@HOST:/remote/path/
+  twrp-sftp [options] download USER@HOST:/remote/file LOCAL_FILE
+  twrp-sftp [options] upload LOCAL_FILE USER@HOST:/remote/file
+
+Options:
+  --known-hosts FILE   SSH known_hosts file, default: /tmp/twrp-network/known_hosts
+  --key FILE           SSH private key, default: /tmp/twrp-network/id_rsa
+  --pubkey FILE        SSH public key, default: /tmp/twrp-network/id_rsa.pub
+  --password PASS      Password auth fallback. Avoid this when possible.
+  --port PORT          SSH/SFTP port, default: 22
+  --insecure           Disable known_hosts verification. Local testing only.
+USAGE
+    exit 2
+}
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --known-hosts)
+            KNOWN_HOSTS="${2:-}"
+            shift 2
+            ;;
+        --key)
+            KEY="${2:-}"
+            shift 2
+            ;;
+        --pubkey)
+            PUBKEY="${2:-}"
+            shift 2
+            ;;
+        --password)
+            PASSWORD="${2:-}"
+            shift 2
+            ;;
+        --port)
+            PORT="${2:-}"
+            shift 2
+            ;;
+        --insecure)
+            INSECURE=1
+            shift
+            ;;
+        --help|-h)
+            usage
+            ;;
+        --)
+            shift
+            break
+            ;;
+        -*)
+            die "unknown option: $1"
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
+[ $# -ge 2 ] || usage
+
+COMMAND="$1"
+shift
+
+remote_to_url() {
+    REMOTE_SPEC="$1"
+
+    case "$REMOTE_SPEC" in
+        *:*) ;;
+        *) die "remote must look like USER@HOST:/path" ;;
+    esac
+
+    USER_HOST="${REMOTE_SPEC%%:*}"
+    REMOTE_PATH="${REMOTE_SPEC#*:}"
+
+    case "$REMOTE_PATH" in
+        /*) ;;
+        *) REMOTE_PATH="/$REMOTE_PATH" ;;
+    esac
+
+    case "$USER_HOST" in
+        *@*)
+            REMOTE_USER="${USER_HOST%@*}"
+            REMOTE_HOST="${USER_HOST#*@}"
+            ;;
+        *)
+            REMOTE_USER="${TWRP_SFTP_USER:-}"
+            REMOTE_HOST="$USER_HOST"
+            ;;
+    esac
+
+    [ -n "$REMOTE_USER" ] || die "missing remote user"
+    [ -n "$REMOTE_HOST" ] || die "missing remote host"
+
+    USER_AUTH="$REMOTE_USER:$PASSWORD"
+    REMOTE_URL="sftp://$REMOTE_HOST:$PORT$REMOTE_PATH"
+}
+
+run_curl() {
+    [ -x "$CURL" ] || die "curl wrapper not executable: $CURL"
+
+    set -- --fail --show-error --connect-timeout 20 --user "$USER_AUTH"
+
+    if [ "$INSECURE" = "1" ]; then
+        set -- "$@" --insecure
+    else
+        [ -r "$KNOWN_HOSTS" ] || die "missing known_hosts: $KNOWN_HOSTS"
+        set -- "$@" --knownhosts "$KNOWN_HOSTS"
+    fi
+
+    [ -r "$KEY" ] && set -- "$@" --key "$KEY"
+    [ -r "$PUBKEY" ] && set -- "$@" --pubkey "$PUBKEY"
+
+    case "$COMMAND" in
+        list)
+            "$CURL" "$@" --list-only "$REMOTE_URL"
+            ;;
+        download)
+            LOCAL_OUT="$1"
+            [ -n "$LOCAL_OUT" ] || die "missing local output path"
+            "$CURL" "$@" --output "$LOCAL_OUT" "$REMOTE_URL"
+            ;;
+        upload)
+            LOCAL_IN="$1"
+            [ -r "$LOCAL_IN" ] || die "missing or unreadable local input: $LOCAL_IN"
+            "$CURL" "$@" --upload-file "$LOCAL_IN" "$REMOTE_URL"
+            ;;
+        *)
+            die "unknown command: $COMMAND"
+            ;;
+    esac
+}
+
+case "$COMMAND" in
+    list)
+        [ $# -eq 1 ] || usage
+        remote_to_url "$1"
+        run_curl
+        ;;
+    download)
+        [ $# -eq 2 ] || usage
+        remote_to_url "$1"
+        run_curl "$2"
+        ;;
+    upload)
+        [ $# -eq 2 ] || usage
+        LOCAL_FILE="$1"
+        remote_to_url "$2"
+        run_curl "$LOCAL_FILE"
+        ;;
+    *)
+        usage
+        ;;
+esac

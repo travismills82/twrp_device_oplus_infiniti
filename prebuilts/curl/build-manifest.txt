@@ -1,0 +1,30 @@
+Installed from twrp-curl-arm64-bundle.tar.gz
+
+script_version=1.5
+ndk=~/Android/Sdk/ndk
+api=36
+openssl_tag=openssl-3.5.7
+libssh2_tag=libssh2-1.11.1
+curl_tag=curl-8_20_0
+
+===== file =====
+~/Downloads/twrp-curl-arm64-bundle/bin/curl: ELF 64-bit LSB pie executable, ARM aarch64, version 1 (SYSV), dynamically linked, interpreter /system/bin/linker64, for Android 35, built by NDK r27d (13750724), BuildID[sha1]=082c3c126820ec43e8372ddb614f90a7ce7cd20e, stripped
+
+===== needed libraries =====
+  0x0000000000000001 (NEEDED)       Shared library: [libdl.so]
+  0x0000000000000001 (NEEDED)       Shared library: [libm.so]
+  0x0000000000000001 (NEEDED)       Shared library: [libc.so]
+
+===== bundle files =====
+bin/curl 6840112 bytes
+build-manifest.txt 838 bytes
+certs/cacert.pem 189462 bytes
+README-twrp-curl-test.txt 1504 bytes
+twrp-curl 380 bytes
+
+===== sha256 =====
+495d380aa75d52b312619b511a4f83e9f5f553b2687061befdf70b73199aaf9b  ./bin/curl
+eb2f4fa6061aa882b5239e2eb7de31fde526ff743f1162d7d03472d2762d0531  ./build-manifest.txt
+86a1f3366afac7c6f8ae9f3c779ac221129328c43f0ab2b8817eb2f362a5025c  ./certs/cacert.pem
+74476ef74215af9586f5ef245d82dce49a2513229341b037f944ccf809c817f9  ./README-twrp-curl-test.txt
+7b45ad198ea7172f683e0f3ef7ee8c9a8e02c3c60b7e86a51921e025eb7edc53  ./twrp-curl
