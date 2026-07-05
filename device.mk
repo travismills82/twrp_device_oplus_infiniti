@@ -55,6 +55,8 @@ PRODUCT_PACKAGES += \
 	twrp-curl-bin \
 	twrp-curl \
 	twrp-sftp \
+	twrp-ftp-backup \
+	twrp-ftp-restore \
 	twrp-curl-cacert \
 	twrp-touch-start \
 	twrp-decrypt-prereqs
