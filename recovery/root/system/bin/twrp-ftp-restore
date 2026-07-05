@@ -1,10 +1,12 @@
 #!/system/bin/sh
 # Download a TWRP backup archive from FTP/FTPS over Wi-Fi and extract it for restore.
+# By default, the downloaded archive keeps the original remote archive filename.
 
 set -u
 
 CURL="${TWRP_CURL_WRAPPER:-/system/bin/twrp-curl}"
-ARCHIVE="/sdcard/TWRP/restore-incoming/backup.tar"
+ARCHIVE=""
+INCOMING_DIR="${TWRP_RESTORE_INCOMING:-/sdcard/TWRP/restore-incoming}"
 RESTORE_ROOT=""
 EXTRACT=1
 INSECURE=0
@@ -15,7 +17,7 @@ Usage:
   twrp-ftp-restore [options] FTP_OR_FTPS_FILE_URL USER PASS
 
 Options:
-  --archive FILE      Local archive path. Default: /sdcard/TWRP/restore-incoming/backup.tar
+  --archive FILE      Local archive path. Default: preserve remote filename in /sdcard/TWRP/restore-incoming
   --restore-root DIR  Restore root. Default: /sdcard/TWRP/BACKUPS/<serial>
   --download-only     Download only; do not extract.
   --curl PATH         curl wrapper path. Default: /system/bin/twrp-curl
@@ -32,15 +34,45 @@ die() {
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --archive) ARCHIVE="${2:-}"; shift 2 ;;
-        --restore-root) RESTORE_ROOT="${2:-}"; shift 2 ;;
-        --download-only) EXTRACT=0; shift ;;
-        --curl) CURL="${2:-}"; shift 2 ;;
-        --insecure) INSECURE=1; shift ;;
-        --help|-h) usage ;;
-        --) shift; break ;;
-        -*) die "unknown option: $1" ;;
-        *) break ;;
+        --archive)
+            shift
+            [ $# -gt 0 ] || die "--archive requires a local archive path"
+            ARCHIVE="$1"
+            shift
+            ;;
+        --restore-root)
+            shift
+            [ $# -gt 0 ] || die "--restore-root requires a restore directory"
+            RESTORE_ROOT="$1"
+            shift
+            ;;
+        --download-only)
+            EXTRACT=0
+            shift
+            ;;
+        --curl)
+            shift
+            [ $# -gt 0 ] || die "--curl requires a path"
+            CURL="$1"
+            shift
+            ;;
+        --insecure)
+            INSECURE=1
+            shift
+            ;;
+        --help|-h)
+            usage
+            ;;
+        --)
+            shift
+            break
+            ;;
+        -*)
+            die "unknown option: $1"
+            ;;
+        *)
+            break
+            ;;
     esac
 done
 
@@ -61,6 +93,19 @@ SERIAL="$(getprop ro.serialno 2>/dev/null || true)"
 [ -n "$SERIAL" ] || SERIAL="unknown-serial"
 [ -n "$RESTORE_ROOT" ] || RESTORE_ROOT="/sdcard/TWRP/BACKUPS/$SERIAL"
 
+if [ -z "$ARCHIVE" ]; then
+    URL_NO_QUERY="${FTP_FILE_URL%%\?*}"
+    REMOTE_BASENAME="${URL_NO_QUERY##*/}"
+    [ -n "$REMOTE_BASENAME" ] || REMOTE_BASENAME="backup.tar"
+
+    case "$REMOTE_BASENAME" in
+        *.tar|*.tar.gz|*.tgz) ;;
+        *) REMOTE_BASENAME="$REMOTE_BASENAME.tar" ;;
+    esac
+
+    ARCHIVE="$INCOMING_DIR/$REMOTE_BASENAME"
+fi
+
 ARCHIVE_DIR="${ARCHIVE%/*}"
 [ "$ARCHIVE_DIR" = "$ARCHIVE" ] && ARCHIVE_DIR="."
 mkdir -p "$ARCHIVE_DIR" || die "failed to create archive directory: $ARCHIVE_DIR"
@@ -69,6 +114,7 @@ set -- --fail --show-error --connect-timeout 30 --user "$FTP_USER:$FTP_PASS"
 [ "$INSECURE" = "1" ] && set -- "$@" --insecure
 
 echo "Downloading backup archive over Wi-Fi: $FTP_FILE_URL"
+echo "Saving archive as: $ARCHIVE"
 "$CURL" "$@" --output "$ARCHIVE" "$FTP_FILE_URL" || die "download failed"
 
 if [ "$EXTRACT" != "1" ]; then
@@ -80,5 +126,6 @@ mkdir -p "$RESTORE_ROOT" || die "failed to create restore root: $RESTORE_ROOT"
 tar -C "$RESTORE_ROOT" -xf "$ARCHIVE" || die "failed to extract archive"
 
 echo "Restore archive extracted to: $RESTORE_ROOT"
+echo "Downloaded archive kept at: $ARCHIVE"
 echo "Open TWRP Restore and select the restored backup folder."
 ls -la "$RESTORE_ROOT"
