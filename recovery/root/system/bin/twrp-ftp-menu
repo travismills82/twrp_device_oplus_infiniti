@@ -1,0 +1,335 @@
+#!/system/bin/sh
+# Interactive FTP/FTPS backup menu for TWRP Terminal.
+#
+# Config file format:
+#   name|ftp_or_ftps_directory_url|username|password
+#
+# Default config path:
+#   /sdcard/TWRP/ftp.conf
+#
+# The config stores credentials as plain text. Use a dedicated FTP account with
+# limited permissions and prefer FTPS when the server supports it.
+
+set -u
+
+CONF="${TWRP_FTP_CONF:-/sdcard/TWRP/ftp.conf}"
+CURL="${TWRP_CURL_WRAPPER:-/system/bin/twrp-curl}"
+BACKUP_HELPER="${TWRP_FTP_BACKUP:-/system/bin/twrp-ftp-backup}"
+RESTORE_HELPER="${TWRP_FTP_RESTORE:-/system/bin/twrp-ftp-restore}"
+ACTIVE_NAME=""
+ACTIVE_URL=""
+ACTIVE_USER=""
+ACTIVE_PASS=""
+
+pause() {
+    echo
+    echo "Press Enter to continue..."
+    read _ans
+}
+
+say() {
+    echo "twrp-ftp-menu: $*"
+}
+
+warn_plaintext() {
+    echo
+    echo "WARNING: $CONF stores FTP server entries and passwords as plain text."
+    echo "Use a dedicated backup account with limited folder permissions."
+    echo "Prefer ftps:// or sftp:// workflows when possible."
+    echo
+}
+
+ensure_conf() {
+    DIR="${CONF%/*}"
+    [ "$DIR" = "$CONF" ] && DIR="."
+    mkdir -p "$DIR" 2>/dev/null || true
+    [ -f "$CONF" ] || touch "$CONF" 2>/dev/null || true
+    chmod 0600 "$CONF" 2>/dev/null || true
+}
+
+normalize_dir_url() {
+    URL="$1"
+    case "$URL" in
+        ftp://*|ftps://*) ;;
+        *)
+            echo ""
+            return
+            ;;
+    esac
+    case "$URL" in
+        */) echo "${URL%/}" ;;
+        *) echo "$URL" ;;
+    esac
+}
+
+join_url() {
+    BASE="$1"
+    FILE="$2"
+    case "$BASE" in
+        */) echo "${BASE}${FILE}" ;;
+        *) echo "${BASE}/${FILE}" ;;
+    esac
+}
+
+load_entry_by_number() {
+    NUM="$1"
+    COUNT=0
+    while IFS='|' read -r NAME URL USER PASS EXTRA; do
+        [ -n "${NAME:-}" ] || continue
+        case "$NAME" in \#*) continue ;; esac
+        COUNT=$((COUNT + 1))
+        if [ "$COUNT" = "$NUM" ]; then
+            ACTIVE_NAME="$NAME"
+            ACTIVE_URL="$URL"
+            ACTIVE_USER="$USER"
+            ACTIVE_PASS="$PASS"
+            return 0
+        fi
+    done < "$CONF"
+    return 1
+}
+
+show_active() {
+    if [ -n "$ACTIVE_NAME" ]; then
+        echo "Active server: $ACTIVE_NAME ($ACTIVE_URL)"
+    else
+        echo "Active server: none selected"
+    fi
+}
+
+list_servers() {
+    ensure_conf
+    echo
+    echo "Saved FTP/FTPS servers in $CONF:"
+    COUNT=0
+    while IFS='|' read -r NAME URL USER PASS EXTRA; do
+        [ -n "${NAME:-}" ] || continue
+        case "$NAME" in \#*) continue ;; esac
+        COUNT=$((COUNT + 1))
+        echo "  $COUNT) $NAME  $URL  user=$USER"
+    done < "$CONF"
+    [ "$COUNT" -gt 0 ] || echo "  none"
+}
+
+add_server() {
+    ensure_conf
+    warn_plaintext
+
+    echo "Server name, for example: home-ftp"
+    read NAME
+    [ -n "$NAME" ] || { say "server name required"; return; }
+    case "$NAME" in *'|'*) say "server name cannot contain |"; return ;; esac
+
+    echo "FTP/FTPS directory URL, for example: ftp://192.168.3.10/twrp-backups"
+    read URL
+    URL="$(normalize_dir_url "$URL")"
+    [ -n "$URL" ] || { say "URL must start with ftp:// or ftps://"; return; }
+    case "$URL" in *'|'*) say "URL cannot contain |"; return ;; esac
+
+    echo "Username:"
+    read USER
+    [ -n "$USER" ] || { say "username required"; return; }
+    case "$USER" in *'|'*) say "username cannot contain |"; return ;; esac
+
+    echo "Password. Input will be visible in TWRP Terminal:"
+    read PASS
+    case "$PASS" in *'|'*) say "password cannot contain |"; return ;; esac
+
+    echo "Save this server to $CONF? Type YES to confirm:"
+    read OK
+    [ "$OK" = "YES" ] || { say "not saved"; return; }
+
+    printf '%s|%s|%s|%s\n' "$NAME" "$URL" "$USER" "$PASS" >> "$CONF"
+    chmod 0600 "$CONF" 2>/dev/null || true
+
+    ACTIVE_NAME="$NAME"
+    ACTIVE_URL="$URL"
+    ACTIVE_USER="$USER"
+    ACTIVE_PASS="$PASS"
+    say "saved and selected: $ACTIVE_NAME"
+}
+
+select_server() {
+    ensure_conf
+    list_servers
+    echo
+    echo "Select server number:"
+    read NUM
+    case "$NUM" in ''|*[!0-9]*) say "invalid number"; return ;; esac
+    if load_entry_by_number "$NUM"; then
+        say "selected: $ACTIVE_NAME"
+    else
+        say "server not found"
+    fi
+}
+
+require_server() {
+    [ -n "$ACTIVE_URL" ] || { say "select or add a server first"; return 1; }
+    return 0
+}
+
+curl_base_args() {
+    set -- --fail --show-error --connect-timeout 30 --user "$ACTIVE_USER:$ACTIVE_PASS"
+    case "$ACTIVE_URL" in ftps://*) set -- "$@" --ftp-ssl-reqd ;; esac
+    echo "$@"
+}
+
+remote_list() {
+    require_server || return
+    echo
+    say "listing $ACTIVE_URL"
+    "$CURL" --fail --show-error --connect-timeout 30 --user "$ACTIVE_USER:$ACTIVE_PASS" --list-only "$ACTIVE_URL/"
+}
+
+test_connection() {
+    require_server || return
+    SERIAL="$(getprop ro.serialno 2>/dev/null || echo unknown-serial)"
+    TEST_FILE=".twrp-ftp-test-$SERIAL.txt"
+    TEST_LOCAL="/tmp/$TEST_FILE"
+    TEST_DOWN="/tmp/$TEST_FILE.down"
+    TEST_URL="$(join_url "$ACTIVE_URL" "$TEST_FILE")"
+
+    echo "TWRP FTP test from $SERIAL" > "$TEST_LOCAL"
+
+    say "testing directory listing"
+    "$CURL" --fail --show-error --connect-timeout 30 --user "$ACTIVE_USER:$ACTIVE_PASS" --list-only "$ACTIVE_URL/" || return
+
+    say "testing upload"
+    "$CURL" --fail --show-error --connect-timeout 30 --ftp-create-dirs --user "$ACTIVE_USER:$ACTIVE_PASS" --upload-file "$TEST_LOCAL" "$TEST_URL" || return
+
+    say "testing download"
+    "$CURL" --fail --show-error --connect-timeout 30 --user "$ACTIVE_USER:$ACTIVE_PASS" --output "$TEST_DOWN" "$TEST_URL" || return
+
+    echo
+    say "FTP/FTPS test passed"
+    cat "$TEST_DOWN" 2>/dev/null || true
+}
+
+run_backup() {
+    require_server || return
+    [ -x "$BACKUP_HELPER" ] || { say "missing backup helper: $BACKUP_HELPER"; return; }
+    echo "Backup options:"
+    echo "  1) Newest backup folder"
+    echo "  2) Specific backup folder"
+    echo "  3) Custom remote archive name"
+    read CHOICE
+    case "$CHOICE" in
+        2)
+            echo "Backup folder name:"
+            read BNAME
+            [ -n "$BNAME" ] || { say "backup folder required"; return; }
+            "$BACKUP_HELPER" --backup "$BNAME" "$ACTIVE_URL" "$ACTIVE_USER" "$ACTIVE_PASS"
+            ;;
+        3)
+            echo "Remote archive name, for example oneplus15-backup.tar:"
+            read RNAME
+            [ -n "$RNAME" ] || { say "remote filename required"; return; }
+            "$BACKUP_HELPER" --remote-name "$RNAME" "$ACTIVE_URL" "$ACTIVE_USER" "$ACTIVE_PASS"
+            ;;
+        *)
+            "$BACKUP_HELPER" "$ACTIVE_URL" "$ACTIVE_USER" "$ACTIVE_PASS"
+            ;;
+    esac
+}
+
+run_restore() {
+    require_server || return
+    [ -x "$RESTORE_HELPER" ] || { say "missing restore helper: $RESTORE_HELPER"; return; }
+    echo "Remote backup archive filename, for example backup.tar:"
+    read RFILE
+    [ -n "$RFILE" ] || { say "remote filename required"; return; }
+    case "$RFILE" in
+        ftp://*|ftps://*) RURL="$RFILE" ;;
+        *) RURL="$(join_url "$ACTIVE_URL" "$RFILE")" ;;
+    esac
+    "$RESTORE_HELPER" "$RURL" "$ACTIVE_USER" "$ACTIVE_PASS"
+}
+
+upload_logs() {
+    require_server || return
+    SERIAL="$(getprop ro.serialno 2>/dev/null || echo unknown-serial)"
+    TS="$(date +%Y%m%d-%H%M%S 2>/dev/null || echo now)"
+    OUT="/tmp/twrp-log-$SERIAL-$TS.txt"
+    RURL="$(join_url "$ACTIVE_URL" "twrp-log-$SERIAL-$TS.txt")"
+
+    {
+        echo "===== curl version ====="
+        "$CURL" --version 2>&1
+        echo
+        echo "===== ip addr ====="
+        ip addr 2>&1
+        echo
+        echo "===== ip route ====="
+        ip route 2>&1
+        echo
+        echo "===== recovery.log ====="
+        cat /tmp/recovery.log 2>&1
+    } > "$OUT"
+
+    "$CURL" --fail --show-error --connect-timeout 30 --ftp-create-dirs --user "$ACTIVE_USER:$ACTIVE_PASS" --upload-file "$OUT" "$RURL"
+}
+
+net_info() {
+    echo "===== active server ====="
+    show_active
+    echo
+    echo "===== ip addr ====="
+    ip addr 2>/dev/null || ifconfig 2>/dev/null
+    echo
+    echo "===== route ====="
+    ip route 2>/dev/null || route -n 2>/dev/null
+    echo
+    echo "===== curl ====="
+    "$CURL" --version 2>/dev/null || true
+}
+
+delete_config() {
+    echo "Delete $CONF? Type DELETE to confirm:"
+    read OK
+    [ "$OK" = "DELETE" ] || { say "not deleted"; return; }
+    rm -f "$CONF"
+    ACTIVE_NAME=""
+    ACTIVE_URL=""
+    ACTIVE_USER=""
+    ACTIVE_PASS=""
+    say "deleted config"
+}
+
+main_menu() {
+    ensure_conf
+    while true; do
+        echo
+        echo "TWRP FTP/FTPS Wireless Backup Menu"
+        echo "==================================="
+        show_active
+        echo
+        echo "1) Add FTP/FTPS server to ftp.conf"
+        echo "2) Select FTP/FTPS server from ftp.conf"
+        echo "3) Test selected server"
+        echo "4) Upload newest TWRP backup"
+        echo "5) List remote backup folder"
+        echo "6) Restore backup archive"
+        echo "7) Upload recovery log and network info"
+        echo "8) Show network info"
+        echo "9) Delete ftp.conf"
+        echo "0) Exit"
+        echo
+        echo "Choice:"
+        read CHOICE
+        case "$CHOICE" in
+            1) add_server; pause ;;
+            2) select_server; pause ;;
+            3) test_connection; pause ;;
+            4) run_backup; pause ;;
+            5) remote_list; pause ;;
+            6) run_restore; pause ;;
+            7) upload_logs; pause ;;
+            8) net_info; pause ;;
+            9) delete_config; pause ;;
+            0) exit 0 ;;
+            *) say "invalid choice"; pause ;;
+        esac
+    done
+}
+
+main_menu
