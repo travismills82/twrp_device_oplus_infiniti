@@ -1,0 +1,151 @@
+#!/system/bin/sh
+# Upload the newest TWRP backup folder to an FTP or FTPS server over Wi-Fi.
+#
+# Run from TWRP Terminal after connecting Wi-Fi and creating a normal TWRP backup.
+#
+# Examples:
+#   twrp-ftp-backup ftp://192.168.3.10/twrp-backups username password
+#   twrp-ftp-backup ftps://192.168.3.10/twrp-backups username password
+#   twrp-ftp-backup --backup 2026-07-05--21-30-00 ftp://192.168.3.10/twrp-backups username password
+#
+# Plain FTP sends usernames, passwords, and data unencrypted. Use FTPS or SFTP
+# for real backups when possible.
+
+set -u
+
+CURL="${TWRP_CURL_WRAPPER:-/system/bin/twrp-curl}"
+BACKUP_ROOT=""
+BACKUP_NAME=""
+REMOTE_NAME=""
+INSECURE=0
+
+usage() {
+    cat >&2 <<USAGE
+Usage:
+  twrp-ftp-backup [options] FTP_OR_FTPS_DIR_URL USER PASSWORD
+
+Examples:
+  twrp-ftp-backup ftp://192.168.3.10/twrp-backups travis password
+  twrp-ftp-backup ftps://192.168.3.10/twrp-backups travis password
+  twrp-ftp-backup --backup 2026-07-05--21-30-00 ftp://192.168.3.10/twrp-backups travis password
+
+Options:
+  --backup NAME       Backup folder name under /sdcard/TWRP/BACKUPS/<serial>.
+                      Default: newest backup folder.
+  --backup-root DIR   Backup root. Default: /sdcard/TWRP/BACKUPS/<serial>.
+  --remote-name NAME  Remote archive filename. Default: <backup-name>.tar.
+  --curl PATH         curl wrapper path. Default: /system/bin/twrp-curl.
+  --insecure          Allow insecure FTPS certificate verification. Avoid if possible.
+  --help              Show this help.
+USAGE
+    exit 2
+}
+
+die() {
+    echo "twrp-ftp-backup: $*" >&2
+    exit 1
+}
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --backup)
+            BACKUP_NAME="${2:-}"
+            shift 2
+            ;;
+        --backup-root)
+            BACKUP_ROOT="${2:-}"
+            shift 2
+            ;;
+        --remote-name)
+            REMOTE_NAME="${2:-}"
+            shift 2
+            ;;
+        --curl)
+            CURL="${2:-}"
+            shift 2
+            ;;
+        --insecure)
+            INSECURE=1
+            shift
+            ;;
+        --help|-h)
+            usage
+            ;;
+        --)
+            shift
+            break
+            ;;
+        -*)
+            die "unknown option: $1"
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
+[ $# -eq 3 ] || usage
+
+FTP_DIR_URL="$1"
+FTP_USER="$2"
+FTP_PASS="$3"
+
+case "$FTP_DIR_URL" in
+    ftp://*|ftps://*) ;;
+    *) die "remote URL must start with ftp:// or ftps://" ;;
+esac
+
+[ -x "$CURL" ] || die "curl wrapper not executable: $CURL"
+
+SERIAL="$(getprop ro.serialno 2>/dev/null || true)"
+[ -n "$SERIAL" ] || SERIAL="unknown-serial"
+
+if [ -z "$BACKUP_ROOT" ]; then
+    BACKUP_ROOT="/sdcard/TWRP/BACKUPS/$SERIAL"
+fi
+
+[ -d "$BACKUP_ROOT" ] || die "backup root not found: $BACKUP_ROOT"
+
+if [ -z "$BACKUP_NAME" ]; then
+    BACKUP_NAME="$(ls -1t "$BACKUP_ROOT" 2>/dev/null | head -n 1)"
+fi
+
+[ -n "$BACKUP_NAME" ] || die "no backup folder found in $BACKUP_ROOT"
+[ -d "$BACKUP_ROOT/$BACKUP_NAME" ] || die "backup folder not found: $BACKUP_ROOT/$BACKUP_NAME"
+
+if [ -z "$REMOTE_NAME" ]; then
+    REMOTE_NAME="$BACKUP_NAME.tar"
+fi
+
+case "$FTP_DIR_URL" in
+    */) REMOTE_URL="${FTP_DIR_URL}${REMOTE_NAME}" ;;
+    *)  REMOTE_URL="${FTP_DIR_URL}/${REMOTE_NAME}" ;;
+esac
+
+echo "Backing up over Wi-Fi with curl FTP/FTPS"
+echo "  Source : $BACKUP_ROOT/$BACKUP_NAME"
+echo "  Target : $REMOTE_URL"
+echo
+
+cd "$BACKUP_ROOT" || die "failed to enter backup root: $BACKUP_ROOT"
+
+set -- \
+    --fail \
+    --show-error \
+    --connect-timeout 30 \
+    --ftp-create-dirs \
+    --user "$FTP_USER:$FTP_PASS"
+
+if [ "$INSECURE" = "1" ]; then
+    set -- "$@" --insecure
+fi
+
+tar -cf - "$BACKUP_NAME" | "$CURL" "$@" --upload-file - "$REMOTE_URL"
+RC=$?
+
+if [ "$RC" -ne 0 ]; then
+    die "FTP/FTPS backup upload failed"
+fi
+
+echo
+echo "Wireless FTP/FTPS backup upload complete: $REMOTE_URL"
