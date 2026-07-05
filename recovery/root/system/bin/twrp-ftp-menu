@@ -16,10 +16,14 @@ CONF="${TWRP_FTP_CONF:-/sdcard/TWRP/ftp.conf}"
 CURL="${TWRP_CURL_WRAPPER:-/system/bin/twrp-curl}"
 BACKUP_HELPER="${TWRP_FTP_BACKUP:-/system/bin/twrp-ftp-backup}"
 RESTORE_HELPER="${TWRP_FTP_RESTORE:-/system/bin/twrp-ftp-restore}"
+INCOMING_DIR="${TWRP_RESTORE_INCOMING:-/sdcard/TWRP/restore-incoming}"
+TMP_DIR="/tmp/twrp-ftp-menu"
 ACTIVE_NAME=""
 ACTIVE_URL=""
 ACTIVE_USER=""
 ACTIVE_PASS=""
+
+mkdir -p "$TMP_DIR" 2>/dev/null || true
 
 pause() {
     echo
@@ -33,9 +37,9 @@ say() {
 
 warn_plaintext() {
     echo
-    echo "WARNING: $CONF stores FTP server entries and passwords as plain text."
+    echo "WARNING: $CONF stores FTP/FTPS server entries and passwords as plain text."
     echo "Use a dedicated backup account with limited folder permissions."
-    echo "Prefer ftps:// or sftp:// workflows when possible."
+    echo "Prefer ftps:// when the server supports it."
     echo
 }
 
@@ -120,7 +124,7 @@ add_server() {
     [ -n "$NAME" ] || { say "server name required"; return; }
     case "$NAME" in *'|'*) say "server name cannot contain |"; return ;; esac
 
-    echo "FTP/FTPS directory URL, for example: ftp://192.168.3.10/twrp-backups"
+    echo "FTP/FTPS directory URL, for example: ftp://192.168.3.10:21/twrp"
     read URL
     URL="$(normalize_dir_url "$URL")"
     [ -n "$URL" ] || { say "URL must start with ftp:// or ftps://"; return; }
@@ -168,17 +172,38 @@ require_server() {
     return 0
 }
 
-curl_base_args() {
-    set -- --fail --show-error --connect-timeout 30 --user "$ACTIVE_USER:$ACTIVE_PASS"
-    case "$ACTIVE_URL" in ftps://*) set -- "$@" --ftp-ssl-reqd ;; esac
-    echo "$@"
-}
-
 remote_list() {
     require_server || return
     echo
     say "listing $ACTIVE_URL"
     "$CURL" --fail --show-error --connect-timeout 30 --user "$ACTIVE_USER:$ACTIVE_PASS" --list-only "$ACTIVE_URL/"
+}
+
+remote_archive_list() {
+    require_server || return 1
+
+    RAW_LIST="$TMP_DIR/remote-list.txt"
+    ARCHIVE_LIST="$TMP_DIR/remote-archives.txt"
+    rm -f "$RAW_LIST" "$ARCHIVE_LIST"
+
+    "$CURL" --fail --show-error --connect-timeout 30 --user "$ACTIVE_USER:$ACTIVE_PASS" --list-only "$ACTIVE_URL/" > "$RAW_LIST" || return 1
+
+    sed 's/\r$//' "$RAW_LIST" | while IFS= read -r LINE; do
+        FILE="${LINE##*/}"
+        case "$FILE" in
+            *.tar|*.tar.gz|*.tgz) echo "$FILE" ;;
+        esac
+    done > "$ARCHIVE_LIST"
+
+    [ -s "$ARCHIVE_LIST" ] || return 2
+
+    COUNT=0
+    while IFS= read -r FILE; do
+        COUNT=$((COUNT + 1))
+        echo "  $COUNT) $FILE"
+    done < "$ARCHIVE_LIST"
+
+    return 0
 }
 
 test_connection() {
@@ -235,14 +260,69 @@ run_backup() {
 run_restore() {
     require_server || return
     [ -x "$RESTORE_HELPER" ] || { say "missing restore helper: $RESTORE_HELPER"; return; }
-    echo "Remote backup archive filename, for example backup.tar:"
-    read RFILE
-    [ -n "$RFILE" ] || { say "remote filename required"; return; }
-    case "$RFILE" in
-        ftp://*|ftps://*) RURL="$RFILE" ;;
-        *) RURL="$(join_url "$ACTIVE_URL" "$RFILE")" ;;
+
+    echo "Remote backup archives:"
+    echo
+    remote_archive_list
+    RC="$?"
+
+    if [ "$RC" = "1" ]; then
+        say "failed to list remote folder"
+        return
+    fi
+
+    if [ "$RC" = "2" ]; then
+        say "no .tar, .tar.gz, or .tgz backup archives found in $ACTIVE_URL"
+        echo "Type m at the next prompt to enter a filename manually."
+    fi
+
+    echo
+    echo "Select archive number to restore, or type m for manual filename:"
+    read RSEL
+
+    case "$RSEL" in
+        m|M)
+            echo "Remote backup archive filename or full ftp:// / ftps:// URL:"
+            read RFILE
+            [ -n "$RFILE" ] || { say "remote filename required"; return; }
+            case "$RFILE" in
+                ftp://*|ftps://*)
+                    RURL="$RFILE"
+                    URL_NO_QUERY="${RFILE%%\?*}"
+                    ARCHIVE_NAME="${URL_NO_QUERY##*/}"
+                    ;;
+                *)
+                    ARCHIVE_NAME="${RFILE##*/}"
+                    RURL="$(join_url "$ACTIVE_URL" "$ARCHIVE_NAME")"
+                    ;;
+            esac
+            ;;
+        ''|*[!0-9]*)
+            say "invalid selection"
+            return
+            ;;
+        *)
+            RFILE="$(sed -n "${RSEL}p" "$TMP_DIR/remote-archives.txt" 2>/dev/null || true)"
+            [ -n "$RFILE" ] || { say "archive not found"; return; }
+            ARCHIVE_NAME="${RFILE##*/}"
+            RURL="$(join_url "$ACTIVE_URL" "$ARCHIVE_NAME")"
+            ;;
     esac
-    "$RESTORE_HELPER" "$RURL" "$ACTIVE_USER" "$ACTIVE_PASS"
+
+    [ -n "$ARCHIVE_NAME" ] || ARCHIVE_NAME="backup.tar"
+    LOCAL_ARCHIVE="$INCOMING_DIR/$ARCHIVE_NAME"
+
+    echo
+    echo "Restore archive selected:"
+    echo "  Source : $RURL"
+    echo "  Target : $LOCAL_ARCHIVE"
+    echo
+    echo "Continue restore? Type YES to continue:"
+    read OK
+    [ "$OK" = "YES" ] || { say "restore cancelled"; return; }
+
+    mkdir -p "$INCOMING_DIR" 2>/dev/null || true
+    "$RESTORE_HELPER" --archive "$LOCAL_ARCHIVE" "$RURL" "$ACTIVE_USER" "$ACTIVE_PASS"
 }
 
 upload_logs() {
@@ -256,11 +336,11 @@ upload_logs() {
         echo "===== curl version ====="
         "$CURL" --version 2>&1
         echo
-        echo "===== ip addr ====="
-        ip addr 2>&1
+        echo "===== ifconfig ====="
+        ifconfig 2>&1
         echo
-        echo "===== ip route ====="
-        ip route 2>&1
+        echo "===== route ====="
+        route -n 2>&1
         echo
         echo "===== recovery.log ====="
         cat /tmp/recovery.log 2>&1
@@ -273,11 +353,14 @@ net_info() {
     echo "===== active server ====="
     show_active
     echo
-    echo "===== ip addr ====="
-    ip addr 2>/dev/null || ifconfig 2>/dev/null
+    echo "===== ifconfig ====="
+    ifconfig 2>/dev/null || ip addr 2>/dev/null
     echo
     echo "===== route ====="
-    ip route 2>/dev/null || route -n 2>/dev/null
+    route -n 2>/dev/null || ip route 2>/dev/null
+    echo
+    echo "===== wlan0 status ====="
+    wpa_cli -p /data/vendor/wifi/wpa/sockets -i wlan0 status 2>/dev/null || wpa_cli -i wlan0 status 2>/dev/null || true
     echo
     echo "===== curl ====="
     "$CURL" --version 2>/dev/null || true
