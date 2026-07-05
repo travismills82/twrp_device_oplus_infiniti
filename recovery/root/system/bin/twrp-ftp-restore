@@ -1,0 +1,84 @@
+#!/system/bin/sh
+# Download a TWRP backup archive from FTP/FTPS over Wi-Fi and extract it for restore.
+
+set -u
+
+CURL="${TWRP_CURL_WRAPPER:-/system/bin/twrp-curl}"
+ARCHIVE="/sdcard/TWRP/restore-incoming/backup.tar"
+RESTORE_ROOT=""
+EXTRACT=1
+INSECURE=0
+
+usage() {
+    cat >&2 <<USAGE
+Usage:
+  twrp-ftp-restore [options] FTP_OR_FTPS_FILE_URL USER PASS
+
+Options:
+  --archive FILE      Local archive path. Default: /sdcard/TWRP/restore-incoming/backup.tar
+  --restore-root DIR  Restore root. Default: /sdcard/TWRP/BACKUPS/<serial>
+  --download-only     Download only; do not extract.
+  --curl PATH         curl wrapper path. Default: /system/bin/twrp-curl
+  --insecure          Allow insecure FTPS certificate verification.
+  --help              Show this help.
+USAGE
+    exit 2
+}
+
+die() {
+    echo "twrp-ftp-restore: $*" >&2
+    exit 1
+}
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --archive) ARCHIVE="${2:-}"; shift 2 ;;
+        --restore-root) RESTORE_ROOT="${2:-}"; shift 2 ;;
+        --download-only) EXTRACT=0; shift ;;
+        --curl) CURL="${2:-}"; shift 2 ;;
+        --insecure) INSECURE=1; shift ;;
+        --help|-h) usage ;;
+        --) shift; break ;;
+        -*) die "unknown option: $1" ;;
+        *) break ;;
+    esac
+done
+
+[ $# -eq 3 ] || usage
+
+FTP_FILE_URL="$1"
+FTP_USER="$2"
+FTP_PASS="$3"
+
+case "$FTP_FILE_URL" in
+    ftp://*|ftps://*) ;;
+    *) die "remote URL must start with ftp:// or ftps://" ;;
+esac
+
+[ -x "$CURL" ] || die "curl wrapper not executable: $CURL"
+
+SERIAL="$(getprop ro.serialno 2>/dev/null || true)"
+[ -n "$SERIAL" ] || SERIAL="unknown-serial"
+[ -n "$RESTORE_ROOT" ] || RESTORE_ROOT="/sdcard/TWRP/BACKUPS/$SERIAL"
+
+ARCHIVE_DIR="${ARCHIVE%/*}"
+[ "$ARCHIVE_DIR" = "$ARCHIVE" ] && ARCHIVE_DIR="."
+mkdir -p "$ARCHIVE_DIR" || die "failed to create archive directory: $ARCHIVE_DIR"
+
+set -- --fail --show-error --connect-timeout 30 --user "$FTP_USER:$FTP_PASS"
+[ "$INSECURE" = "1" ] && set -- "$@" --insecure
+
+echo "Downloading backup archive over Wi-Fi: $FTP_FILE_URL"
+"$CURL" "$@" --output "$ARCHIVE" "$FTP_FILE_URL" || die "download failed"
+
+if [ "$EXTRACT" != "1" ]; then
+    echo "Downloaded: $ARCHIVE"
+    exit 0
+fi
+
+mkdir -p "$RESTORE_ROOT" || die "failed to create restore root: $RESTORE_ROOT"
+tar -C "$RESTORE_ROOT" -xf "$ARCHIVE" || die "failed to extract archive"
+
+echo "Restore archive extracted to: $RESTORE_ROOT"
+echo "Open TWRP Restore and select the restored backup folder."
+ls -la "$RESTORE_ROOT"
