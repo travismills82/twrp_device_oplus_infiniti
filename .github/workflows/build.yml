@@ -128,6 +128,7 @@ jobs:
       run: |
         python3 device/${{ github.event.inputs.DEVICE_PATH }}/tools/patch_twrp_magisk_theme.py bootable/recovery/gui/theme/common/portrait.xml
         grep -n "twrp-flash-magisk" bootable/recovery/gui/theme/common/portrait.xml
+        grep -n "twrp-ftp-menu" bootable/recovery/gui/theme/common/portrait.xml
 
     - name: Generate build info
       run: |
