@@ -1,0 +1,13 @@
+<!--
+Add this listitem inside the existing <page name="advanced"> listbox in the
+TWRP theme source to expose a GUI Advanced menu action.
+
+This opens /system/bin/twrp-ftp-menu in TWRP Terminal so the interactive
+FTP/FTPS backup and restore menu can read user input.
+-->
+<listitem name="FTP Menu">
+    <actions>
+        <action function="editfile">/system/bin/twrp-ftp-menu</action>
+        <action function="page">terminalcommand</action>
+    </actions>
+</listitem>
