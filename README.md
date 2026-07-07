@@ -2,7 +2,7 @@
 
 ## Supported devices
 
-- OnePlus 15
+- OnePlus 15 all variants
 
 ## Build it yourself
 
@@ -20,6 +20,19 @@ make recoveryimage
 ```
 
 If there is no error, `recovery.img` will be found in `out/target/product/infiniti/recovery.img`.
+
+## Flash recovery
+
+```shell
+fastboot flash recovery recovery.img
+```
+
+or
+
+```shell
+fastboot flash recovery_a recovery.img
+fastboot flash recovery_b recovery.img
+```
 
 ## Features
 
@@ -39,19 +52,9 @@ Works:
 - [X] Wireless LAN
 - [X] Wireless backup and restore over curl using FTP, FTPS, HTTP, HTTPS, SCP, SFTP, Telnet, and TFTP
 - [X] Interactive FTP/FTPS backup and restore menu in TWRP Terminal
+- [X] Magisk installation built in to recovery 
 
 ## Wireless backup and restore with curl
-
-The recovery includes:
-
-```text
-/system/bin/curl
-/system/bin/twrp-curl
-/system/bin/twrp-sftp
-/system/bin/twrp-ftp-menu
-/system/bin/twrp-ftp-backup
-/system/bin/twrp-ftp-restore
-```
 
 ADB can still be used for command/control while the backup data itself transfers over Wi-Fi from recovery to a Linux or Windows backup server.
 
@@ -188,26 +191,6 @@ Entering Extended Passive Mode
 Transfer complete
 ```
 
-For a Linux `vsftpd` server, useful settings include:
-
-```conf
-local_enable=YES
-write_enable=YES
-local_umask=022
-pasv_enable=YES
-pasv_min_port=40000
-pasv_max_port=40100
-```
-
-Open the firewall for the FTP control port and passive range:
-
-```shell
-sudo ufw allow 21/tcp
-sudo ufw allow 40000:40100/tcp
-```
-
-If listing works but upload fails with `550 Permission denied`, fix the backup folder ownership and confirm `write_enable=YES` in the FTP server config.
-
 ## Command-line FTP/FTPS helpers
 
 Upload the newest local TWRP backup folder:
@@ -255,16 +238,3 @@ twrp-smb-mount guest //192.168.1.25/Public public
 ```
 
 The utility requires CIFS support from the recovery kernel, either built in or provided by a compatible `cifs.ko`. It reports `cifs-unavailable` without changing other recovery services when that prerequisite is missing. SMB1 is intentionally disabled; automatic negotiation tries SMB 3.1.1, 3.0, then 2.1.
-
-## Flash recovery
-
-```shell
-fastboot flash recovery recovery.img
-```
-
-or
-
-```shell
-fastboot flash recovery_a recovery.img
-fastboot flash recovery_b recovery.img
-```
