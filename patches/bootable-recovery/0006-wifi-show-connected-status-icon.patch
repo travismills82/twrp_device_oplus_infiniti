@@ -1,0 +1,66 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Travis Mills <travismills82@gmail.com>
+Date: Tue, 7 Jul 2026 20:30:00 -0500
+Subject: [PATCH] gui: show Wi-Fi status icon after recovery connects
+
+Expose a transient tw_wifi_connected GUI variable when the recovery WLAN
+connection flow finishes DHCP and DNS setup. The portrait HDPI status bar uses
+that variable to show a small Wi-Fi icon beside the battery area.
+---
+ gui/action.cpp                 | 8 ++++++++
+ gui/theme/portrait_hdpi/ui.xml | 7 +++++++
+ 2 files changed, 15 insertions(+)
+
+diff --git a/gui/action.cpp b/gui/action.cpp
+index 00000000..00000000 100644
+--- a/gui/action.cpp
++++ b/gui/action.cpp
+@@ -2693,6 +2693,12 @@ int GUIAction::wlanconnect(std::string arg __unused) {
+         return -1;
+     }
+ 
++    auto set_wifi_connected = [](bool connected) {
++        DataManager::SetValue("tw_wifi_connected", connected ? "1" : "0");
++        android::base::SetProperty("twrp.wifi.connected", connected ? "1" : "0");
++    };
++    set_wifi_connected(false);
++
+     // 读取选中的 WLAN
+     std::string selectedWlan = DataManager::GetStrValue("tw_selected_wlan");
+     if (selectedWlan.empty()) {
+@@ -2921,6 +2927,8 @@ int GUIAction::wlanconnect(std::string arg __unused) {
+     logBox->AddLogLine("[INFO] Connected successfully", "normal");
+     logBox->AddLogLine("[INFO] IP Address: " + (ip_address.empty() ? "(unknown)" : ip_address), "normal");
+     logBox->AddLogLine("[INFO] Gateway: " + (gateway.empty() ? "(unknown)" : gateway), "normal");
++    set_wifi_connected(true);
++
+     if (!dns_servers.empty()) {
+         std::string dns_summary;
+         for (size_t i = 0; i < dns_servers.size(); ++i) {
+diff --git a/gui/theme/portrait_hdpi/ui.xml b/gui/theme/portrait_hdpi/ui.xml
+index 00000000..00000000 100644
+--- a/gui/theme/portrait_hdpi/ui.xml
++++ b/gui/theme/portrait_hdpi/ui.xml
+@@ -42,6 +42,7 @@
+ 		<image name="checkbox_true" filename="checkbox_true" retainaspect="1"/>
+ 		<image name="radio_false" filename="radio_false" retainaspect="1"/>
+ 		<image name="radio_true" filename="radio_true" retainaspect="1"/>
++		<image name="wifi_status" filename="wifi_status" retainaspect="1"/>
+ 		<image name="sort_asc" filename="sort_asc"/>
+ 		<image name="sort_desc" filename="sort_desc"/>
+ 		<image name="sort_empty" filename="sort_empty"/>
+@@ -306,6 +307,12 @@
+ 				<text>{@battery_pct=Battery: %tw_battery%}</text>
+ 			</text>
+ 
++			<image>
++				<condition var1="tw_wifi_connected" var2="1"/>
++				<image resource="wifi_status"/>
++				<placement x="720" y="22"/>
++			</image>
++
+ 			<!-- Custom position for status bar items if defined START -->
+ 
+ 			<text color="%text_color%">
+-- 
+2.43.0

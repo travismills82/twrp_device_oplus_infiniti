@@ -15,11 +15,13 @@ DEFAULT_SOURCE_ROOT="$(CDPATH= cd -- "$DEVICE_DIR/../../.." && pwd)"
 SOURCE_ROOT="${1:-$DEFAULT_SOURCE_ROOT}"
 RECOVERY_DIR="$SOURCE_ROOT/bootable/recovery"
 PATCH_DIR="$DEVICE_DIR/patches/bootable-recovery"
+THEME_ASSET_DIR="$DEVICE_DIR/assets/twrp-theme"
 HELPER_VALIDATOR="$SCRIPT_DIR/validate-helper-modules.sh"
 EXPECTED_BASE="6bd8134ec8ff4cb29eb25797cbb20796f8455204"
 PIGZ_MAX_CALL='execlp("pigz", "pigz", "-9", "-", NULL)'
 DNS_PUBLISH_CALL='/system/bin/twrp-dns-publish wlan0 2>&1'
 NANDSWAP_EXCLUSION='ExcludeAll(Mount_Point + "/nandswap")'
+WIFI_STATUS_ICON="$RECOVERY_DIR/gui/theme/portrait_hdpi/images/wifi_status.png"
 
 fail() {
     echo "ERROR: $*" >&2
@@ -53,6 +55,22 @@ for patch in "${PATCHES[@]}"; do
         fail "Patch syntax validation failed: $name"
     fi
 
+    case "$name" in
+        0001-wifi-use-returned-network-id.patch)
+            if grep -F -q 'Supplicant network ID' "$RECOVERY_DIR/gui/action.cpp"; then
+                echo "[already applied] $name"
+                continue
+            fi
+            ;;
+        0006-wifi-show-connected-status-icon.patch)
+            if grep -F -q 'tw_wifi_connected' "$RECOVERY_DIR/gui/action.cpp" &&
+                grep -F -q 'wifi_status' "$RECOVERY_DIR/gui/theme/portrait_hdpi/ui.xml"; then
+                echo "[already applied] $name"
+                continue
+            fi
+            ;;
+    esac
+
     if git -C "$RECOVERY_DIR" apply --reverse --check "$patch" >/dev/null 2>&1; then
         echo "[already applied] $name"
         continue
@@ -70,6 +88,11 @@ for patch in "${PATCHES[@]}"; do
     git -C "$RECOVERY_DIR" apply "$patch"
     echo "[applied] $name"
 done
+
+install -m 0644 "$THEME_ASSET_DIR/wifi_status.png" "$WIFI_STATUS_ICON"
+echo "[installed] portrait_hdpi Wi-Fi status icon"
+
+sed -i 's/[[:space:]]\+$//' "$RECOVERY_DIR/gui/theme/common/portrait.xml"
 
 git -C "$RECOVERY_DIR" diff --check
 
@@ -99,11 +122,24 @@ if ! grep -F -q "$NANDSWAP_EXCLUSION" "$RECOVERY_DIR/partition.cpp"; then
     fail "FBE backup path does not directly exclude /data/nandswap"
 fi
 
+if ! grep -F -q 'DataManager::SetValue("tw_wifi_connected", connected ? "1" : "0")' \
+    "$RECOVERY_DIR/gui/action.cpp"; then
+    fail "Wi-Fi connection path does not update tw_wifi_connected"
+fi
+
+if ! grep -F -q '<image name="wifi_status" filename="wifi_status" retainaspect="1"/>' \
+    "$RECOVERY_DIR/gui/theme/portrait_hdpi/ui.xml"; then
+    fail "portrait_hdpi theme does not declare the Wi-Fi status icon resource"
+fi
+
+[ -f "$WIFI_STATUS_ICON" ] || fail "Wi-Fi status icon asset was not installed"
+
 echo "[verified] helper module identities and runtime paths are unversioned"
 echo "[verified] pigz -9 is active for compressed and compressed-encrypted backups"
 echo "[verified] OrangeFox filename compatibility is removed from the file selector"
 echo "[verified] Wi-Fi connection and test paths publish DNS from the root recovery process"
 echo "[verified] FBE backups exclude regeneratable /data/nandswap data"
+echo "[verified] Wi-Fi status icon is wired into the portrait_hdpi status bar"
 
 echo
 echo "Recovery patches are ready for the next build."
