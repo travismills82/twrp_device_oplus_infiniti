@@ -51,6 +51,7 @@ PRODUCT_PACKAGES += \
 	twrp-dhcpcd-run-hooks \
 	twrp-resolv-conf \
 	twrp-ping \
+	twrp-parted-bin \
 	twrp-smb-mount \
 	twrp-curl-bin \
 	twrp-curl \
