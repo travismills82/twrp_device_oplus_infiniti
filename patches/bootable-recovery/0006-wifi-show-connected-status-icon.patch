@@ -28,15 +28,12 @@ index 00000000..00000000 100644
      // 读取选中的 WLAN
      std::string selectedWlan = DataManager::GetStrValue("tw_selected_wlan");
      if (selectedWlan.empty()) {
-@@ -2921,6 +2927,8 @@ int GUIAction::wlanconnect(std::string arg __unused) {
+@@ -2921,3 +2927,5 @@ int GUIAction::wlanconnect(std::string arg __unused) {
      logBox->AddLogLine("[INFO] Connected successfully", "normal");
      logBox->AddLogLine("[INFO] IP Address: " + (ip_address.empty() ? "(unknown)" : ip_address), "normal");
      logBox->AddLogLine("[INFO] Gateway: " + (gateway.empty() ? "(unknown)" : gateway), "normal");
 +    set_wifi_connected(true);
 +
-     if (!dns_servers.empty()) {
-         std::string dns_summary;
-         for (size_t i = 0; i < dns_servers.size(); ++i) {
 diff --git a/gui/theme/portrait_hdpi/ui.xml b/gui/theme/portrait_hdpi/ui.xml
 index 00000000..00000000 100644
 --- a/gui/theme/portrait_hdpi/ui.xml
