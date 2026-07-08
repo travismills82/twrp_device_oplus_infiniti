@@ -15,12 +15,15 @@ DEFAULT_SOURCE_ROOT="$(CDPATH= cd -- "$DEVICE_DIR/../../.." && pwd)"
 SOURCE_ROOT="${1:-$DEFAULT_SOURCE_ROOT}"
 RECOVERY_DIR="$SOURCE_ROOT/bootable/recovery"
 PATCH_DIR="$DEVICE_DIR/patches/bootable-recovery"
+THEME_ASSET_DIR="$DEVICE_DIR/assets/twrp-theme"
 HELPER_VALIDATOR="$SCRIPT_DIR/validate-helper-modules.sh"
 EXPECTED_BASE="6bd8134ec8ff4cb29eb25797cbb20796f8455204"
 PIGZ_MAX_CALL='execlp("pigz", "pigz", "-9", "-", NULL)'
 DNS_PUBLISH_CALL='/system/bin/twrp-dns-publish wlan0 2>&1'
 NANDSWAP_EXCLUSION='ExcludeAll(Mount_Point + "/nandswap")'
 WIFI_ICON_MARKER='OP15 Wi-Fi status icon START'
+WIFI_STATUS_ICON="$RECOVERY_DIR/gui/theme/portrait_hdpi/images/wifi_status.png"
+WIFI_STATUS_ICON_B64="$THEME_ASSET_DIR/wifi_status.png.b64"
 
 fail() {
     echo "ERROR: $*" >&2
@@ -33,7 +36,10 @@ bash "$HELPER_VALIDATOR"
 [ -d "$RECOVERY_DIR/.git" ] ||
     fail "TWRP recovery source was not found at $RECOVERY_DIR"
 
+[ -f "$WIFI_STATUS_ICON_B64" ] || fail "Wi-Fi status icon source was not found: $WIFI_STATUS_ICON_B64"
+
 command -v git >/dev/null 2>&1 || fail "git is not installed"
+command -v base64 >/dev/null 2>&1 || fail "base64 is not installed"
 
 mapfile -t PATCHES < <(find "$PATCH_DIR" -maxdepth 1 -type f -name '*.patch' | sort)
 [ "${#PATCHES[@]}" -gt 0 ] || fail "No recovery patches found in $PATCH_DIR"
@@ -63,7 +69,9 @@ for patch in "${PATCHES[@]}"; do
             ;;
         0006-wifi-show-connected-status-icon.patch)
             if grep -F -q 'tw_wifi_connected' "$RECOVERY_DIR/gui/action.cpp" &&
-                grep -F -q "$WIFI_ICON_MARKER" "$RECOVERY_DIR/gui/theme/portrait_hdpi/ui.xml"; then
+                grep -F -q "$WIFI_ICON_MARKER" "$RECOVERY_DIR/gui/theme/portrait_hdpi/ui.xml" &&
+                grep -F -q '<image name="wifi_status" filename="wifi_status" retainaspect="1"/>' \
+                    "$RECOVERY_DIR/gui/theme/portrait_hdpi/ui.xml"; then
                 echo "[already applied] $name"
                 continue
             fi
@@ -87,6 +95,11 @@ for patch in "${PATCHES[@]}"; do
     git -C "$RECOVERY_DIR" apply "$patch"
     echo "[applied] $name"
 done
+
+mkdir -p "$(dirname "$WIFI_STATUS_ICON")"
+base64 -d "$WIFI_STATUS_ICON_B64" > "$WIFI_STATUS_ICON"
+chmod 0644 "$WIFI_STATUS_ICON"
+echo "[installed] portrait_hdpi Wi-Fi status icon: $WIFI_STATUS_ICON"
 
 sed -i 's/[[:space:]]\+$//' "$RECOVERY_DIR/gui/theme/common/portrait.xml"
 
@@ -127,16 +140,19 @@ if ! grep -F -q "$WIFI_ICON_MARKER" "$RECOVERY_DIR/gui/theme/portrait_hdpi/ui.xm
     fail "portrait_hdpi theme does not draw the Wi-Fi status icon"
 fi
 
-if ! grep -F -q 'tw_wifi_icon_x1' "$RECOVERY_DIR/gui/theme/portrait_hdpi/ui.xml"; then
-    fail "portrait_hdpi theme does not define Wi-Fi status icon placement variables"
+if ! grep -F -q '<image name="wifi_status" filename="wifi_status" retainaspect="1"/>' \
+    "$RECOVERY_DIR/gui/theme/portrait_hdpi/ui.xml"; then
+    fail "portrait_hdpi theme does not declare the Wi-Fi status icon resource"
 fi
+
+[ -s "$WIFI_STATUS_ICON" ] || fail "Wi-Fi status icon asset was not installed"
 
 echo "[verified] helper module identities and runtime paths are unversioned"
 echo "[verified] pigz -9 is active for compressed and compressed-encrypted backups"
 echo "[verified] OrangeFox filename compatibility is removed from the file selector"
 echo "[verified] Wi-Fi connection and test paths publish DNS from the root recovery process"
 echo "[verified] FBE backups exclude regeneratable /data/nandswap data"
-echo "[verified] Wi-Fi status icon is wired into the portrait_hdpi status bar"
+echo "[verified] Wi-Fi status icon image resource is wired into the portrait_hdpi status bar"
 
 echo
 echo "Recovery patches are ready for the next build."
