@@ -4,18 +4,31 @@ Date: Tue, 7 Jul 2026 20:30:00 -0500
 Subject: [PATCH] gui: show Wi-Fi status icon after recovery connects
 
 Expose a transient tw_wifi_connected GUI variable when the recovery WLAN
-connection flow finishes DHCP and DNS setup. The portrait HDPI status bar uses
-that variable to show a small Wi-Fi icon beside the battery area.
+connection flow finishes DHCP and DNS setup. The portrait HDPI status bar draws
+a small built-in signal indicator from theme fill objects, so no new image asset
+is required.
+
+Keep the indicator passive: it is updated by the existing Wi-Fi connect and stop
+actions only, avoiding a page-template threaded action that can block decrypt.
 ---
- gui/action.cpp                 | 8 ++++++++
- gui/theme/portrait_hdpi/ui.xml | 7 +++++++
- 2 files changed, 15 insertions(+)
+ gui/action.cpp                 | 11 +++++++++++
+ gui/theme/portrait_hdpi/ui.xml | 30 ++++++++++++++++++++++++++++++
+ 2 files changed, 41 insertions(+)
 
 diff --git a/gui/action.cpp b/gui/action.cpp
 index 00000000..00000000 100644
 --- a/gui/action.cpp
 +++ b/gui/action.cpp
-@@ -2693,6 +2693,12 @@ int GUIAction::wlanconnect(std::string arg __unused) {
+@@ -2405,4 +2405,8 @@ int GUIAction::wlanstop(string arg __unused) {
+ 	GUIBorderedLogBox* logBox = FindWlanLogBox();
++	DataManager::SetValue("tw_wifi_connected", "0");
++	android::base::SetProperty("twrp.wifi.connected", "0");
++	android::base::SetProperty("twrp.wifi.ssid", "");
++	android::base::SetProperty("twrp.wifi.ip", "");
+ 	if (logBox) {
+ 		logBox->AddLogLine("[INFO] Stopping WLAN service...", "normal");
+ 		logBox->AddLogLine("[INFO] WLAN service stopped", "normal");
+@@ -2688,6 +2692,12 @@ int GUIAction::wlanconnect(std::string arg __unused) {
          return -1;
      }
  
@@ -28,36 +41,61 @@ index 00000000..00000000 100644
      // 读取选中的 WLAN
      std::string selectedWlan = DataManager::GetStrValue("tw_selected_wlan");
      if (selectedWlan.empty()) {
-@@ -2921,3 +2927,5 @@ int GUIAction::wlanconnect(std::string arg __unused) {
+@@ -2921,6 +2931,7 @@ int GUIAction::wlanconnect(std::string arg __unused) {
+         logBox->AddLogLine("[INFO] DNS: (unknown)", "normal");
+     }
+ 
++    set_wifi_connected(true);
      logBox->AddLogLine("[INFO] Connected successfully", "normal");
      logBox->AddLogLine("[INFO] IP Address: " + (ip_address.empty() ? "(unknown)" : ip_address), "normal");
      logBox->AddLogLine("[INFO] Gateway: " + (gateway.empty() ? "(unknown)" : gateway), "normal");
-+    set_wifi_connected(true);
-+
 diff --git a/gui/theme/portrait_hdpi/ui.xml b/gui/theme/portrait_hdpi/ui.xml
 index 00000000..00000000 100644
 --- a/gui/theme/portrait_hdpi/ui.xml
 +++ b/gui/theme/portrait_hdpi/ui.xml
-@@ -42,6 +42,7 @@
- 		<image name="checkbox_true" filename="checkbox_true" retainaspect="1"/>
- 		<image name="radio_false" filename="radio_false" retainaspect="1"/>
- 		<image name="radio_true" filename="radio_true" retainaspect="1"/>
-+		<image name="wifi_status" filename="wifi_status" retainaspect="1"/>
- 		<image name="sort_asc" filename="sort_asc"/>
- 		<image name="sort_desc" filename="sort_desc"/>
- 		<image name="sort_empty" filename="sort_empty"/>
-@@ -306,6 +307,12 @@
- 				<text>{@battery_pct=Battery: %tw_battery%}</text>
- 			</text>
+@@ -222,6 +222,19 @@
+ 		<variable name="tw_clock_24_pos_x" value="{clock_24_pos}"/>
+ 		<variable name="tw_cpu_pos_x" value="{cpu_pos}"/>
+ 		<variable name="tw_battery_pos_x" value="{battery_pos}"/>
++		<!-- OP15 Wi-Fi status icon variables START -->
++		<variable name="tw_wifi_connected" value="0"/>
++		<variable name="tw_wifi_icon_x1" value="740"/>
++		<variable name="tw_wifi_icon_x2" value="754"/>
++		<variable name="tw_wifi_icon_x3" value="768"/>
++		<variable name="tw_wifi_icon_y1" value="38"/>
++		<variable name="tw_wifi_icon_y2" value="28"/>
++		<variable name="tw_wifi_icon_y3" value="18"/>
++		<variable name="tw_wifi_icon_w" value="8"/>
++		<variable name="tw_wifi_icon_h1" value="17"/>
++		<variable name="tw_wifi_icon_h2" value="27"/>
++		<variable name="tw_wifi_icon_h3" value="37"/>
++		<!-- OP15 Wi-Fi status icon variables END -->
+ 	</variables>
  
-+			<image>
+ 	<mousecursor>
+@@ -272,6 +287,23 @@
+ 				<placement x="0" y="0" w="%screen_width%" h="%status_height%"/>
+ 			</fill>
+ 
++			<!-- OP15 Wi-Fi status icon START -->
++			<fill color="%text_color%">
 +				<condition var1="tw_wifi_connected" var2="1"/>
-+				<image resource="wifi_status"/>
-+				<placement x="720" y="22"/>
-+			</image>
++				<placement x="%tw_wifi_icon_x1%" y="%tw_wifi_icon_y1%" w="%tw_wifi_icon_w%" h="%tw_wifi_icon_h1%"/>
++			</fill>
 +
- 			<!-- Custom position for status bar items if defined START -->
- 
++			<fill color="%text_color%">
++				<condition var1="tw_wifi_connected" var2="1"/>
++				<placement x="%tw_wifi_icon_x2%" y="%tw_wifi_icon_y2%" w="%tw_wifi_icon_w%" h="%tw_wifi_icon_h2%"/>
++			</fill>
++
++			<fill color="%text_color%">
++				<condition var1="tw_wifi_connected" var2="1"/>
++				<placement x="%tw_wifi_icon_x3%" y="%tw_wifi_icon_y3%" w="%tw_wifi_icon_w%" h="%tw_wifi_icon_h3%"/>
++			</fill>
++			<!-- OP15 Wi-Fi status icon END -->
++
  			<text color="%text_color%">
+ 				<condition var1="tw_no_cpu_temp" var2="1"/>
+ 				<condition var1="tw_cpu_pos_x" var2="0"/>
 -- 
 2.43.0
