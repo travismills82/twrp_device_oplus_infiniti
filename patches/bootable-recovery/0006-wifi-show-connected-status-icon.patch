@@ -4,16 +4,15 @@ Date: Tue, 7 Jul 2026 20:30:00 -0500
 Subject: [PATCH] gui: show Wi-Fi status icon after recovery connects
 
 Expose a transient tw_wifi_connected GUI variable when the recovery WLAN
-connection flow finishes DHCP and DNS setup. The portrait HDPI status bar draws
-a small built-in signal indicator from theme fill objects, so no new image asset
-is required.
+connection flow finishes DHCP and DNS setup. The portrait HDPI status bar uses a
+real TWRP theme image resource, matching the local recovery build status icon.
 
 Keep the indicator passive: it is updated by the existing Wi-Fi connect and stop
 actions only, avoiding a page-template threaded action that can block decrypt.
 ---
  gui/action.cpp                 | 11 +++++++++++
- gui/theme/portrait_hdpi/ui.xml | 30 ++++++++++++++++++++++++++++++
- 2 files changed, 41 insertions(+)
+ gui/theme/portrait_hdpi/ui.xml |  9 +++++++++
+ 2 files changed, 20 insertions(+)
 
 diff --git a/gui/action.cpp b/gui/action.cpp
 index 00000000..00000000 100644
@@ -53,45 +52,32 @@ diff --git a/gui/theme/portrait_hdpi/ui.xml b/gui/theme/portrait_hdpi/ui.xml
 index 00000000..00000000 100644
 --- a/gui/theme/portrait_hdpi/ui.xml
 +++ b/gui/theme/portrait_hdpi/ui.xml
-@@ -222,6 +222,19 @@
+@@ -42,6 +42,7 @@
+ 		<image name="checkbox_true" filename="checkbox_true" retainaspect="1"/>
+ 		<image name="radio_false" filename="radio_false" retainaspect="1"/>
+ 		<image name="radio_true" filename="radio_true" retainaspect="1"/>
++		<image name="wifi_status" filename="wifi_status" retainaspect="1"/>
+ 		<image name="sort_asc" filename="sort_asc"/>
+ 		<image name="sort_desc" filename="sort_desc"/>
+ 		<image name="sort_empty" filename="sort_empty"/>
+@@ -222,6 +223,7 @@
  		<variable name="tw_clock_24_pos_x" value="{clock_24_pos}"/>
  		<variable name="tw_cpu_pos_x" value="{cpu_pos}"/>
  		<variable name="tw_battery_pos_x" value="{battery_pos}"/>
-+		<!-- OP15 Wi-Fi status icon variables START -->
 +		<variable name="tw_wifi_connected" value="0"/>
-+		<variable name="tw_wifi_icon_x1" value="740"/>
-+		<variable name="tw_wifi_icon_x2" value="754"/>
-+		<variable name="tw_wifi_icon_x3" value="768"/>
-+		<variable name="tw_wifi_icon_y1" value="38"/>
-+		<variable name="tw_wifi_icon_y2" value="28"/>
-+		<variable name="tw_wifi_icon_y3" value="18"/>
-+		<variable name="tw_wifi_icon_w" value="8"/>
-+		<variable name="tw_wifi_icon_h1" value="17"/>
-+		<variable name="tw_wifi_icon_h2" value="27"/>
-+		<variable name="tw_wifi_icon_h3" value="37"/>
-+		<!-- OP15 Wi-Fi status icon variables END -->
  	</variables>
  
  	<mousecursor>
-@@ -272,6 +287,23 @@
+@@ -272,6 +274,13 @@
  				<placement x="0" y="0" w="%screen_width%" h="%status_height%"/>
  			</fill>
  
 +			<!-- OP15 Wi-Fi status icon START -->
-+			<fill color="%text_color%">
++			<image>
 +				<condition var1="tw_wifi_connected" var2="1"/>
-+				<placement x="%tw_wifi_icon_x1%" y="%tw_wifi_icon_y1%" w="%tw_wifi_icon_w%" h="%tw_wifi_icon_h1%"/>
-+			</fill>
-+
-+			<fill color="%text_color%">
-+				<condition var1="tw_wifi_connected" var2="1"/>
-+				<placement x="%tw_wifi_icon_x2%" y="%tw_wifi_icon_y2%" w="%tw_wifi_icon_w%" h="%tw_wifi_icon_h2%"/>
-+			</fill>
-+
-+			<fill color="%text_color%">
-+				<condition var1="tw_wifi_connected" var2="1"/>
-+				<placement x="%tw_wifi_icon_x3%" y="%tw_wifi_icon_y3%" w="%tw_wifi_icon_w%" h="%tw_wifi_icon_h3%"/>
-+			</fill>
++				<image resource="wifi_status"/>
++				<placement x="720" y="22"/>
++			</image>
 +			<!-- OP15 Wi-Fi status icon END -->
 +
  			<text color="%text_color%">
