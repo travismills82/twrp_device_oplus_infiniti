@@ -99,8 +99,10 @@ PRODUCT_COPY_FILES += \
 	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/oplus_bsp_tp_syna_common.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/oplus_bsp_tp_syna_common.ko \
 	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/oplus_bsp_tp_tcm_S3910.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/oplus_bsp_tp_tcm_S3910.ko
 
+ifeq ($(WITH_BUNDLED_MAGISK),true)
 ifneq ($(wildcard $(DEVICE_PATH)/prebuilts/magisk/Magisk.apk),)
 PRODUCT_PACKAGES += bundled-magisk-apk
+endif
 endif
 
 # Soong namespaces

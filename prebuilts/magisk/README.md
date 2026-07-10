@@ -1,12 +1,13 @@
 # Optional bundled Magisk payload
 
-Place an official `Magisk.apk` in this directory before building recovery:
+Place an official `Magisk.apk` in this directory before building recovery with
+`WITH_BUNDLED_MAGISK=true`:
 
 ```text
 prebuilts/magisk/Magisk.apk
 ```
 
-The recovery device tree packages the payload to:
+That opt-in build packages the payload to:
 
 ```text
 /system/etc/magisk/Magisk.apk
