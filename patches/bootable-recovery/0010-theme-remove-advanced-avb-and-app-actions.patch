@@ -1,7 +1,13 @@
 diff --git a/gui/theme/common/portrait.xml b/gui/theme/common/portrait.xml
 --- a/gui/theme/common/portrait.xml
 +++ b/gui/theme/common/portrait.xml
-@@ -4070,11 +4069,0 @@
+@@ -4066,21 +4066,10 @@
+ 			<listbox style="advanced_listbox">
+ 				<placement x="%indent%" y="%row12a_y%" w="%content_width%" h="%listbox_advanced_height%"/>
+ 				<listitem name="{@change_twrp_folder_btn=Change TWRP folder}">
+ 					<condition var1="tw_is_decrypted" var2="1"/>
+ 					<action function="page">changeTwrpFolder</action>
+ 				</listitem>
 -				<listitem name="{@disable_avb2=Disable AVB2.0}">
 -					<actions>
 -						<action function="set">tw_back=advanced</action>
@@ -13,7 +19,14 @@ diff --git a/gui/theme/common/portrait.xml b/gui/theme/common/portrait.xml
 -						<action function="page">confirm_action</action>
 -					</actions>
 -				</listitem>
-@@ -4172,8 +4160,0 @@
+ 				<listitem name="{@decrypt_users=Decrypt Users}">
+ 					<conditions>
+ 						<condition var1="tw_is_fbe" var2="1"/>
+ 						<condition var1="tw_all_users_decrypted" var2="0"/>
+@@ -4171,14 +4160,6 @@
+ 						<action function="page">confirm_action</action>
+ 					</actions>
+ 				</listitem>
 -				<listitem name="{@reboot_install_app_hdr=Install TWRP App}">
 -					<condition var1="tw_app_install_status" var2="1"/>
 -					<actions>
@@ -22,3 +35,6 @@ diff --git a/gui/theme/common/portrait.xml b/gui/theme/common/portrait.xml
 -						<action function="page">installapp</action>
 -					</actions>
 -				</listitem>
+ 				<listitem name="{@uninstall_twrp_system_app=Uninstall TWRP App from System}">
+ 					<condition var1="tw_app_installed_in_system" var2="1"/>
+ 					<actions>
