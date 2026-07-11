@@ -1,0 +1,24 @@
+diff --git a/gui/theme/common/portrait.xml b/gui/theme/common/portrait.xml
+--- a/gui/theme/common/portrait.xml
++++ b/gui/theme/common/portrait.xml
+@@ -4070,11 +4069,0 @@
+-				<listitem name="{@disable_avb2=Disable AVB2.0}">
+-					<actions>
+-						<action function="set">tw_back=advanced</action>
+-						<action function="set">tw_action=disableAVB2</action>
+-						<action function="set">tw_text1={@disable_avb2_confirm=Disable AVB2.0?}</action>
+-						<action function="set">tw_action_text1={@disabling_AVB2=Disabling AVB2.0...}</action>
+-						<action function="set">tw_complete_text1={@disabling_AVB2_complete=Disabled AVB2.0}</action>
+-						<action function="set">tw_slider_text={@swipe_to_confirm=Swipe to Confirm}</action>
+-						<action function="page">confirm_action</action>
+-					</actions>
+-				</listitem>
+@@ -4172,8 +4160,0 @@
+-				<listitem name="{@reboot_install_app_hdr=Install TWRP App}">
+-					<condition var1="tw_app_install_status" var2="1"/>
+-					<actions>
+-						<action function="set">tw_back=advanced</action>
+-						<action function="set">tw_appinstall_title={@advanced_hdr=Advanced}</action>
+-						<action function="page">installapp</action>
+-					</actions>
+-				</listitem>
