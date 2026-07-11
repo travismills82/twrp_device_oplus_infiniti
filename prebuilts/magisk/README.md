@@ -1,16 +1,16 @@
-# Optional bundled Magisk payload
+# Bundled Magisk payload
 
-Place an official `Magisk.apk` in this directory before building recovery with
-`WITH_BUNDLED_MAGISK=true`:
-
-```text
-prebuilts/magisk/Magisk.apk
-```
-
-That opt-in build packages the payload to:
+The tracked `Magisk.apk` is packaged into normal recovery builds at:
 
 ```text
 /system/etc/magisk/Magisk.apk
+```
+
+Set `WITH_BUNDLED_MAGISK=false` only when intentionally producing an
+unbundled diagnostic recovery image. The source payload is:
+
+```text
+prebuilts/magisk/Magisk.apk
 ```
 
 Do not commit third-party Magisk binaries unless you have verified redistribution rights for the exact payload you are adding.

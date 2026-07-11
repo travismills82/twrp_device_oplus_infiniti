@@ -74,6 +74,32 @@ grep -Fq 'twrp-root-patcher magisk' \
 grep -Fq 'twrp-smb-mount mount' "$TREE/README.md" ||
     fail "README no longer documents the twrp-smb-mount runtime command"
 
+grep -Fq 'WITH_BUNDLED_MAGISK ?= true' "$DEVICE_MK" ||
+    fail "bundled Magisk is not the default recovery build mode"
+
+grep -Fq 'PRODUCT_PACKAGES += bundled-magisk-apk' "$DEVICE_MK" ||
+    fail "bundled Magisk package is not selected by device.mk"
+
+magisk_apk="$TREE/prebuilts/magisk/Magisk.apk"
+[ -f "$magisk_apk" ] || fail "bundled Magisk APK is missing"
+
+cifs_payloads=(
+    cifs.ko
+    cifs_arc4.ko
+    cifs_md4.ko
+    dns_resolver.ko
+    netfs.ko
+    nls_ucs2_utils.ko
+)
+
+for payload in "${cifs_payloads[@]}"; do
+    if find "$TREE/recovery/root" -type f -name "$payload" -print -quit | grep -q .; then
+        fail "custom CIFS payload remains in the recovery ramdisk: $payload"
+    fi
+done
+
 echo "[verified] helper module names are unversioned"
 echo "[verified] PRODUCT_PACKAGES entries match Android.mk declarations"
 echo "[verified] installed helper filenames and runtime consumers remain unchanged"
+echo "[verified] bundled Magisk is the default recovery payload"
+echo "[verified] no custom CIFS payloads are staged by the device tree"
