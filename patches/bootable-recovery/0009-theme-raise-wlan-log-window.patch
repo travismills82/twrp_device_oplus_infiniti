@@ -1,0 +1,6 @@
+diff --git a/gui/theme/common/portrait.xml b/gui/theme/common/portrait.xml
+--- a/gui/theme/common/portrait.xml
++++ b/gui/theme/common/portrait.xml
+@@ -3913 +3913 @@
+-			<borderedlogbox toprow="%row3_y%" bottomrow="%row16a_y%" borderwidth="2" leftmargin="75" rightmargin="75">
++			<borderedlogbox toprow="%row1a_y%" bottomrow="%row15_y%" borderwidth="2" leftmargin="75" rightmargin="75">

@@ -26,7 +26,7 @@ index 00000000..00000000 100644
 +			<image>
 +				<condition var1="tw_wifi_connected" var2="1"/>
 +				<image resource="wifi_status"/>
-+				<placement x="720" y="22"/>
++				<placement x="720" y="10"/>
 +			</image>
 +			<!-- OP15 Wi-Fi status icon END -->
  			<text color="%text_color%">

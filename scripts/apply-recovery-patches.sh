@@ -28,6 +28,8 @@ NANDSWAP_EXCLUSION='ExcludeAll(Mount_Point + "/nandswap")'
 WIFI_ICON_MARKER='OP15 Wi-Fi status icon START'
 WIFI_STATUS_ICON="$RECOVERY_DIR/gui/theme/portrait_hdpi/images/wifi_status.png"
 WIFI_STATUS_ICON_B64="$THEME_ASSET_DIR/wifi_status.png.b64"
+WIFI_STATUS_PLACEMENT='<placement x="720" y="10"/>'
+WLAN_LOGBOX_PLACEMENT='<borderedlogbox toprow="%row1a_y%" bottomrow="%row15_y%"'
 
 fail() {
     echo "ERROR: $*" >&2
@@ -62,12 +64,12 @@ for patch in "${PATCHES[@]}"; do
     name="$(basename "$patch")"
     apply_opts=()
 
-    # 0007 and 0008 deliberately use zero-context hunks so their tracked
+    # 0007 through 0009 deliberately use zero-context hunks so their tracked
     # artifacts remain whitespace-clean. The modified lines are unique and
     # the script verifies the expected source state before and after applying
     # every patch.
     case "$name" in
-        0007-ors-fix-restore-resource-and-cli-help.patch|0008-init-drop-legacy-recovery-service-import.patch)
+        0007-ors-fix-restore-resource-and-cli-help.patch|0008-init-drop-legacy-recovery-service-import.patch|0009-theme-raise-wlan-log-window.patch)
             apply_opts+=(--unidiff-zero)
             ;;
     esac
@@ -94,6 +96,8 @@ for patch in "${PATCHES[@]}"; do
             if grep -F -q '<image name="wifi_status" filename="wifi_status" retainaspect="1"/>' \
                     "$RECOVERY_DIR/gui/theme/portrait_hdpi/ui.xml" &&
                 grep -F -q '<image resource="wifi_status"/>' \
+                    "$RECOVERY_DIR/gui/theme/portrait_hdpi/ui.xml" &&
+                grep -F -q "$WIFI_STATUS_PLACEMENT" \
                     "$RECOVERY_DIR/gui/theme/portrait_hdpi/ui.xml"; then
                 echo "[already applied] $name"
                 continue
@@ -122,6 +126,12 @@ done
 if grep -Fq 'import /init.recovery.service.rc' "$RECOVERY_DIR/etc/init.rc"; then
     fail "legacy init.recovery.service.rc import leaves a duplicate recovery service"
 fi
+
+grep -Fq "$WIFI_STATUS_PLACEMENT" "$RECOVERY_DIR/gui/theme/portrait_hdpi/ui.xml" ||
+    fail "Wi-Fi status icon placement was not updated"
+
+grep -Fq "$WLAN_LOGBOX_PLACEMENT" "$RECOVERY_DIR/gui/theme/common/portrait.xml" ||
+    fail "WLAN log window placement was not updated"
 
 apply_external_patch_series() {
     local source_dir="$1"
