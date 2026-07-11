@@ -56,8 +56,19 @@ echo
 
 for patch in "${PATCHES[@]}"; do
     name="$(basename "$patch")"
+    apply_opts=()
 
-    if ! git apply --numstat "$patch" >/dev/null; then
+    # 0007 deliberately uses zero-context hunks so the tracked patch artifact
+    # remains whitespace-clean even though its upstream C++ context is tab
+    # indented. The modified lines are unique and the script verifies the
+    # expected source state before and after applying every patch.
+    case "$name" in
+        0007-ors-fix-restore-resource-and-cli-help.patch)
+            apply_opts+=(--unidiff-zero)
+            ;;
+    esac
+
+    if ! git apply "${apply_opts[@]}" --numstat "$patch" >/dev/null; then
         fail "Patch syntax validation failed: $name"
     fi
 
@@ -68,9 +79,17 @@ for patch in "${PATCHES[@]}"; do
                 continue
             fi
             ;;
+        0004-wifi-publish-dns-from-root-ui.patch)
+            if [ "$(grep -F -c "$DNS_PUBLISH_CALL" "$RECOVERY_DIR/gui/action.cpp" 2>/dev/null || true)" -eq 2 ] &&
+                grep -F -q 'DNS resolver setup failed' "$RECOVERY_DIR/gui/action.cpp"; then
+                echo "[already applied] $name"
+                continue
+            fi
+            ;;
         0006-wifi-show-connected-status-icon.patch)
-            if grep -F -q "$WIFI_ICON_MARKER" "$RECOVERY_DIR/gui/theme/portrait_hdpi/ui.xml" &&
-                grep -F -q '<image name="wifi_status" filename="wifi_status" retainaspect="1"/>' \
+            if grep -F -q '<image name="wifi_status" filename="wifi_status" retainaspect="1"/>' \
+                    "$RECOVERY_DIR/gui/theme/portrait_hdpi/ui.xml" &&
+                grep -F -q '<image resource="wifi_status"/>' \
                     "$RECOVERY_DIR/gui/theme/portrait_hdpi/ui.xml"; then
                 echo "[already applied] $name"
                 continue
@@ -78,12 +97,12 @@ for patch in "${PATCHES[@]}"; do
             ;;
     esac
 
-    if git -C "$RECOVERY_DIR" apply --reverse --check "$patch" >/dev/null 2>&1; then
+    if git -C "$RECOVERY_DIR" apply "${apply_opts[@]}" --reverse --check "$patch" >/dev/null 2>&1; then
         echo "[already applied] $name"
         continue
     fi
 
-    if ! git -C "$RECOVERY_DIR" apply --check "$patch"; then
+    if ! git -C "$RECOVERY_DIR" apply "${apply_opts[@]}" --check "$patch"; then
         echo >&2
         echo "Patch applicability validation failed: $name" >&2
         echo "The recovery checkout may have moved beyond the source revision this patch targets." >&2
@@ -92,7 +111,7 @@ for patch in "${PATCHES[@]}"; do
         exit 1
     fi
 
-    git -C "$RECOVERY_DIR" apply "$patch"
+    git -C "$RECOVERY_DIR" apply "${apply_opts[@]}" "$patch"
     echo "[applied] $name"
 done
 
@@ -197,17 +216,27 @@ if ! grep -F -q 'OP15 Wi-Fi status icon connected START' "$RECOVERY_DIR/gui/acti
     fail "Wi-Fi connection path does not update tw_wifi_connected"
 fi
 
+if ! grep -F -q 'gui_parse_text("{@restore_hdr}")' "$RECOVERY_DIR/openrecoveryscript.cpp"; then
+    fail "OpenRecoveryScript restore action does not use the translated restore header"
+fi
+
+if grep -F -q 'gui_parse_text("{@restore}")' "$RECOVERY_DIR/openrecoveryscript.cpp"; then
+    fail "OpenRecoveryScript restore action still references the missing restore string"
+fi
+
+if ! grep -F -q 'restore <backupname> [SDCRBAEM]' "$RECOVERY_DIR/orscmd/orscmd.cpp"; then
+    fail "TWRP CLI restore usage does not document backup-name-first argument order"
+fi
+
 if ! grep -F -q 'DataManager::SetValue("tw_wifi_connected", "1")' "$RECOVERY_DIR/gui/action.cpp"; then
     fail "Wi-Fi connection path does not mark the icon connected"
 fi
 
-if ! grep -F -q "$WIFI_ICON_MARKER" "$RECOVERY_DIR/gui/theme/portrait_hdpi/ui.xml"; then
-    fail "portrait_hdpi theme does not draw the Wi-Fi status icon"
-fi
-
 if ! grep -F -q '<image name="wifi_status" filename="wifi_status" retainaspect="1"/>' \
-    "$RECOVERY_DIR/gui/theme/portrait_hdpi/ui.xml"; then
-    fail "portrait_hdpi theme does not declare the Wi-Fi status icon resource"
+        "$RECOVERY_DIR/gui/theme/portrait_hdpi/ui.xml" ||
+    ! grep -F -q '<image resource="wifi_status"/>' \
+        "$RECOVERY_DIR/gui/theme/portrait_hdpi/ui.xml"; then
+    fail "portrait_hdpi theme does not declare and draw the Wi-Fi status icon"
 fi
 
 [ -s "$WIFI_STATUS_ICON" ] || fail "Wi-Fi status icon asset was not installed"
@@ -218,6 +247,7 @@ echo "[verified] OrangeFox filename compatibility is removed from the file selec
 echo "[verified] Wi-Fi connection and test paths publish DNS from the root recovery process"
 echo "[verified] FBE backups exclude regeneratable /data/nandswap data"
 echo "[verified] Wi-Fi status icon image resource is wired into the portrait_hdpi status bar"
+echo "[verified] OpenRecoveryScript restore uses an available translated string and correct CLI argument order"
 
 echo
 echo "Recovery patches are ready for the next build."

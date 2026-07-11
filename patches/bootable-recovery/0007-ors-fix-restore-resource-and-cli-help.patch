@@ -1,0 +1,36 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Travis Mills <travismills82@gmail.com>
+Date: Fri, 10 Jul 2026 18:20:00 -0500
+Subject: [PATCH] ors: fix restore action label and CLI usage
+
+The OpenRecoveryScript restore path asks the GUI to resolve a string named
+`restore`, but the bundled language files expose `restore_hdr` and
+`restoring`. This produces an otherwise harmless but user-visible resource
+error at the start of every command-line restore.
+
+The command-line help also documents the restore arguments in the opposite
+order from the parser. A restore command is `restore <backup-folder> [SDCRBAEM]`;
+the folder must come first so the parser can select the requested partitions
+from it.
+
+Use the existing translated restore header and document the actual argument
+order.
+---
+ openrecoveryscript.cpp | 2 +-
+ orscmd/orscmd.cpp      | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/openrecoveryscript.cpp b/openrecoveryscript.cpp
+index 00000000..00000000 100644
+--- a/openrecoveryscript.cpp
++++ b/openrecoveryscript.cpp
+@@ -208 +208 @@ int OpenRecoveryScript::run_script_file(void) {
+-				DataManager::SetValue("tw_action_text2", gui_parse_text("{@restore}"));
++				DataManager::SetValue("tw_action_text2", gui_parse_text("{@restore_hdr}"));
+diff --git a/orscmd/orscmd.cpp b/orscmd/orscmd.cpp
+index 00000000..00000000 100644
+--- a/orscmd/orscmd.cpp
++++ b/orscmd/orscmd.cpp
+@@ -44 +44 @@ void print_usage(void) {
+-	printf("  restore <SDCRBAEM> [backupname]\n");
++	printf("  restore <backupname> [SDCRBAEM]\n");
