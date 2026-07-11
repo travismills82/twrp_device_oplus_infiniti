@@ -8,6 +8,7 @@ SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 TREE="$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)"
 ANDROID_MK="$TREE/Android.mk"
 DEVICE_MK="$TREE/device.mk"
+TWRP_FLAGS="$TREE/recovery/root/system/etc/twrp.flags"
 
 fail() {
     echo "ERROR: $*" >&2
@@ -23,6 +24,7 @@ modules=(
 
 [ -f "$ANDROID_MK" ] || fail "Android.mk was not found"
 [ -f "$DEVICE_MK" ] || fail "device.mk was not found"
+[ -f "$TWRP_FLAGS" ] || fail "twrp.flags was not found"
 
 for module in "${modules[@]}"; do
     declaration_count="$(grep -Fxc "LOCAL_MODULE := $module" "$ANDROID_MK" || true)"
@@ -98,8 +100,19 @@ for payload in "${cifs_payloads[@]}"; do
     fi
 done
 
+# The file-level Data backup lives on data-media.  Do not expose userdata as a
+# raw backup image as doing so makes TWRP reserve the whole destination volume.
+if grep -Eq '^[[:space:]]*/userdata_image([[:space:]]|$)' "$TWRP_FLAGS" ||
+    grep -Fq 'display="Data Image"' "$TWRP_FLAGS"; then
+    fail "raw userdata image target must not be exposed in twrp.flags"
+fi
+
+grep -Eq '^[[:space:]]*/data[[:space:]]+f2fs[[:space:]].*display="Data";backup=1' "$TWRP_FLAGS" ||
+    fail "file-level Data backup is missing from twrp.flags"
+
 echo "[verified] helper module names are unversioned"
 echo "[verified] PRODUCT_PACKAGES entries match Android.mk declarations"
 echo "[verified] installed helper filenames and runtime consumers remain unchanged"
 echo "[verified] bundled Magisk is the default recovery payload"
 echo "[verified] no custom CIFS payloads are staged by the device tree"
+echo "[verified] raw userdata image is absent while file-level Data backup remains"

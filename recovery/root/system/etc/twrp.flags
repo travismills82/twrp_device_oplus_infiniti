@@ -6,6 +6,8 @@
 # Filesystem backups for partitions already defined in recovery.fstab
 /metadata              f2fs    /dev/block/by-name/metadata                                                                 flags=display="Metadata";backup=1
 /data                  f2fs    /dev/block/bootdevice/by-name/userdata                                                      flags=display="Data";backup=1;userdataencryptbackup=1;canencryptbackup=1
+# Keep Data as a file backup only: data-media is the backup destination, so a
+# raw userdata image would require more free space than that destination has.
 /persist               ext4    /dev/block/bootdevice/by-name/persist                                                       flags=display="Persist";backup=1
 
 # Required before FBE decryption; keep this separate from the raw modem image.
@@ -34,7 +36,6 @@
 /my_manifest_image     emmc    /dev/block/bootdevice/by-name/my_manifest                                                   flags=display="My Manifest Image";backup=1;flashimg=1
 /metadata_image        emmc    /dev/block/by-name/metadata                                                                 flags=display="Metadata Image";backup=1;flashimg=1
 /persist_image         emmc    /dev/block/bootdevice/by-name/persist                                                       flags=display="Persist Image";backup=1;flashimg=1
-/userdata_image        emmc    /dev/block/bootdevice/by-name/userdata                                                      flags=display="Data Image";backup=1;flashimg=1
 /modem_image           emmc    /dev/block/bootdevice/by-name/modem                                                         flags=slotselect;display="Modem Image";backup=1;flashimg=1
 /dsp_image             emmc    /dev/block/bootdevice/by-name/dsp                                                           flags=slotselect;display="DSP Image";backup=1;flashimg=1
 /bluetooth_image       emmc    /dev/block/bootdevice/by-name/bluetooth                                                     flags=slotselect;display="Bluetooth Image";backup=1;flashimg=1
