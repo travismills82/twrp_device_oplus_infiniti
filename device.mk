@@ -62,8 +62,9 @@ PRODUCT_PACKAGES += \
 	twrp-touch-start \
 	twrp-decrypt-prereqs
 
-# Recovery FBE/decryption userspace
+# Recovery init and FBE/decryption userspace
 PRODUCT_PACKAGES += \
+	init.recovery.mksh.rc \
 	keystore2
 
 # Recovery Wi-Fi userspace tools

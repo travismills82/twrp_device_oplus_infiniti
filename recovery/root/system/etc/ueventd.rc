@@ -1,10 +1,8 @@
 import /vendor/etc/ueventd.rc
 import /odm/etc/ueventd.rc
 import /odm/etc/ueventd.reserve.rc
-# ifdef OPLUS_FEATURE_WIFI_BDF
-# fangbinghua@CONNECTIVITY.WIFI.HARDWARE.BDF, add for mtk wifi cfg loading
-import /odm/etc/ueventd.wifi.rc
-# endif /* OPLUS_FEATURE_WIFI_BDF */
+# This recovery does not ship the optional vendor Wi-Fi BDF uevent rules.
+# The firmware search path below covers the retained Wi-Fi payload instead.
 # ifndef OPLUS_FEATURE_WIFI_BDF
 # WuGuotian@CONNECTIVITY.WIFI.HARDWARE.BDF.1065227 , 2021/05/26,
 # Modify for: multi projects using different bdf, adding persist into firmware_directories

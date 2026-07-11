@@ -1,0 +1,5 @@
+diff --git a/etc/init.rc b/etc/init.rc
+--- a/etc/init.rc
++++ b/etc/init.rc
+@@ -5 +4,0 @@ import /init.recovery.usb.rc
+-import /init.recovery.service.rc

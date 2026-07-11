@@ -15,6 +15,10 @@ DEFAULT_SOURCE_ROOT="$(CDPATH= cd -- "$DEVICE_DIR/../../.." && pwd)"
 SOURCE_ROOT="${1:-$DEFAULT_SOURCE_ROOT}"
 RECOVERY_DIR="$SOURCE_ROOT/bootable/recovery"
 PATCH_DIR="$DEVICE_DIR/patches/bootable-recovery"
+SYSTEM_CORE_DIR="$SOURCE_ROOT/system/core"
+SYSTEM_VOLD_DIR="$SOURCE_ROOT/system/vold"
+SYSTEM_CORE_PATCH_DIR="$DEVICE_DIR/patches/system-core"
+SYSTEM_VOLD_PATCH_DIR="$DEVICE_DIR/patches/system-vold"
 THEME_ASSET_DIR="$DEVICE_DIR/assets/twrp-theme"
 HELPER_VALIDATOR="$SCRIPT_DIR/validate-helper-modules.sh"
 EXPECTED_BASE="6bd8134ec8ff4cb29eb25797cbb20796f8455204"
@@ -58,12 +62,12 @@ for patch in "${PATCHES[@]}"; do
     name="$(basename "$patch")"
     apply_opts=()
 
-    # 0007 deliberately uses zero-context hunks so the tracked patch artifact
-    # remains whitespace-clean even though its upstream C++ context is tab
-    # indented. The modified lines are unique and the script verifies the
-    # expected source state before and after applying every patch.
+    # 0007 and 0008 deliberately use zero-context hunks so their tracked
+    # artifacts remain whitespace-clean. The modified lines are unique and
+    # the script verifies the expected source state before and after applying
+    # every patch.
     case "$name" in
-        0007-ors-fix-restore-resource-and-cli-help.patch)
+        0007-ors-fix-restore-resource-and-cli-help.patch|0008-init-drop-legacy-recovery-service-import.patch)
             apply_opts+=(--unidiff-zero)
             ;;
     esac
@@ -114,6 +118,67 @@ for patch in "${PATCHES[@]}"; do
     git -C "$RECOVERY_DIR" apply "${apply_opts[@]}" "$patch"
     echo "[applied] $name"
 done
+
+if grep -Fq 'import /init.recovery.service.rc' "$RECOVERY_DIR/etc/init.rc"; then
+    fail "legacy init.recovery.service.rc import leaves a duplicate recovery service"
+fi
+
+apply_external_patch_series() {
+    local source_dir="$1"
+    local patch_dir="$2"
+    local label="$3"
+    local patch
+    local name
+    local head
+    local -a series=()
+    local -a apply_opts=()
+
+    [ -d "$patch_dir" ] || return 0
+    [ -d "$source_dir/.git" ] || fail "Source tree was not found for ${label}: $source_dir"
+
+    mapfile -t series < <(find "$patch_dir" -maxdepth 1 -type f -name '*.patch' | sort)
+    [ "${#series[@]}" -gt 0 ] || return 0
+
+    head="$(git -C "$source_dir" rev-parse HEAD)"
+    echo "Applying ${label} patches at $head"
+
+    for patch in "${series[@]}"; do
+        name="$(basename "$patch")"
+
+        case "$label:$name" in
+            system/core:0001-libmodprobe-accept-compact-softdeps.patch)
+                apply_opts=(--unidiff-zero)
+                ;;
+            *)
+                apply_opts=()
+                ;;
+        esac
+
+        if ! git -C "$source_dir" apply "${apply_opts[@]}" --numstat "$patch" >/dev/null; then
+            fail "Patch syntax validation failed for ${label}: $name"
+        fi
+
+        if git -C "$source_dir" apply "${apply_opts[@]}" --reverse --check "$patch" >/dev/null 2>&1; then
+            echo "[already applied] ${label}: $name"
+            continue
+        fi
+
+        git -C "$source_dir" apply "${apply_opts[@]}" --check "$patch" ||
+            fail "Patch applicability validation failed for ${label}: $name"
+        git -C "$source_dir" apply "${apply_opts[@]}" "$patch"
+        echo "[applied] ${label}: $name"
+    done
+}
+
+apply_external_patch_series "$SYSTEM_CORE_DIR" "$SYSTEM_CORE_PATCH_DIR" "system/core"
+apply_external_patch_series "$SYSTEM_VOLD_DIR" "$SYSTEM_VOLD_PATCH_DIR" "system/vold"
+
+grep -Fq 'Accept vendor modules.softdep entries that omit whitespace after pre/post.' \
+    "$SYSTEM_CORE_DIR/libmodprobe/libmodprobe.cpp" ||
+    fail "libmodprobe does not accept compact vendor softdep metadata"
+
+grep -Fq 'errno != EEXIST' "$SYSTEM_VOLD_DIR/KeyStorage.cpp" ||
+    fail "vold still logs an existing temporary key directory as an error"
 
 python3 - "$RECOVERY_DIR/gui/action.cpp" <<'PY'
 from pathlib import Path

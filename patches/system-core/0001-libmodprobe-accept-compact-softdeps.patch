@@ -1,0 +1,37 @@
+diff --git a/libmodprobe/libmodprobe.cpp b/libmodprobe/libmodprobe.cpp
+index bdd114c..95dd9bc 100644
+--- a/libmodprobe/libmodprobe.cpp
++++ b/libmodprobe/libmodprobe.cpp
+@@ -130,2 +130,2 @@ bool Modprobe::ParseSoftdepCallback(const std::vector<std::string>& args) {
+-    if (args.size() < 4) {
+-        LOG(ERROR) << "softdep lines in modules.softdep must have at least 4 entries";
++    if (args.size() < 3) {
++        LOG(ERROR) << "softdep lines in modules.softdep must have a module and dependency";
+@@ -135,0 +136 @@ bool Modprobe::ParseSoftdepCallback(const std::vector<std::string>& args) {
++    bool saw_dependency = false;
+@@ -142,0 +144,11 @@ bool Modprobe::ParseSoftdepCallback(const std::vector<std::string>& args) {
++            // Accept vendor modules.softdep entries that omit whitespace after pre/post.
++            if (android::base::StartsWith(token, "pre:") && token.size() > 4) {
++                this->module_pre_softdep_.emplace_back(module, token.substr(4));
++                saw_dependency = true;
++                continue;
++            }
++            if (android::base::StartsWith(token, "post:") && token.size() > 5) {
++                this->module_post_softdep_.emplace_back(module, token.substr(5));
++                saw_dependency = true;
++                continue;
++            }
+@@ -150,0 +163,6 @@ bool Modprobe::ParseSoftdepCallback(const std::vector<std::string>& args) {
++        saw_dependency = true;
++    }
++
++    if (!saw_dependency) {
++        LOG(ERROR) << "softdep lines in modules.softdep must have a module and dependency";
++        return false;
+diff --git a/libmodprobe/libmodprobe_test.cpp b/libmodprobe/libmodprobe_test.cpp
+index f92a2b6..0e7e86e 100644
+--- a/libmodprobe/libmodprobe_test.cpp
++++ b/libmodprobe/libmodprobe_test.cpp
+@@ -114 +114 @@ TEST(libmodprobe, Test) {
+-            "softdep test3 pre: test141516\n";
++            "softdep test3 pre:test141516\n";

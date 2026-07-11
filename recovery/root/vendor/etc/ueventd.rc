@@ -59,8 +59,7 @@
 # IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-#Import rc file
-import /vendor/etc/ueventd.qcom.userdebug.rc
+# The userdebug-only uevent rules are not included in the recovery ramdisk.
 
 
 # Firmware directory Path

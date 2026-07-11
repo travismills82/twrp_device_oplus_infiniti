@@ -28,7 +28,6 @@
 import /init.recovery.wifi.rc
 
 on early-init
-    setenforce 0
     # The ODM touch service can be triggered before the recovery ramdisk has
     # inserted the OnePlus touch modules. Keep it stopped until
     # /system/bin/twrp-touch-start validates the module stack and restarts it.
@@ -60,7 +59,6 @@ on early-fs
     write /proc/sys/walt/sched_lib_mask_force 255
 
 on init
-    setenforce 0
     write /sys/class/backlight/panel0-backlight/brightness 200
     setprop sys.usb.configfs 1
     start vendor.boot-qti
@@ -79,13 +77,11 @@ on fs
     write /proc/sys/kernel/firmware_config/force_sysfs_fallback 1
 
 on property:twrp.modules.loaded=true
-    setenforce 0
     # Mount firmware
     mkdir /firmware
     mount vfat /dev/block/bootdevice/by-name/modem${ro.boot.slot_suffix} /firmware ro
-    # Load ADSP firmware for PMIC
-    wait /sys/kernel/boot_adsp/ssr
-    write /sys/kernel/boot_adsp/ssr 1
+    # The recovery kernel does not expose the obsolete boot_adsp/ssr node.
+    # Avoid waiting five seconds for it on every recovery boot.
     wait /sys/class/power_supply/battery
     start vendor.health-default
     umount /firmware

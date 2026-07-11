@@ -122,6 +122,11 @@ find_vendor_dlkm_block() (
 )
 
 mount_vendor_dlkm_modules() {
+    # The first filesystem probe can fail even when a later fallback mounts the
+    # partition successfully. Do not leave that expected probe output behind
+    # as a false Wi-Fi startup failure.
+    rm -f /tmp/twrp-wifi-vendor-dlkm.err
+
     if find_module smem-mailbox.ko >/dev/null 2>&1; then
         return 0
     fi
@@ -156,6 +161,7 @@ mount_vendor_dlkm_modules() {
         return 1
     fi
 
+    rm -f /tmp/twrp-wifi-vendor-dlkm.err
     return 0
 }
 

@@ -9,6 +9,12 @@ TREE="$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)"
 ANDROID_MK="$TREE/Android.mk"
 DEVICE_MK="$TREE/device.mk"
 TWRP_FLAGS="$TREE/recovery/root/system/etc/twrp.flags"
+QCOM_INIT_RC="$TREE/recovery/root/init.recovery.qcom.rc"
+USB_INIT_RC="$TREE/recovery/root/init.recovery.usb.rc"
+RECOVERY_FSTAB="$TREE/recovery.fstab"
+RECOVERY_ROOT_FSTAB="$TREE/recovery/root/system/etc/recovery.fstab"
+UEVENTD_RC="$TREE/recovery/root/system/etc/ueventd.rc"
+VENDOR_UEVENTD_RC="$TREE/recovery/root/vendor/etc/ueventd.rc"
 
 fail() {
     echo "ERROR: $*" >&2
@@ -25,6 +31,12 @@ modules=(
 [ -f "$ANDROID_MK" ] || fail "Android.mk was not found"
 [ -f "$DEVICE_MK" ] || fail "device.mk was not found"
 [ -f "$TWRP_FLAGS" ] || fail "twrp.flags was not found"
+[ -f "$QCOM_INIT_RC" ] || fail "init.recovery.qcom.rc was not found"
+[ -f "$USB_INIT_RC" ] || fail "init.recovery.usb.rc was not found"
+[ -f "$RECOVERY_FSTAB" ] || fail "recovery.fstab was not found"
+[ -f "$RECOVERY_ROOT_FSTAB" ] || fail "packaged recovery.fstab was not found"
+[ -f "$UEVENTD_RC" ] || fail "recovery ueventd.rc was not found"
+[ -f "$VENDOR_UEVENTD_RC" ] || fail "recovery vendor ueventd.rc was not found"
 
 for module in "${modules[@]}"; do
     declaration_count="$(grep -Fxc "LOCAL_MODULE := $module" "$ANDROID_MK" || true)"
@@ -76,11 +88,19 @@ grep -Fq 'twrp-root-patcher magisk' \
 grep -Fq 'twrp-smb-mount mount' "$TREE/README.md" ||
     fail "README no longer documents the twrp-smb-mount runtime command"
 
+wifi_helper="$TREE/recovery/root/system/bin/twrp-wifi-start"
+vendor_dlkm_cleanup_count="$(grep -Fxc '    rm -f /tmp/twrp-wifi-vendor-dlkm.err' "$wifi_helper" || true)"
+[ "$vendor_dlkm_cleanup_count" -eq 2 ] ||
+    fail "Wi-Fi vendor_dlkm fallback errors are not cleared before and after success"
+
 grep -Fq 'WITH_BUNDLED_MAGISK ?= true' "$DEVICE_MK" ||
     fail "bundled Magisk is not the default recovery build mode"
 
 grep -Fq 'PRODUCT_PACKAGES += bundled-magisk-apk' "$DEVICE_MK" ||
     fail "bundled Magisk package is not selected by device.mk"
+
+grep -Eq '^[[:space:]]*init\.recovery\.mksh\.rc([[:space:]]*\\)?[[:space:]]*$' "$DEVICE_MK" ||
+    fail "init.recovery.mksh.rc is not selected for the recovery ramdisk"
 
 magisk_apk="$TREE/prebuilts/magisk/Magisk.apk"
 [ -f "$magisk_apk" ] || fail "bundled Magisk APK is missing"
@@ -110,9 +130,47 @@ fi
 grep -Eq '^[[:space:]]*/data[[:space:]]+f2fs[[:space:]].*display="Data";backup=1' "$TWRP_FLAGS" ||
     fail "file-level Data backup is missing from twrp.flags"
 
+if grep -Eq '^[[:space:]]*setenforce[[:space:]]' "$QCOM_INIT_RC"; then
+    fail "init.recovery.qcom.rc uses the unsupported Android init setenforce command"
+fi
+
+if grep -Fq '/sys/kernel/boot_adsp/ssr' "$QCOM_INIT_RC"; then
+    fail "init.recovery.qcom.rc still waits for the nonexistent boot_adsp/ssr node"
+fi
+
+if grep -Eq '^[[:space:]]*mount functionfs (adb|fastboot)[[:space:]]' "$USB_INIT_RC"; then
+    fail "init.recovery.usb.rc duplicates base recovery FunctionFS mounts"
+fi
+
+grep -Eq '^[[:space:]]*mount functionfs mtp[[:space:]]' "$USB_INIT_RC" ||
+    fail "init.recovery.usb.rc no longer mounts its MTP FunctionFS endpoint"
+
+if grep -Fq 'import /odm/etc/ueventd.wifi.rc' "$UEVENTD_RC"; then
+    fail "recovery ueventd.rc imports unavailable vendor Wi-Fi BDF rules"
+fi
+
+if grep -Fq 'import /vendor/etc/ueventd.qcom.userdebug.rc' "$VENDOR_UEVENTD_RC"; then
+    fail "recovery vendor ueventd.rc imports unavailable userdebug rules"
+fi
+
+for fstab in "$RECOVERY_FSTAB" "$RECOVERY_ROOT_FSTAB"; do
+    if grep -Eq '(^|,)(backup=1|flashimg=1|display=|resize)' "$fstab"; then
+        fail "Android fstab still contains TWRP-only backup or display flags: ${fstab#"$TREE/"}"
+    fi
+done
+
+for target in boot init_boot vendor_boot dtbo recovery; do
+    grep -Eq "^[[:space:]]*/${target}[[:space:]]+emmc[[:space:]].*flags=.*backup=1;flashimg=1" "$TWRP_FLAGS" ||
+        fail "TWRP backup flags are missing for /${target}"
+done
+
 echo "[verified] helper module names are unversioned"
 echo "[verified] PRODUCT_PACKAGES entries match Android.mk declarations"
 echo "[verified] installed helper filenames and runtime consumers remain unchanged"
+echo "[verified] Wi-Fi vendor_dlkm fallback does not leave stale error artifacts"
 echo "[verified] bundled Magisk is the default recovery payload"
 echo "[verified] no custom CIFS payloads are staged by the device tree"
 echo "[verified] raw userdata image is absent while file-level Data backup remains"
+echo "[verified] recovery init avoids unsupported commands, missing ADSP waits, and duplicate FunctionFS mounts"
+echo "[verified] recovery includes mksh init support and no missing optional uevent imports"
+echo "[verified] TWRP-only backup flags are isolated from Android fstab parsing"
