@@ -23,12 +23,45 @@ ADVANCED_ITEMS = (
     AdvancedListItem(
         name="Flash Magisk",
         marker="/system/bin/twrp-flash-magisk init_boot",
-        xml='''\n\t\t\t\t<listitem name="Flash Magisk">\n\t\t\t\t\t<actions>\n\t\t\t\t\t\t<action function="set">tw_back=advanced</action>\n\t\t\t\t\t\t<action function="set">tw_action=cmd</action>\n\t\t\t\t\t\t<action function="set">tw_action_param=/system/bin/twrp-flash-magisk init_boot</action>\n\t\t\t\t\t\t<action function="set">tw_text1=Flash bundled Magisk to init_boot?</action>\n\t\t\t\t\t\t<action function="set">tw_text2=This will patch and flash the active slot.</action>\n\t\t\t\t\t\t<action function="set">tw_action_text1=Flashing Magisk...</action>\n\t\t\t\t\t\t<action function="set">tw_complete_text1=Magisk flash complete</action>\n\t\t\t\t\t\t<action function="set">tw_slider_text=Swipe to Flash Magisk</action>\n\t\t\t\t\t\t<action function="page">confirm_action</action>\n\t\t\t\t\t</actions>\n\t\t\t\t</listitem>\n''',
+        xml='''
+				<listitem name="Flash Magisk">
+					<actions>
+						<action function="set">tw_back=advanced</action>
+						<action function="set">tw_action=cmd</action>
+						<action function="set">tw_action_param=/system/bin/twrp-flash-magisk init_boot</action>
+						<action function="set">tw_text1=Flash bundled Magisk to init_boot?</action>
+						<action function="set">tw_text2=This will patch and flash the active slot.</action>
+						<action function="set">tw_action_text1=Flashing Magisk...</action>
+						<action function="set">tw_complete_text1=Magisk flash complete</action>
+						<action function="set">tw_slider_text=Swipe to Flash Magisk</action>
+						<action function="page">confirm_action</action>
+					</actions>
+				</listitem>
+''',
     ),
     AdvancedListItem(
         name="FTP Menu",
         marker="/system/bin/twrp-ftp-menu",
-        xml='''\n\t\t\t\t<listitem name="FTP Menu">\n\t\t\t\t\t<actions>\n\t\t\t\t\t\t<action function="editfile">/system/bin/twrp-ftp-menu</action>\n\t\t\t\t\t\t<action function="page">terminalcommand</action>\n\t\t\t\t\t</actions>\n\t\t\t\t</listitem>\n''',
+        xml='''
+				<listitem name="FTP Menu">
+					<actions>
+						<action function="editfile">/system/bin/twrp-ftp-menu</action>
+						<action function="page">terminalcommand</action>
+					</actions>
+				</listitem>
+''',
+    ),
+    AdvancedListItem(
+        name="AVB Tools",
+        marker="/system/bin/twrp-avb-tool",
+        xml='''
+				<listitem name="AVB Tools">
+					<actions>
+						<action function="editfile">/system/bin/twrp-avb-tool</action>
+						<action function="page">terminalcommand</action>
+					</actions>
+				</listitem>
+''',
     ),
 )
 
