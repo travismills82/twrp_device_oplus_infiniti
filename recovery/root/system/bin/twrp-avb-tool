@@ -1,0 +1,243 @@
+#!/system/bin/sh
+# OnePlus 15 AVB helper for TWRP Terminal.
+#
+# This menu wraps the source-built avbctl binary packaged into recovery. It does
+# not run automatically; use it only when intentionally changing AVB verity or
+# verification state for a modified boot/system/vendor setup.
+
+set -u
+
+LOG="${TWRP_AVB_LOG:-/tmp/twrp-avb-tool.log}"
+TMP_OUT="/tmp/twrp-avb-tool.out"
+AVBCTL=""
+
+mkdir -p /tmp 2>/dev/null || true
+: > "$LOG" 2>/dev/null || true
+
+line() {
+    echo "$*"
+    printf '%s\n' "$*" >> "$LOG" 2>/dev/null || true
+}
+
+say() {
+    line "twrp-avb-tool: $*"
+}
+
+pause() {
+    echo
+    echo "Press Enter to continue..."
+    read _ans
+}
+
+find_avbctl() {
+    if [ -n "${TWRP_AVBCTL:-}" ] && [ -x "$TWRP_AVBCTL" ]; then
+        AVBCTL="$TWRP_AVBCTL"
+        return 0
+    fi
+
+    for candidate in /system/bin/avbctl /sbin/avbctl /vendor/bin/avbctl avbctl; do
+        if command -v "$candidate" >/dev/null 2>&1; then
+            AVBCTL="$(command -v "$candidate")"
+            return 0
+        fi
+        if [ -x "$candidate" ]; then
+            AVBCTL="$candidate"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+run_avbctl() {
+    if [ -z "$AVBCTL" ]; then
+        find_avbctl || {
+            say "avbctl was not found in recovery"
+            return 127
+        }
+    fi
+
+    line
+    line "# $AVBCTL $*"
+    "$AVBCTL" "$@" > "$TMP_OUT" 2>&1
+    rc=$?
+
+    if [ -s "$TMP_OUT" ]; then
+        while IFS= read -r out_line; do
+            line "  $out_line"
+        done < "$TMP_OUT"
+    else
+        line "  (no output)"
+    fi
+    rm -f "$TMP_OUT" 2>/dev/null || true
+
+    if [ "$rc" -ne 0 ]; then
+        line "  exit code: $rc"
+    fi
+
+    return "$rc"
+}
+
+prop_value() {
+    getprop "$1" 2>/dev/null | tr -d '\r'
+}
+
+show_device_info() {
+    line
+    line "=== OnePlus 15 AVB Tool ==="
+    line "Model:              $(prop_value ro.product.model)"
+    line "Device:             $(prop_value ro.product.device)"
+    line "Recovery device:    $(prop_value ro.twrp.boot)"
+    line "Active slot:        $(prop_value ro.boot.slot_suffix)"
+    line "Bootloader state:   $(prop_value ro.boot.vbmeta.device_state)"
+    line "Verified state:     $(prop_value ro.boot.verifiedbootstate)"
+    line "Verity mode:        $(prop_value ro.boot.veritymode)"
+    line "Log:                $LOG"
+
+    if find_avbctl; then
+        line "avbctl:             $AVBCTL"
+    else
+        line "avbctl:             missing"
+    fi
+}
+
+show_partitions() {
+    line
+    line "Detected vbmeta block devices:"
+    found=0
+    for part in \
+        vbmeta vbmeta_a vbmeta_b \
+        vbmeta_system vbmeta_system_a vbmeta_system_b \
+        vbmeta_vendor vbmeta_vendor_a vbmeta_vendor_b; do
+        path="/dev/block/by-name/$part"
+        if [ -e "$path" ]; then
+            found=1
+            target="$(readlink "$path" 2>/dev/null || true)"
+            if [ -n "$target" ]; then
+                line "  $part -> $target"
+            else
+                line "  $part"
+            fi
+        fi
+    done
+
+    [ "$found" -eq 1 ] || line "  none found under /dev/block/by-name"
+}
+
+show_status() {
+    show_device_info
+    show_partitions
+    run_avbctl get-verity
+    run_avbctl get-verification
+}
+
+warn_disable() {
+    line
+    line "WARNING:"
+    line "  This disables AVB dm-verity and partition verification flags using avbctl."
+    line "  Only use this with an unlocked bootloader and modified images/partitions."
+    line "  A wrong AVB state can cause bootloops or recovery-only boot."
+    line "  Re-enabling verification after modifying partitions can also prevent boot."
+    line
+    line "Fastboot fallback from a computer is usually:"
+    line "  fastboot --disable-verity --disable-verification flash vbmeta vbmeta.img"
+    line "  fastboot --disable-verity --disable-verification flash vbmeta_system vbmeta_system.img"
+    line "  fastboot --disable-verity --disable-verification flash vbmeta_vendor vbmeta_vendor.img"
+    line
+}
+
+confirm_yes() {
+    prompt="$1"
+    echo "$prompt"
+    echo "Type YES to continue:"
+    read answer
+    [ "$answer" = "YES" ]
+}
+
+disable_avb() {
+    warn_disable
+    if ! confirm_yes "Disable verity and verification now?"; then
+        say "cancelled"
+        return
+    fi
+
+    run_avbctl --force disable-verity
+    verity_rc=$?
+    run_avbctl --force disable-verification
+    verification_rc=$?
+
+    line
+    if [ "$verity_rc" -eq 0 ] && [ "$verification_rc" -eq 0 ]; then
+        say "AVB verity and verification disable commands completed"
+        say "reboot recovery or system after confirming the expected state"
+    else
+        say "one or more AVB disable commands failed"
+    fi
+}
+
+enable_avb() {
+    line
+    line "WARNING:"
+    line "  Re-enabling AVB verification can stop modified boot, vendor_boot, dtbo,"
+    line "  system, vendor, vendor_dlkm, or other modified partitions from booting."
+    line
+    if ! confirm_yes "Re-enable verity and verification now?"; then
+        say "cancelled"
+        return
+    fi
+
+    run_avbctl enable-verity
+    verity_rc=$?
+    run_avbctl enable-verification
+    verification_rc=$?
+
+    line
+    if [ "$verity_rc" -eq 0 ] && [ "$verification_rc" -eq 0 ]; then
+        say "AVB verity and verification enable commands completed"
+    else
+        say "one or more AVB enable commands failed"
+    fi
+}
+
+print_fastboot_notes() {
+    line
+    line "Fastboot AVB commands for OnePlus 15 stock vbmeta images:"
+    line
+    line "  fastboot --disable-verity --disable-verification flash vbmeta vbmeta.img"
+    line "  fastboot --disable-verity --disable-verification flash vbmeta_system vbmeta_system.img"
+    line "  fastboot --disable-verity --disable-verification flash vbmeta_vendor vbmeta_vendor.img"
+    line
+    line "These commands must be run from bootloader fastboot on your computer,"
+    line "using matching stock vbmeta images for the firmware currently on the phone."
+    line
+}
+
+main_menu() {
+    while true; do
+        clear 2>/dev/null || true
+        show_device_info
+        echo
+        echo "Choose an option:"
+        echo "  1) Show AVB / verity status"
+        echo "  2) Show vbmeta partitions"
+        echo "  3) Disable verity and verification"
+        echo "  4) Re-enable verity and verification"
+        echo "  5) Show fastboot fallback commands"
+        echo "  0) Exit"
+        echo
+        echo "Selection:"
+        read choice
+
+        case "$choice" in
+            1) show_status; pause ;;
+            2) show_partitions; pause ;;
+            3) disable_avb; pause ;;
+            4) enable_avb; pause ;;
+            5) print_fastboot_notes; pause ;;
+            0) say "exit"; exit 0 ;;
+            *) say "invalid selection"; pause ;;
+        esac
+    done
+}
+
+main_menu
