@@ -1,0 +1,13 @@
+<!--
+Add this listitem inside the existing <page name="advanced"> listbox in the
+TWRP theme source to expose the OP15 AVB tool.
+
+This opens /system/bin/twrp-avb-tool in TWRP Terminal so the interactive AVB
+status/disable/enable menu can read user input.
+-->
+<listitem name="AVB Tools">
+    <actions>
+        <action function="editfile">/system/bin/twrp-avb-tool</action>
+        <action function="page">terminalcommand</action>
+    </actions>
+</listitem>
