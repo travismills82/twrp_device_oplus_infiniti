@@ -46,6 +46,8 @@ PRODUCT_PACKAGES += \
 	twrp-root-patcher \
 	twrp-magisk-bundled \
 	twrp-flash-magisk \
+	twrp-avb-tool \
+	avbctl \
 	twrp-wifi-start \
 	twrp-dns-publish \
 	twrp-dhcpcd-run-hooks \
