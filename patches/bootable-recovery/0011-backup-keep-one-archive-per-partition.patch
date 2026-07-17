@@ -1,7 +1,7 @@
 diff --git a/twrpTar.cpp b/twrpTar.cpp
 --- a/twrpTar.cpp
 +++ b/twrpTar.cpp
-@@ -413,14 +413,11 @@ int twrpTar::createTarFork(pid_t *tar_fork_pid) {
+@@ -413,12 +413,10 @@ int twrpTar::createTarFork(pid_t *tar_fork_pid) {
  			reg.setsize(Total_Backup_Size);
  			reg.progress_pipe_fd = progress_pipe_fd;
  			reg.part_settings = part_settings;
