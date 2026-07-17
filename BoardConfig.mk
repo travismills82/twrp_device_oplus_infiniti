@@ -176,7 +176,9 @@ BOOT_SECURITY_PATCH := $(PLATFORM_SECURITY_PATCH)
 TW_DEVICE_VERSION := OnePlus_15
 
 # Verified Boot
-BOARD_AVB_ENABLE := true
+# Keep BOARD_AVB_ENABLE unset so TWRP does not expose the built-in
+# automatic AVB2.0 disable option in the GUI. AVB tools remain packaged
+# through device.mk for manual/scripted device-specific use.
 
 # Vibrator
 TW_SUPPORT_INPUT_AIDL_HAPTICS := true
