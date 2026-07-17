@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 #
 # Patch the generated TWRP portrait theme so Advanced contains the custom
-# OnePlus 15 helper entries. This runs from the device tree after the upstream
-# theme has been copied to bootable/recovery/gui/theme/common/portrait.xml.
+# OnePlus 15 helper entries and does not expose superseded upstream actions.
+# This runs from the device tree after the upstream theme has been copied to
+# bootable/recovery/gui/theme/common/portrait.xml.
 #
 
 from __future__ import annotations
 
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,6 +19,24 @@ class AdvancedListItem:
     name: str
     marker: str
     xml: str
+
+
+@dataclass(frozen=True)
+class AdvancedListItemRemoval:
+    name: str
+    markers: tuple[str, ...]
+
+
+REMOVED_ADVANCED_ITEMS = (
+    AdvancedListItemRemoval(
+        name="Disable AVB2.0",
+        markers=("tw_action=disableAVB2", "disable_avb2=Disable AVB2.0"),
+    ),
+    AdvancedListItemRemoval(
+        name="Install TWRP App",
+        markers=("tw_appinstall_title", "reboot_install_app_hdr=Install TWRP App"),
+    ),
+)
 
 
 ADVANCED_ITEMS = (
@@ -66,6 +86,12 @@ ADVANCED_ITEMS = (
 )
 
 
+LISTITEM_BLOCK_RE = re.compile(
+    r"^[ \t]*<listitem\b.*?</listitem>[ \t]*\n?",
+    flags=re.MULTILINE | re.DOTALL,
+)
+
+
 def find_matching_close(text: str, start: int, open_tag: str, close_tag: str) -> int:
     depth = 1
     pos = start
@@ -85,32 +111,72 @@ def find_matching_close(text: str, start: int, open_tag: str, close_tag: str) ->
     return -1
 
 
+def remove_superseded_items(listbox_text: str) -> tuple[str, list[str]]:
+    removed: list[str] = []
+
+    def replace(match: re.Match[str]) -> str:
+        block = match.group(0)
+        for item in REMOVED_ADVANCED_ITEMS:
+            if any(marker in block for marker in item.markers):
+                removed.append(item.name)
+                return ""
+        return block
+
+    return LISTITEM_BLOCK_RE.sub(replace, listbox_text), removed
+
+
 def patch_theme(theme_path: Path) -> int:
     if not theme_path.exists():
         print(f"[advanced-theme] Theme file not found, skipping: {theme_path}")
         return 0
 
-    text = theme_path.read_text(encoding="utf-8")
+    original_text = theme_path.read_text(encoding="utf-8")
+    text = original_text
 
     page_start = text.find('<page name="advanced">')
     if page_start == -1:
         print("[advanced-theme] Advanced page not found", file=sys.stderr)
         return 1
 
-    page_end = find_matching_close(text, page_start + len('<page name="advanced">'), "<page", "</page>")
+    page_end = find_matching_close(
+        text,
+        page_start + len('<page name="advanced">'),
+        "<page",
+        "</page>",
+    )
     if page_end == -1:
         print("[advanced-theme] Could not find end of Advanced page", file=sys.stderr)
         return 1
 
-    listbox_start = text.find('<listbox style="advanced_listbox">', page_start, page_end)
+    listbox_start = text.find(
+        '<listbox style="advanced_listbox">',
+        page_start,
+        page_end,
+    )
     if listbox_start == -1:
         print("[advanced-theme] Advanced listbox not found", file=sys.stderr)
         return 1
 
-    listbox_end = find_matching_close(text, listbox_start + len('<listbox style="advanced_listbox">'), "<listbox", "</listbox>")
+    listbox_end = find_matching_close(
+        text,
+        listbox_start + len('<listbox style="advanced_listbox">'),
+        "<listbox",
+        "</listbox>",
+    )
     if listbox_end == -1 or listbox_end > page_end:
         print("[advanced-theme] Could not find end of Advanced listbox", file=sys.stderr)
         return 1
+
+    original_listbox = text[listbox_start:listbox_end]
+    cleaned_listbox, removed = remove_superseded_items(original_listbox)
+    text = text[:listbox_start] + cleaned_listbox + text[listbox_end:]
+    listbox_end = listbox_start + len(cleaned_listbox)
+
+    for item in REMOVED_ADVANCED_ITEMS:
+        if item.name in removed:
+            print(f"[advanced-theme] Removed superseded {item.name} item")
+        else:
+            print(f"[advanced-theme] Superseded {item.name} item already absent")
 
     inserts = []
     for item in ADVANCED_ITEMS:
@@ -119,18 +185,27 @@ def patch_theme(theme_path: Path) -> int:
         else:
             inserts.append(item.xml)
 
-    if not inserts:
-        return 0
+    if inserts:
+        text = text[:listbox_end] + "".join(inserts) + text[listbox_end:]
+        print(
+            f"[advanced-theme] Added {len(inserts)} Advanced menu item(s): "
+            f"{theme_path}"
+        )
 
-    patched = text[:listbox_end] + "".join(inserts) + text[listbox_end:]
-    theme_path.write_text(patched, encoding="utf-8")
-    print(f"[advanced-theme] Added {len(inserts)} Advanced menu item(s): {theme_path}")
+    if text != original_text:
+        theme_path.write_text(text, encoding="utf-8")
+    else:
+        print(f"[advanced-theme] No theme changes needed: {theme_path}")
+
     return 0
 
 
 def main() -> int:
     if len(sys.argv) != 2:
-        print("Usage: patch_twrp_magisk_theme.py <path-to-portrait.xml>", file=sys.stderr)
+        print(
+            "Usage: patch_twrp_magisk_theme.py <path-to-portrait.xml>",
+            file=sys.stderr,
+        )
         return 2
     return patch_theme(Path(sys.argv[1]))
 
