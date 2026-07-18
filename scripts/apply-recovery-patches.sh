@@ -25,6 +25,8 @@ THEME_ASSET_DIR="$DEVICE_DIR/assets/twrp-theme"
 HELPER_VALIDATOR="$SCRIPT_DIR/validate-helper-modules.sh"
 EXPECTED_BASE="6bd8134ec8ff4cb29eb25797cbb20796f8455204"
 PIGZ_TEST_CALL='execlp("pigz", "pigz", "-9", "-", NULL)'
+ZSTD_COMPRESS_CALL='execlp("zstd", "zstd", "-q", "-T0", "-11", "-c", NULL)'
+ZSTD_DECOMPRESS_CALL='execlp("zstd", "zstd", "-q", "-d", "-c", NULL)'
 DNS_PUBLISH_CALL='/system/bin/twrp-dns-publish wlan0 2>&1'
 NANDSWAP_EXCLUSION='ExcludeAll(Mount_Point + "/nandswap")'
 WIFI_ICON_MARKER='OP15 Wi-Fi status icon START'
@@ -86,6 +88,13 @@ for patch in "${PATCHES[@]}"; do
     case "$name" in
         0001-wifi-use-returned-network-id.patch)
             if grep -F -q 'Supplicant network ID' "$RECOVERY_DIR/gui/action.cpp"; then
+                echo "[already applied] $name"
+                continue
+            fi
+            ;;
+        0002-backup-use-pigz-level-9.patch)
+            if [ "$(grep -F -c "$PIGZ_TEST_CALL" "$RECOVERY_DIR/twrpTar.cpp" 2>/dev/null || true)" -eq 2 ] &&
+                ! grep -F -q 'execlp("pigz", "pigz", "-", NULL)' "$RECOVERY_DIR/twrpTar.cpp"; then
                 echo "[already applied] $name"
                 continue
             fi
@@ -288,6 +297,39 @@ if grep -F -q 'execlp("pigz", "pigz", "-", NULL)' "$RECOVERY_DIR/twrpTar.cpp"; t
     fail "A default-level pigz backup path remains in twrpTar.cpp"
 fi
 
+ZSTD_COMPRESS_COUNT="$(grep -F -c "$ZSTD_COMPRESS_CALL" "$RECOVERY_DIR/twrpTar.cpp" 2>/dev/null || true)"
+if [ "$ZSTD_COMPRESS_COUNT" -ne 2 ]; then
+    fail "Expected two zstd compression paths in twrpTar.cpp; found $ZSTD_COMPRESS_COUNT"
+fi
+
+ZSTD_DECOMPRESS_COUNT="$(grep -F -c "$ZSTD_DECOMPRESS_CALL" "$RECOVERY_DIR/twrpTar.cpp" 2>/dev/null || true)"
+if [ "$ZSTD_DECOMPRESS_COUNT" -ne 2 ]; then
+    fail "Expected two zstd decompression paths in twrpTar.cpp; found $ZSTD_DECOMPRESS_COUNT"
+fi
+
+grep -Fq '#define TW_BACKUP_COMPRESSION_VAR   "tw_backup_compression"' "$RECOVERY_DIR/variables.h" ||
+    fail "TWRP does not persist the selected backup compression type"
+
+grep -Fq 'return ZSTD_COMPRESSED;' "$RECOVERY_DIR/twrp-functions.cpp" ||
+    fail "TWRP does not detect zstd backup frames"
+
+grep -Fq 'return 4; // Zstd compressed' "$RECOVERY_DIR/twrp-functions.cpp" ||
+    fail "TWRP does not detect encrypted zstd backup frames"
+
+grep -Fq 'tw_backup_compression=1' "$RECOVERY_DIR/gui/theme/common/portrait.xml" ||
+    fail "portrait backup options do not expose the zstd compression choice"
+
+grep -Fq 'tw_backup_compression=1' "$RECOVERY_DIR/gui/theme/common/landscape.xml" ||
+    fail "landscape backup options do not expose the zstd compression choice"
+
+for resource in backup_compression_type backup_compression_pigz backup_compression_zstd; do
+    grep -Fq "<string name=\"$resource\"" "$RECOVERY_DIR/gui/theme/common/languages/en.xml" ||
+        fail "English language resource '$resource' is missing for backup compression"
+done
+
+grep -Fq 'TW_INCLUDE_ZSTD               := true' "$DEVICE_DIR/BoardConfig.mk" ||
+    fail "recovery is not configured to package the zstd executable"
+
 if grep -i -q 'orangefox' "$RECOVERY_DIR/gui/fileselector.cpp"; then
     fail "OrangeFox filename compatibility remains in gui/fileselector.cpp"
 fi
@@ -335,7 +377,7 @@ fi
 [ -s "$WIFI_STATUS_ICON" ] || fail "Wi-Fi status icon asset was not installed"
 
 echo "[verified] helper module identities and runtime paths are unversioned"
-echo "[verified] parallel pigz -9 is active for compressed and compressed-encrypted backups"
+echo "[verified] backup compression offers parallel pigz -9 and multithreaded zstd -11"
 echo "[verified] OrangeFox filename compatibility is removed from the file selector"
 echo "[verified] Wi-Fi connection and test paths publish DNS from the root recovery process"
 echo "[verified] FBE backups exclude regeneratable /data/nandswap data"

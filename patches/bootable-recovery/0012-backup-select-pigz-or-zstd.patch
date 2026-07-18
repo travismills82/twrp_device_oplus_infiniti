@@ -1,0 +1,739 @@
+diff --git a/data.cpp b/data.cpp
+index feb58ff..f3fda6e 100644
+--- a/data.cpp
++++ b/data.cpp
+@@ -761,6 +761,7 @@ void DataManager::SetDefaultValues()
+ 	mPersist.SetValue(TW_DISABLE_FREE_SPACE_VAR, "0");
+ 	mPersist.SetValue(TW_FORCE_DIGEST_CHECK_VAR, "0");
+ 	mPersist.SetValue(TW_USE_COMPRESSION_VAR, "0");
++	mPersist.SetValue(TW_BACKUP_COMPRESSION_VAR, "0");
+ 	mPersist.SetValue(TW_TIME_ZONE_VAR, "CST6CDT,M3.2.0,M11.1.0");
+ 	mPersist.SetValue(TW_GUI_SORT_ORDER, "1");
+ 	mPersist.SetValue(TW_RM_RF_VAR, "0");
+diff --git a/gui/theme/common/landscape.xml b/gui/theme/common/landscape.xml
+index fdce4c5..722d638 100755
+--- a/gui/theme/common/landscape.xml
++++ b/gui/theme/common/landscape.xml
+@@ -1756,14 +1756,71 @@
+ 				<data variable="tw_use_compression"/>
+ 			</checkbox>
+ 
+-			<checkbox>
++			<text style="text_m_accent">
++				<conditions>
++					<condition var1="tw_use_compression" var2="1"/>
++					<condition var1="tw_enable_adb_backup" op="!=" var2="1"/>
++				</conditions>
+ 				<placement x="%col1_x_right%" y="%row7a_y%"/>
++				<text>{@backup_compression_type=Compression type:}</text>
++			</text>
++
++			<button style="radiobutton">
++				<conditions>
++					<condition var1="tw_use_compression" var2="1"/>
++					<condition var1="tw_enable_adb_backup" op="!=" var2="1"/>
++					<condition var1="tw_backup_compression" op="!=" var2="0"/>
++				</conditions>
++				<placement x="%col1_x_right%" y="%row9_y%" textplacement="6"/>
++				<text>{@backup_compression_pigz=Pigz (gzip, level 9)}</text>
++				<image resource="radio_false"/>
++				<action function="set">tw_backup_compression=0</action>
++			</button>
++
++			<button style="radiobutton">
++				<conditions>
++					<condition var1="tw_use_compression" var2="1"/>
++					<condition var1="tw_enable_adb_backup" op="!=" var2="1"/>
++					<condition var1="tw_backup_compression" var2="0"/>
++				</conditions>
++				<placement x="%col1_x_right%" y="%row9_y%" textplacement="6"/>
++				<text>{@backup_compression_pigz=Pigz (gzip, level 9)}</text>
++				<image resource="radio_true"/>
++				<action function="set">tw_backup_compression=0</action>
++			</button>
++
++			<button style="radiobutton">
++				<conditions>
++					<condition var1="tw_use_compression" var2="1"/>
++					<condition var1="tw_enable_adb_backup" op="!=" var2="1"/>
++					<condition var1="tw_backup_compression" op="!=" var2="1"/>
++				</conditions>
++				<placement x="%col1_x_right%" y="%row10a_y%" textplacement="6"/>
++				<text>{@backup_compression_zstd=Zstd (level 11, multithreaded)}</text>
++				<image resource="radio_false"/>
++				<action function="set">tw_backup_compression=1</action>
++			</button>
++
++			<button style="radiobutton">
++				<conditions>
++					<condition var1="tw_use_compression" var2="1"/>
++					<condition var1="tw_enable_adb_backup" op="!=" var2="1"/>
++					<condition var1="tw_backup_compression" var2="1"/>
++				</conditions>
++				<placement x="%col1_x_right%" y="%row10a_y%" textplacement="6"/>
++				<text>{@backup_compression_zstd=Zstd (level 11, multithreaded)}</text>
++				<image resource="radio_true"/>
++				<action function="set">tw_backup_compression=1</action>
++			</button>
++
++			<checkbox>
++				<placement x="%col1_x_right%" y="%row12_y%"/>
+ 				<text>{@skip_digest_backup_chk=Skip Digest generation during backup}</text>
+ 				<data variable="tw_skip_digest_generate"/>
+ 			</checkbox>
+ 
+ 			<checkbox>
+-				<placement x="%col1_x_right%" y="%row9_y%"/>
++				<placement x="%col1_x_right%" y="%row13a_y%"/>
+ 				<text>{@disable_backup_space_chk=Disable free space check before backup}</text>
+ 				<data variable="tw_disable_free_space"/>
+ 			</checkbox>
+diff --git a/gui/theme/common/languages/en.xml b/gui/theme/common/languages/en.xml
+index 7918231..bbc916d 100755
+--- a/gui/theme/common/languages/en.xml
++++ b/gui/theme/common/languages/en.xml
+@@ -221,6 +221,9 @@
+ 		<string name="enc_disabled">disabled - set a password to enable</string>
+ 		<string name="enc_enabled">enabled</string>
+ 		<string name="enable_backup_comp_chk">Enable compression</string>
++		<string name="backup_compression_type">Compression type:</string>
++		<string name="backup_compression_pigz">Pigz (gzip, level 9)</string>
++		<string name="backup_compression_zstd">Zstd (level 11, multithreaded)</string>
+ 		<string name="skip_digest_backup_chk" version="2">Skip Digest generation during backup</string>
+ 		<string name="disable_backup_space_chk" version="2">Disable free space check before backup</string>
+ 		<string name="skip_digest_zip_chk">Skip Digest check before installing zip</string>
+
+diff --git a/gui/theme/common/portrait.xml b/gui/theme/common/portrait.xml
+index d9c5479..1f144b0 100755
+--- a/gui/theme/common/portrait.xml
++++ b/gui/theme/common/portrait.xml
+@@ -32,6 +32,11 @@
+ 			<image checked="checkbox_true" unchecked="checkbox_false"/>
+ 		</style>
+ 
++		<style name="radiobutton">
++			<font resource="font_m" color="%text_color%"/>
++			<image checked="radio_true" unchecked="radio_false"/>
++		</style>
++
+ 		<style name="main_button">
+ 			<highlight color="%highlight_color%"/>
+ 			<font resource="font_l" color="%text_button_color%"/>
+@@ -1866,14 +1871,71 @@
+ 				<data variable="tw_use_compression"/>
+ 			</checkbox>
+ 
++			<text style="text_m_accent">
++				<conditions>
++					<condition var1="tw_use_compression" var2="1"/>
++					<condition var1="tw_enable_adb_backup" op="!=" var2="1"/>
++				</conditions>
++				<placement x="%indent%" y="%row4a_y%"/>
++				<text>{@backup_compression_type=Compression type:}</text>
++			</text>
++
++			<button style="radiobutton">
++				<conditions>
++					<condition var1="tw_use_compression" var2="1"/>
++					<condition var1="tw_enable_adb_backup" op="!=" var2="1"/>
++					<condition var1="tw_backup_compression" op="!=" var2="0"/>
++				</conditions>
++				<placement x="%indent%" y="%row5_y%" textplacement="6"/>
++				<text>{@backup_compression_pigz=Pigz (gzip, level 9)}</text>
++				<image resource="radio_false"/>
++				<action function="set">tw_backup_compression=0</action>
++			</button>
++
++			<button style="radiobutton">
++				<conditions>
++					<condition var1="tw_use_compression" var2="1"/>
++					<condition var1="tw_enable_adb_backup" op="!=" var2="1"/>
++					<condition var1="tw_backup_compression" var2="0"/>
++				</conditions>
++				<placement x="%indent%" y="%row5_y%" textplacement="6"/>
++				<text>{@backup_compression_pigz=Pigz (gzip, level 9)}</text>
++				<image resource="radio_true"/>
++				<action function="set">tw_backup_compression=0</action>
++			</button>
++
++			<button style="radiobutton">
++				<conditions>
++					<condition var1="tw_use_compression" var2="1"/>
++					<condition var1="tw_enable_adb_backup" op="!=" var2="1"/>
++					<condition var1="tw_backup_compression" op="!=" var2="1"/>
++				</conditions>
++				<placement x="%indent%" y="%row6a_y%" textplacement="6"/>
++				<text>{@backup_compression_zstd=Zstd (level 11, multithreaded)}</text>
++				<image resource="radio_false"/>
++				<action function="set">tw_backup_compression=1</action>
++			</button>
++
++			<button style="radiobutton">
++				<conditions>
++					<condition var1="tw_use_compression" var2="1"/>
++					<condition var1="tw_enable_adb_backup" op="!=" var2="1"/>
++					<condition var1="tw_backup_compression" var2="1"/>
++				</conditions>
++				<placement x="%indent%" y="%row6a_y%" textplacement="6"/>
++				<text>{@backup_compression_zstd=Zstd (level 11, multithreaded)}</text>
++				<image resource="radio_true"/>
++				<action function="set">tw_backup_compression=1</action>
++			</button>
++
+ 			<checkbox>
+-				<placement x="%indent%" y="%row5_y%"/>
++				<placement x="%indent%" y="%row8_y%"/>
+ 				<text>{@skip_digest_backup_chk=Skip Digest generation during backup}</text>
+ 				<data variable="tw_skip_digest_generate"/>
+ 			</checkbox>
+ 
+ 			<checkbox>
+-				<placement x="%indent%" y="%row6a_y%"/>
++				<placement x="%indent%" y="%row9a_y%"/>
+ 				<text>{@disable_backup_space_chk=Disable free space check before backup}</text>
+ 				<data variable="tw_disable_free_space"/>
+ 			</checkbox>
+diff --git a/openrecoveryscript.cpp b/openrecoveryscript.cpp
+index 426e282..178469c 100755
+--- a/openrecoveryscript.cpp
++++ b/openrecoveryscript.cpp
+@@ -570,6 +570,7 @@ int OpenRecoveryScript::Backup_Command(string Options) {
+ 	strcpy(value1, Options.c_str());
+ 
+ 	DataManager::SetValue(TW_USE_COMPRESSION_VAR, 0);
++	DataManager::SetValue(TW_BACKUP_COMPRESSION_VAR, TW_BACKUP_COMPRESSION_PIGZ);
+ 	DataManager::SetValue(TW_SKIP_DIGEST_GENERATE_VAR, 0);
+ 
+ 	gui_msg("select_backup_opt=Setting backup options:");
+diff --git a/partition.cpp b/partition.cpp
+index 6fa6503..162ed60 100755
+--- a/partition.cpp
++++ b/partition.cpp
+@@ -2776,6 +2776,13 @@ bool TWPartition::Backup_Tar(PartitionSettings *part_settings, pid_t *tar_fork_p
+ 	gui_msg(Msg("backing_up=Backing up {1}...")(Backup_Display_Name));
+ 
+ 	DataManager::GetValue(TW_USE_COMPRESSION_VAR, tar.use_compression);
++	DataManager::GetValue(TW_BACKUP_COMPRESSION_VAR, tar.compression_type);
++	if (tar.compression_type != TW_BACKUP_COMPRESSION_ZSTD)
++		tar.compression_type = TW_BACKUP_COMPRESSION_PIGZ;
++	if (part_settings->adbbackup && tar.compression_type == TW_BACKUP_COMPRESSION_ZSTD) {
++		LOGINFO("ADB backup uses the legacy gzip compression stream; falling back to pigz.\n");
++		tar.compression_type = TW_BACKUP_COMPRESSION_PIGZ;
++	}
+ 
+ #ifndef TW_EXCLUDE_ENCRYPTED_BACKUPS
+ 	if (Can_Encrypt_Backup) {
+diff --git a/twrp-functions.cpp b/twrp-functions.cpp
+index c7d793c..cd8752a 100644
+--- a/twrp-functions.cpp
++++ b/twrp-functions.cpp
+@@ -212,20 +212,21 @@ bool TWFunc::Path_Exists(string Path) {
+ }
+ 
+ Archive_Type TWFunc::Get_File_Type(string fn) {
+-	string::size_type i = 0;
+-	int firstbyte = 0, secondbyte = 0;
+-	char header[3];
++	unsigned char header[4] = {};
+ 
+ 	ifstream f;
+ 	f.open(fn.c_str(), ios::in | ios::binary);
+-	f.get(header, 3);
++	if (!f.is_open())
++		return UNCOMPRESSED;
++	f.read(reinterpret_cast<char*>(header), sizeof(header));
+ 	f.close();
+-	firstbyte = header[i] & 0xff;
+-	secondbyte = header[++i] & 0xff;
+ 
+-	if (firstbyte == 0x1f && secondbyte == 0x8b)
++	if (header[0] == 0x1f && header[1] == 0x8b)
+ 		return COMPRESSED;
+-	else if (firstbyte == 0x4f && secondbyte == 0x41)
++	else if (header[0] == 0x28 && header[1] == 0xb5 &&
++		 header[2] == 0x2f && header[3] == 0xfd)
++		return ZSTD_COMPRESSED;
++	else if (header[0] == 0x4f && header[1] == 0x41)
+ 		return ENCRYPTED;
+ 	return UNCOMPRESSED; // default
+ }
+@@ -312,6 +313,12 @@ int TWFunc::Try_Decrypting_File(string fn, string password) {
+ 		free(buffer_out);
+ 		return 3; // Compressed
+ 	}
++	if (out_len >= 4 && firstbyte == 0x28 && secondbyte == 0xb5 &&
++		buffer_out[2] == 0x2f && buffer_out[3] == 0xfd) {
++		LOGINFO("Successfully decrypted '%s' and file is zstd compressed.\n", fn.c_str());
++		free(buffer_out);
++		return 4; // Zstd compressed
++	}
+ 	if (out_len >= 262) {
+ 		ptr = buffer_out + 257;
+ 		if (strncmp((char*)ptr, "ustar", 5) == 0) {
+diff --git a/twrpAdbBuFifo.cpp b/twrpAdbBuFifo.cpp
+index 3143863..e0a9044 100755
+--- a/twrpAdbBuFifo.cpp
++++ b/twrpAdbBuFifo.cpp
+@@ -98,6 +98,7 @@ bool twrpAdbBuFifo::Backup_ADB_Command(std::string Options) {
+ 	args = TWFunc::Split_String(Options, " ");
+ 
+ 	DataManager::SetValue(TW_USE_COMPRESSION_VAR, 0);
++	DataManager::SetValue(TW_BACKUP_COMPRESSION_VAR, TW_BACKUP_COMPRESSION_PIGZ);
+ 	DataManager::SetValue(TW_SKIP_DIGEST_GENERATE_VAR, 0);
+ 
+ 	if (args[1].compare("--twrp") != 0) {
+diff --git a/twrpTar.cpp b/twrpTar.cpp
+index 19b4f34..52b7826 100755
+--- a/twrpTar.cpp
++++ b/twrpTar.cpp
+@@ -33,6 +33,7 @@ extern "C" {
+ #include <string>
+ #include <sstream>
+ #include <vector>
++#include <cstdlib>
+ #include <csignal>
+ #include <dirent.h>
+ #include <libgen.h>
+@@ -72,8 +73,9 @@ twrpTar::twrpTar(void) {
+ 	use_encryption = 0;
+ 	userdata_encryption = 0;
+ 	use_compression = 0;
++	compression_type = TW_BACKUP_COMPRESSION_PIGZ;
+ 	split_archives = 0;
+-	pigz_pid = 0;
++	compressor_pid = 0;
+ 	oaes_pid = 0;
+ 	Total_Backup_Size = 0;
+ 	Archive_Current_Size = 0;
+@@ -290,6 +292,7 @@ int twrpTar::createTarFork(pid_t *tar_fork_pid) {
+ 				reg.thread_id = 0;
+ 				reg.use_encryption = 0;
+ 				reg.use_compression = use_compression;
++				reg.compression_type = compression_type;
+ 				reg.split_archives = 1;
+ 				reg.progress_pipe_fd = progress_pipe_fd;
+ 				reg.part_settings = part_settings;
+@@ -335,6 +338,7 @@ int twrpTar::createTarFork(pid_t *tar_fork_pid) {
+ 				enc[i].use_encryption = use_encryption;
+ 				enc[i].setpassword(password);
+ 				enc[i].use_compression = use_compression;
++				enc[i].compression_type = compression_type;
+ 				enc[i].split_archives = 1;
+ 				enc[i].progress_pipe_fd = progress_pipe_fd;
+ 				enc[i].part_settings = part_settings;
+@@ -410,6 +414,7 @@ int twrpTar::createTarFork(pid_t *tar_fork_pid) {
+ 			reg.thread_id = 0;
+ 			reg.use_encryption = 0;
+ 			reg.use_compression = use_compression;
++			reg.compression_type = compression_type;
+ 			reg.setsize(Total_Backup_Size);
+ 			reg.progress_pipe_fd = progress_pipe_fd;
+ 			reg.part_settings = part_settings;
+@@ -468,13 +473,15 @@ int twrpTar::createTarFork(pid_t *tar_fork_pid) {
+ 			InfoManager backup_info(backup_folder + "/" + partition_name + ".info");
+ 			backup_info.SetValue("backup_size", size_backup);
+ 			if (use_compression && use_encryption)
+-				backup_info.SetValue("backup_type", COMPRESSED_ENCRYPTED);
++				backup_info.SetValue("backup_type", compression_type == TW_BACKUP_COMPRESSION_ZSTD ? ZSTD_COMPRESSED_ENCRYPTED : COMPRESSED_ENCRYPTED);
+ 			else if (use_encryption)
+ 				backup_info.SetValue("backup_type", ENCRYPTED);
+ 			else if (use_compression)
+-				backup_info.SetValue("backup_type", COMPRESSED);
++				backup_info.SetValue("backup_type", compression_type == TW_BACKUP_COMPRESSION_ZSTD ? ZSTD_COMPRESSED : COMPRESSED);
+ 			else
+ 				backup_info.SetValue("backup_type", UNCOMPRESSED);
++			backup_info.SetValue("compression_type", use_compression ?
++				(compression_type == TW_BACKUP_COMPRESSION_ZSTD ? "zstd" : "pigz") : "none");
+ 			backup_info.SetValue("file_count", files_backup);
+ 			backup_info.SaveValues();
+ 		}
+@@ -743,6 +750,10 @@ int twrpTar::extract() {
+ 		LOGINFO("Extracting gzipped tar\n");
+ 		int ret = extractTar();
+ 		return ret;
++	} else if (current_archive_type == ZSTD_COMPRESSED) {
++		LOGINFO("Extracting zstd compressed tar\n");
++		int ret = extractTar();
++		return ret;
+ 	} else if (current_archive_type == ENCRYPTED) {
+ 		int ret = TWFunc::Try_Decrypting_File(tarfn, password);
+ 		if (ret < 1) {
+@@ -757,6 +768,9 @@ int twrpTar::extract() {
+ 		if (ret == 3) {
+ 			LOGINFO("Extracting encrypted and compressed tar.\n");
+ 			current_archive_type = COMPRESSED_ENCRYPTED;
++		} else if (ret == 4) {
++			LOGINFO("Extracting encrypted and zstd compressed tar.\n");
++			current_archive_type = ZSTD_COMPRESSED_ENCRYPTED;
+ 		} else
+ 			LOGINFO("Extracting encrypted tar.\n");
+ 		return extractTar();
+@@ -900,11 +914,12 @@ int twrpTar::addFilesToExistingTar(vector <string> files, string fn) {
+ int twrpTar::createTar() {
+ 	char* charTarFile = (char*) tarfn.c_str();
+ 	char* charRootDir = (char*) tardir.c_str();
++	const bool use_zstd = use_compression && compression_type == TW_BACKUP_COMPRESSION_ZSTD;
+ 
+ 	if (use_encryption && use_compression) {
+ 		// Compressed and encrypted
+-		current_archive_type = COMPRESSED_ENCRYPTED;
+-		LOGINFO("Using encryption and compression...\n");
++		current_archive_type = use_zstd ? ZSTD_COMPRESSED_ENCRYPTED : COMPRESSED_ENCRYPTED;
++		LOGINFO("Using encryption and %s compression...\n", use_zstd ? "zstd" : "gzip");
+ 		int i, pipes[4];
+ 
+ 		if (pipe2(pipes, O_CLOEXEC) < 0) {
+@@ -924,24 +939,26 @@ int twrpTar::createTar() {
+ 				close(pipes[i]); // close all
+ 			return -1;
+ 		}
+-		pigz_pid = fork();
++		compressor_pid = fork();
+ 
+-		if (pigz_pid < 0) {
+-			LOGINFO("pigz fork() failed\n");
++		if (compressor_pid < 0) {
++			LOGINFO("compression fork() failed\n");
+ 			gui_err("backup_error=Error creating backup.");
+ 			close(output_fd);
+ 			for (i = 0; i < 4; i++)
+ 				close(pipes[i]); // close all
+ 			return -1;
+-		} else if (pigz_pid == 0) {
+-			// pigz Child
++		} else if (compressor_pid == 0) {
++			// Compression child
+ 			dup2(pipes[0], STDIN_FILENO);
+ 			dup2(pipes[3], STDOUT_FILENO);
+-			if (execlp("pigz", "pigz", "-9", "-", NULL) < 0) {
+-				LOGINFO("execlp pigz ERROR!\n");
+-				gui_err("backup_error=Error creating backup.");
+-				_exit(-1);
+-			}
++			if (use_zstd)
++				execlp("zstd", "zstd", "-q", "-T0", "-11", "-c", NULL);
++			else
++				execlp("pigz", "pigz", "-9", "-", NULL);
++			LOGINFO("execlp %s ERROR!\n", use_zstd ? "zstd" : "pigz");
++			gui_err("backup_error=Error creating backup.");
++			_exit(-1);
+ 		} else {
+ 			// Parent
+ 			oaes_pid = fork();
+@@ -981,9 +998,9 @@ int twrpTar::createTar() {
+ 		}
+ 	} else if (use_compression) {
+ 		// Compressed
+-		current_archive_type = COMPRESSED;
+-		LOGINFO("Using compression...\n");
+-		int pigzfd[2];
++		current_archive_type = use_zstd ? ZSTD_COMPRESSED : COMPRESSED;
++		LOGINFO("Using %s compression...\n", use_zstd ? "zstd" : "gzip");
++		int compressorfd[2];
+ 		if (part_settings->adbbackup) {
+ 			LOGINFO("opening TW_ADB_BACKUP compressed stream\n");
+ 			output_fd = open(TW_ADB_BACKUP, O_WRONLY);
+@@ -996,34 +1013,36 @@ int twrpTar::createTar() {
+ 			return -1;
+ 		}
+ 
+-		if (pipe2(pigzfd, O_CLOEXEC) < 0) {
++		if (pipe2(compressorfd, O_CLOEXEC) < 0) {
+ 			LOGINFO("Error creating pipe\n");
+ 			gui_err("backup_error=Error creating backup.");
+ 			close(output_fd);
+ 			return -1;
+ 		}
+-		pigz_pid = fork();
++		compressor_pid = fork();
+ 
+-		if (pigz_pid < 0) {
++		if (compressor_pid < 0) {
+ 			LOGINFO("fork() failed\n");
+ 			gui_err("backup_error=Error creating backup.");
+ 			close(output_fd);
+-			close(pigzfd[0]);
+-			close(pigzfd[1]);
++			close(compressorfd[0]);
++			close(compressorfd[1]);
+ 			return -1;
+-		} else if (pigz_pid == 0) {
+-			// Child
+-			dup2(pigzfd[0], STDIN_FILENO); // remap stdin
++		} else if (compressor_pid == 0) {
++			// Compression child
++			dup2(compressorfd[0], STDIN_FILENO); // remap stdin
+ 			dup2(output_fd, STDOUT_FILENO); // remap stdout to output file
+-			if (execlp("pigz", "pigz", "-9", "-", NULL) < 0) {
+-				LOGINFO("execlp pigz ERROR!\n");
+-				gui_err("backup_error=Error creating backup.");
+-				_exit(-1);
+-			}
++			if (use_zstd)
++				execlp("zstd", "zstd", "-q", "-T0", "-11", "-c", NULL);
++			else
++				execlp("pigz", "pigz", "-9", "-", NULL);
++			LOGINFO("execlp %s ERROR!\n", use_zstd ? "zstd" : "pigz");
++			gui_err("backup_error=Error creating backup.");
++			_exit(-1);
+ 		} else {
+ 			// Parent
+-			close(pigzfd[0]); // close parent input
+-			fd = pigzfd[1];   // copy parent output
++			close(compressorfd[0]); // close parent input
++			fd = compressorfd[1];   // copy parent output
+ 			init_libtar_no_buffer(progress_pipe_fd);
+ 			tar_type.writefunc = write_tar_no_buffer;
+ 			if (tar_fdopen(&t, fd, charRootDir, &tar_type, O_CLOEXEC | O_WRONLY | O_CREAT | O_EXCL | O_LARGEFILE, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH, TWTAR_FLAGS) != 0) {
+@@ -1112,8 +1131,9 @@ int twrpTar::openTar() {
+ 	char* charTarFile = (char*) tarfn.c_str();
+ 	string Password;
+ 
+-	if (current_archive_type == COMPRESSED_ENCRYPTED) {
+-		LOGINFO("Opening encrypted and compressed backup...\n");
++	if (current_archive_type == COMPRESSED_ENCRYPTED || current_archive_type == ZSTD_COMPRESSED_ENCRYPTED) {
++		const bool use_zstd = current_archive_type == ZSTD_COMPRESSED_ENCRYPTED;
++		LOGINFO("Opening encrypted and %s compressed backup...\n", use_zstd ? "zstd" : "gzip");
+ 		int i, pipes[4];
+ 		input_fd = open(tarfn.c_str(), O_CLOEXEC | O_RDONLY | O_LARGEFILE);
+ 		if (input_fd < 0) {
+@@ -1138,7 +1158,7 @@ int twrpTar::openTar() {
+ 		oaes_pid = fork();
+ 
+ 		if (oaes_pid < 0) {
+-			LOGINFO("pigz fork() failed\n");
++			LOGINFO("openaes fork() failed\n");
+ 			gui_err("restore_error=Error during restore process.");
+ 			close(input_fd);
+ 			for (i = 0; i < 4; i++)
+@@ -1155,24 +1175,26 @@ int twrpTar::openTar() {
+ 			}
+ 		} else {
+ 			// Parent
+-			pigz_pid = fork();
++			compressor_pid = fork();
+ 
+-			if (pigz_pid < 0) {
+-				LOGINFO("openaes fork() failed\n");
++			if (compressor_pid < 0) {
++				LOGINFO("compression fork() failed\n");
+ 				gui_err("restore_error=Error during restore process.");
+ 				close(input_fd);
+ 				for (i = 0; i < 4; i++)
+ 					close(pipes[i]); // close all
+ 				return -1;
+-			} else if (pigz_pid == 0) {
+-				// pigz Child
++			} else if (compressor_pid == 0) {
++				// Compression child
+ 				dup2(pipes[0], STDIN_FILENO);
+ 				dup2(pipes[3], STDOUT_FILENO);
+-				if (execlp("pigz", "pigz", "-d", "-c", NULL) < 0) {
+-					LOGINFO("execlp pigz ERROR!\n");
+-					gui_err("restore_error=Error during restore process.");
+-					_exit(-1);
+-				}
++				if (use_zstd)
++					execlp("zstd", "zstd", "-q", "-d", "-c", NULL);
++				else
++					execlp("pigz", "pigz", "-d", "-c", NULL);
++				LOGINFO("execlp %s ERROR!\n", use_zstd ? "zstd" : "pigz");
++				gui_err("restore_error=Error during restore process.");
++				_exit(-1);
+ 			} else {
+ 				// Parent
+ 				close(pipes[0]); // Close pipes not used by parent
+@@ -1231,10 +1253,11 @@ int twrpTar::openTar() {
+ 				return -1;
+ 			}
+ 		}
+-	} else if (current_archive_type == COMPRESSED) {
+-		int pigzfd[2];
++	} else if (current_archive_type == COMPRESSED || current_archive_type == ZSTD_COMPRESSED) {
++		const bool use_zstd = current_archive_type == ZSTD_COMPRESSED;
++		int compressorfd[2];
+ 
+-		LOGINFO("Opening gzip compressed tar...\n");
++		LOGINFO("Opening %s compressed tar...\n", use_zstd ? "zstd" : "gzip");
+ 		if (part_settings->adbbackup)  {
+ 			LOGINFO("opening TW_ADB_RESTORE compressed stream\n");
+ 			input_fd = open(TW_ADB_RESTORE, O_CLOEXEC | O_RDONLY | O_LARGEFILE);
+@@ -1247,34 +1270,36 @@ int twrpTar::openTar() {
+ 			return -1;
+ 		}
+ 
+-		if (pipe2(pigzfd, O_CLOEXEC) < 0) {
++		if (pipe2(compressorfd, O_CLOEXEC) < 0) {
+ 			LOGINFO("Error creating pipe\n");
+ 			gui_err("restore_error=Error during restore process.");
+ 			close(input_fd);
+ 			return -1;
+ 		}
+ 
+-		pigz_pid = fork();
+-		if (pigz_pid < 0) {
++		compressor_pid = fork();
++		if (compressor_pid < 0) {
+ 			LOGINFO("fork() failed\n");
+ 			gui_err("restore_error=Error during restore process.");
+ 			close(input_fd);
+-			close(pigzfd[0]);
+-			close(pigzfd[1]);
++			close(compressorfd[0]);
++			close(compressorfd[1]);
+ 			return -1;
+-		} else if (pigz_pid == 0) {
+-			// Child
+-			dup2(pigzfd[1], STDOUT_FILENO); // remap stdout
++		} else if (compressor_pid == 0) {
++			// Compression child
++			dup2(compressorfd[1], STDOUT_FILENO); // remap stdout
+ 			dup2(input_fd, STDIN_FILENO); // remap input fd to stdin
+-			if (execlp("pigz", "pigz", "-d", "-c", NULL) < 0) {
+-				LOGINFO("execlp pigz ERROR!\n");
+-				gui_err("restore_error=Error during restore process.");
+-				_exit(-1);
+-			}
++			if (use_zstd)
++				execlp("zstd", "zstd", "-q", "-d", "-c", NULL);
++			else
++				execlp("pigz", "pigz", "-d", "-c", NULL);
++			LOGINFO("execlp %s ERROR!\n", use_zstd ? "zstd" : "pigz");
++			gui_err("restore_error=Error during restore process.");
++			_exit(-1);
+ 		} else {
+ 			// Parent
+-			close(pigzfd[1]); // close parent output
+-			fd = pigzfd[0];   // copy parent input
++			close(compressorfd[1]); // close parent output
++			fd = compressorfd[0];   // copy parent input
+ 			if (tar_fdopen(&t, fd, charRootDir, NULL, O_CLOEXEC | O_RDONLY | O_LARGEFILE, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH, TWTAR_FLAGS) != 0) {
+ 				close(fd);
+ 				LOGINFO("tar_fdopen failed\n");
+@@ -1351,14 +1376,16 @@ int twrpTar::closeTar() {
+ 	}
+ 	if (current_archive_type > 0) {
+ 		int status;
+-		if (pigz_pid > 0 && TWFunc::Wait_For_Child(pigz_pid, &status, "pigz") != 0)
++		const char* compressor_name = (current_archive_type == ZSTD_COMPRESSED ||
++			current_archive_type == ZSTD_COMPRESSED_ENCRYPTED) ? "zstd" : "pigz";
++		if (compressor_pid > 0 && TWFunc::Wait_For_Child(compressor_pid, &status, compressor_name) != 0)
+ 			return -1;
+ 		if (oaes_pid > 0 && TWFunc::Wait_For_Child(oaes_pid, &status, "openaes") != 0)
+ 			return -1;
+ 	}
+ 	free_libtar_buffer();
+ 	if (!part_settings->adbbackup) {
+-		if (use_compression && !use_encryption) {
++		if (current_archive_type == COMPRESSED && use_compression && !use_encryption) {
+ 			string gzname = tarfn + ".gz";
+ 			if (TWFunc::Path_Exists(gzname)) {
+ 				rename(gzname.c_str(), tarfn.c_str());
+@@ -1465,31 +1492,28 @@ unsigned long long twrpTar::get_size() {
+ 
+ unsigned long long twrpTar::uncompressedSize(string filename) {
+ 	unsigned long long total_size = 0;
+-	string Tar, Command, result;
++	string Command, result;
+ 	vector<string> split;
+ 
+-	Set_Archive_Type(TWFunc::Get_File_Type(tarfn));
++	Set_Archive_Type(TWFunc::Get_File_Type(filename));
+ 	if (current_archive_type == UNCOMPRESSED) {
+ 		total_size = TWFunc::Get_File_Size(filename);
+ 	} else if (current_archive_type == COMPRESSED) {
+-		// Compressed
+ 		Command = "pigz -l '" + filename + "'";
+-		/* if we set Command = "pigz -l " + tarfn + " | sed '1d' | cut -f5 -d' '";
+-		we get the uncompressed size at once. */
+ 		TWFunc::Exec_Cmd(Command, result, false);
+ 		if (!result.empty()) {
+-			/* Expected output:
+-			compressed original  reduced name
+-			95855838   179403776 -1.3%   data.yaffs2.win
+-			^
+-			split[5]
+-			*/
+ 			split = TWFunc::split_string(result, ' ', true);
+-			if (split.size() > 4)
+-				total_size = atoi(split[5].c_str());
++			if (split.size() > 5)
++				total_size = strtoull(split[5].c_str(), NULL, 10);
+ 		}
+-	} else if (current_archive_type == COMPRESSED_ENCRYPTED) {
+-		// File is encrypted and may be compressed
++	} else if (current_archive_type == ZSTD_COMPRESSED) {
++		// zstd does not reliably record content size for streamed input. Count the
++		// decompressed stream only when the normal backup metadata is unavailable.
++		Command = "zstd -q -d -c '" + filename + "' | wc -c";
++		TWFunc::Exec_Cmd(Command, result, false);
++		if (!result.empty())
++			total_size = strtoull(result.c_str(), NULL, 10);
++	} else if (current_archive_type == ENCRYPTED) {
+ 		int ret = TWFunc::Try_Decrypting_File(filename, password);
+ 		if (ret < 1) {
+ 			gui_msg(Msg(msg::kError, "fail_decrypt_tar=Failed to decrypt tar file '{1}'")(tarfn));
+@@ -1499,21 +1523,17 @@ unsigned long long twrpTar::uncompressedSize(string filename) {
+ 			total_size = TWFunc::Get_File_Size(filename);
+ 		} else if (ret == 3) {
+ 			Command = "openaes dec --key \"" + password + "\" --in '" + filename + "' | pigz -l";
+-			/* if we set Command = "pigz -l " + tarfn + " | sed '1d' | cut -f5 -d' '";
+-			we get the uncompressed size at once. */
+ 			TWFunc::Exec_Cmd(Command, result, false);
+ 			if (!result.empty()) {
+-				LOGINFO("result was: '%s'\n", result.c_str());
+-				/* Expected output:
+-				compressed original  reduced name
+-				95855838   179403776 -1.3%   data.yaffs2.win
+-				^
+-				split[5]
+-				*/
+ 				split = TWFunc::split_string(result, ' ', true);
+-				if (split.size() > 4)
+-					total_size = atoi(split[5].c_str());
++				if (split.size() > 5)
++					total_size = strtoull(split[5].c_str(), NULL, 10);
+ 			}
++		} else if (ret == 4) {
++			Command = "openaes dec --key \"" + password + "\" --in '" + filename + "' | zstd -q -d -c | wc -c";
++			TWFunc::Exec_Cmd(Command, result, false);
++			if (!result.empty())
++				total_size = strtoull(result.c_str(), NULL, 10);
+ 		} else {
+ 			total_size = TWFunc::Get_File_Size(filename);
+ 		}
+diff --git a/twrpTar.hpp b/twrpTar.hpp
+index eb82fa8..90722d4 100644
+--- a/twrpTar.hpp
++++ b/twrpTar.hpp
+@@ -61,6 +61,7 @@ public:
+ 	int use_encryption;
+ 	int userdata_encryption;
+ 	int use_compression;
++	int compression_type;
+ 	int split_archives;
+ 	string backup_name;
+ 	int progress_pipe_fd;
+@@ -95,7 +96,7 @@ private:
+ 	tartype_t tar_type; // Only used in createTar() but variable must persist while the tar is open
+ 	int fd;
+ 	int input_fd;                                                                   // this stores the fd for libtar to write to
+-	pid_t pigz_pid;
++	pid_t compressor_pid;
+ 	pid_t oaes_pid;
+ 	unsigned long long file_count;
+ 
+diff --git a/variables.h b/variables.h
+index 9d439ec..a712b3a 100755
+--- a/variables.h
++++ b/variables.h
+@@ -25,6 +25,9 @@
+ #define TW_DEFAULT_RECOVERY_FOLDER  "/" TW_RECOVERY_NAME
+ #define TW_STORAGE_PATH             "/data/recovery/"
+ #define TW_USE_COMPRESSION_VAR      "tw_use_compression"
++#define TW_BACKUP_COMPRESSION_VAR   "tw_backup_compression"
++#define TW_BACKUP_COMPRESSION_PIGZ  0
++#define TW_BACKUP_COMPRESSION_ZSTD  1
+ #define TW_FILENAME                 "tw_filename"
+ #define TW_ZIP_INDEX                "tw_zip_index"
+ #define TW_ZIP_QUEUE_COUNT          "tw_zip_queue_count"

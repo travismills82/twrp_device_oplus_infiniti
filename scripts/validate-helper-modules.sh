@@ -102,6 +102,9 @@ grep -Fq 'write /sys/class/backlight/panel0-backlight/brightness 2047' "$QCOM_IN
 grep -Fqx 'TW_SCREEN_TIMEOUT := 120' "$TREE/BoardConfig.mk" ||
     fail "recovery screen timeout is not enabled"
 
+grep -Fqx 'TW_INCLUDE_ZSTD               := true' "$TREE/BoardConfig.mk" ||
+    fail "recovery does not package the zstd backup compressor"
+
 grep -Fq '[ "$temp" -ge 80000 ]' "$thermal_guard" ||
     fail "thermal guard critical threshold is not 80C"
 
@@ -196,6 +199,7 @@ echo "[verified] helper module names are unversioned"
 echo "[verified] PRODUCT_PACKAGES entries match Android.mk declarations"
 echo "[verified] installed helper filenames and runtime consumers remain unchanged"
 echo "[verified] recovery thermal guard is packaged, starts at init, and polls at one-second intervals"
+echo "[verified] recovery packages zstd for selectable file-based backup compression"
 echo "[verified] Wi-Fi vendor_dlkm fallback does not leave stale error artifacts"
 echo "[verified] bundled Magisk is the default recovery payload"
 echo "[verified] no custom CIFS payloads are staged by the device tree"

@@ -54,6 +54,18 @@ Works:
 - [X] Interactive FTP/FTPS backup and restore menu in TWRP Terminal
 - [X] Magisk installation built in to recovery 
 
+## Backup compression
+
+When **Enable compression** is selected on the TWRP Backup options page, choose
+either **Pigz (gzip, level 9)** or **Zstd (level 11, multithreaded)**. Pigz
+remains the default and preserves compatibility with existing compressed `.win`
+backups. Zstd archives are detected automatically by this recovery, including
+encrypted file-based backups, but require this updated recovery to restore.
+
+ADB backup streams remain gzip for compatibility with TWRP's existing ADB
+backup protocol. Both local compression choices remain subject to the recovery
+thermal guard.
+
 ## Wireless backup and restore with curl
 
 ADB can still be used for command/control while the backup data itself transfers over Wi-Fi from recovery to a Linux or Windows backup server.
