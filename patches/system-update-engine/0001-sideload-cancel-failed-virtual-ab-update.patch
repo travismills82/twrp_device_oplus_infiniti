@@ -1,0 +1,24 @@
+diff --git a/aosp/cleanup_previous_update_action.cc b/aosp/cleanup_previous_update_action.cc
+index 9c0843c..21ceb70 100644
+--- a/aosp/cleanup_previous_update_action.cc
++++ b/aosp/cleanup_previous_update_action.cc
+@@ -256,1 +256,17 @@ void CleanupPreviousUpdateAction::StartMerge() {
++  if (kIsRecovery &&
++      snapshot_->GetUpdateState() == UpdateState::MergeFailed) {
++    // Cancellation from recovery is permitted only while this sideload action
++    // is replacing the failed target slot with a new signed OTA.
++    LOG(WARNING)
++        << "Cancelling failed Virtual A/B update in recovery before sideload.";
++    if (!snapshot_->CancelUpdate() ||
++        snapshot_->GetUpdateState() != UpdateState::None) {
++      LOG(ERROR) << "Failed to clear the previous failed Virtual A/B update.";
++      processor_->ActionComplete(this, ErrorCode::kError);
++      return;
++    }
++    processor_->ActionComplete(this, ErrorCode::kSuccess);
++    return;
++  }
++
+   if (kIsRecovery) {
+     auto snapshots_created =
+         snapshot_->RecoveryCreateSnapshotDevices(metadata_device_);

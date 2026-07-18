@@ -16,8 +16,10 @@ SOURCE_ROOT="${1:-$DEFAULT_SOURCE_ROOT}"
 RECOVERY_DIR="$SOURCE_ROOT/bootable/recovery"
 PATCH_DIR="$DEVICE_DIR/patches/bootable-recovery"
 SYSTEM_CORE_DIR="$SOURCE_ROOT/system/core"
+SYSTEM_UPDATE_ENGINE_DIR="$SOURCE_ROOT/system/update_engine"
 SYSTEM_VOLD_DIR="$SOURCE_ROOT/system/vold"
 SYSTEM_CORE_PATCH_DIR="$DEVICE_DIR/patches/system-core"
+SYSTEM_UPDATE_ENGINE_PATCH_DIR="$DEVICE_DIR/patches/system-update-engine"
 SYSTEM_VOLD_PATCH_DIR="$DEVICE_DIR/patches/system-vold"
 THEME_ASSET_DIR="$DEVICE_DIR/assets/twrp-theme"
 HELPER_VALIDATOR="$SCRIPT_DIR/validate-helper-modules.sh"
@@ -32,6 +34,7 @@ WIFI_STATUS_PLACEMENT='<placement x="720" y="10"/>'
 WLAN_LOGBOX_PLACEMENT='<borderedlogbox toprow="%row1a_y%" bottomrow="%row15_y%"'
 ADVANCED_AVB2_ENTRY='<listitem name="{@disable_avb2=Disable AVB2.0}">'
 ADVANCED_INSTALL_APP_ENTRY='<listitem name="{@reboot_install_app_hdr=Install TWRP App}">'
+FAILED_VAB_SIDELOAD_MARKER='Cancelling failed Virtual A/B update in recovery before sideload.'
 
 fail() {
     echo "ERROR: $*" >&2
@@ -191,6 +194,7 @@ apply_external_patch_series() {
 }
 
 apply_external_patch_series "$SYSTEM_CORE_DIR" "$SYSTEM_CORE_PATCH_DIR" "system/core"
+apply_external_patch_series "$SYSTEM_UPDATE_ENGINE_DIR" "$SYSTEM_UPDATE_ENGINE_PATCH_DIR" "system/update_engine"
 apply_external_patch_series "$SYSTEM_VOLD_DIR" "$SYSTEM_VOLD_PATCH_DIR" "system/vold"
 
 grep -Fq 'Accept vendor modules.softdep entries that omit whitespace after pre/post.' \
@@ -199,6 +203,10 @@ grep -Fq 'Accept vendor modules.softdep entries that omit whitespace after pre/p
 
 grep -Fq 'errno != EEXIST' "$SYSTEM_VOLD_DIR/KeyStorage.cpp" ||
     fail "vold still logs an existing temporary key directory as an error"
+
+grep -Fq "$FAILED_VAB_SIDELOAD_MARKER" \
+    "$SYSTEM_UPDATE_ENGINE_DIR/aosp/cleanup_previous_update_action.cc" ||
+    fail "recovery update_engine does not clear a failed Virtual A/B update before sideload"
 
 python3 - "$RECOVERY_DIR/gui/action.cpp" <<'PY'
 from pathlib import Path
@@ -333,6 +341,7 @@ echo "[verified] Wi-Fi connection and test paths publish DNS from the root recov
 echo "[verified] FBE backups exclude regeneratable /data/nandswap data"
 echo "[verified] Wi-Fi status icon image resource is wired into the portrait_hdpi status bar"
 echo "[verified] OpenRecoveryScript restore uses an available translated string and correct CLI argument order"
+echo "[verified] recovery sideload clears a failed Virtual A/B update before a replacement OTA"
 
 echo
 echo "Recovery patches are ready for the next build."
