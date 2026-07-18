@@ -1,0 +1,13 @@
+diff --git a/twrp-functions.hpp b/twrp-functions.hpp
+index 611fd74..a8be6dd 100644
+--- a/twrp-functions.hpp
++++ b/twrp-functions.hpp
+@@ -48,7 +48,9 @@ enum Archive_Type {
+ 	UNCOMPRESSED = 0,
+ 	COMPRESSED,
+ 	ENCRYPTED,
+-	COMPRESSED_ENCRYPTED
++	COMPRESSED_ENCRYPTED,
++	ZSTD_COMPRESSED,
++	ZSTD_COMPRESSED_ENCRYPTED
+ };
