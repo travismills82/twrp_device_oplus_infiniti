@@ -1,8 +1,7 @@
 diff --git a/twrp-functions.hpp b/twrp-functions.hpp
-index 611fd74..a8be6dd 100644
 --- a/twrp-functions.hpp
 +++ b/twrp-functions.hpp
-@@ -48,7 +48,9 @@ enum Archive_Type {
+@@ -49,5 +49,7 @@ enum Archive_Type {
  	UNCOMPRESSED = 0,
  	COMPRESSED,
  	ENCRYPTED,
