@@ -62,6 +62,7 @@ PRODUCT_PACKAGES += \
 	twrp-ftp-restore \
 	twrp-curl-cacert \
 	twrp-touch-start \
+	twrp-thermal-guard \
 	twrp-decrypt-prereqs
 
 # Recovery init and FBE/decryption userspace

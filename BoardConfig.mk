@@ -146,6 +146,9 @@ TW_BRIGHTNESS_PATH := "/sys/class/backlight/panel0-backlight/brightness"
 TW_DEFAULT_BRIGHTNESS := 2047
 TW_FRAMERATE := 60
 TW_MAX_BRIGHTNESS := 4094
+# Keep TWRP's user-configurable screen timeout enabled. The thermal guard
+# preserves the normal brightness setting and only limits it during a real
+# thermal event.
 TW_SCREEN_TIMEOUT := 120
 #TW_SCREEN_BLANK_ON_BOOT := true
 TW_THEME := portrait_hdpi
@@ -185,7 +188,7 @@ TW_SUPPORT_INPUT_AIDL_HAPTICS := true
 
 # Other TWRP Configurations
 TARGET_RECOVERY_QCOM_RTC_FIX            := true
-TW_CUSTOM_CPU_TEMP_PATH                 := "/sys/class/thermal/thermal_zone45/temp" # CPU-0-0-0
+TW_CUSTOM_CPU_TEMP_PATH                 := "/sys/class/thermal/thermal_zone45/temp" # CPU sensor used by recovery display and thermal guard
 TW_EXCLUDE_APEX                         := true
 TW_EXCLUDE_DEFAULT_USB_INIT             := true
 TW_EXCLUDE_TWRP_APP                     := true

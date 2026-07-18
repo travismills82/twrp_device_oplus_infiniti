@@ -1,15 +1,16 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Travis Mills <travismills82@gmail.com>
 Date: Sat, 20 Jun 2026 18:30:00 -0400
-Subject: [PATCH] backup: use maximum pigz compression level
+Subject: [PATCH] backup: use parallel level-9 pigz with thermal guard
 
 TWRP currently launches pigz without an explicit level, which selects pigz's
 default compression setting. Pass -9 for both compressed backup pipelines so
 normal compressed backups and compressed-plus-encrypted backups consistently
-use the maximum gzip/deflate compression level.
+use maximum gzip/deflate compression while retaining pigz's parallel workers.
 
 Restore compatibility is unchanged because the archive format remains gzip.
-Only compression time and resulting archive size are affected.
+On infiniti, recovery init starts the thermal guard before any backup work and
+uses it to cap CPU policies as the sensor temperature rises.
 ---
  twrpTar.cpp | 4 ++--
  1 file changed, 2 insertions(+), 2 deletions(-)

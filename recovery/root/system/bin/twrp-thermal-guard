@@ -8,14 +8,20 @@
 # normal Android thermal userspace stack during heavy TWRP backup operations.
 #
 
-POLL_SECONDS=10
+# Recovery can reach an unsafe temperature in well under the original ten
+# second interval during a compressed backup. Apply the baseline cap from the
+# first pass and reassess once a second.
+POLL_SECONDS=1
 PRIMARY_TEMP_PATH="/sys/class/thermal/thermal_zone45/temp"
 BACKLIGHT_PATH="/sys/class/backlight/panel0-backlight/brightness"
 
-NORMAL_BRIGHTNESS=768
-WARM_BRIGHTNESS=512
-HOT_BRIGHTNESS=256
-CRITICAL_BRIGHTNESS=128
+# Let TWRP own the normal screen-brightness setting. The guard only applies a
+# lower cap during a thermal event and restores the last normal setting after
+# the device cools.
+NORMAL_BRIGHTNESS=preserve
+WARM_BRIGHTNESS=1536
+HOT_BRIGHTNESS=1024
+CRITICAL_BRIGHTNESS=768
 
 log_msg() {
     echo "[thermal-guard] $1"
@@ -130,10 +136,38 @@ disable_boosts() {
     write_node /sys/module/msm_performance/parameters/cpu_min_freq 0
 }
 
-set_brightness() {
-    level="$1"
-    [ -e "$BACKLIGHT_PATH" ] || return 0
-    write_node "$BACKLIGHT_PATH" "$level"
+apply_brightness_policy() {
+    state="$1"
+    level="$2"
+    current="$(read_int "$BACKLIGHT_PATH" 2>/dev/null || true)"
+    [ -n "$current" ] || return 0
+
+    if [ "$state" = "normal" ]; then
+        # At startup and while cool, remember user or TWRP brightness without
+        # writing the backlight node. This prevents the guard from overriding
+        # the screen brightness slider every refresh cycle.
+        if [ "$last_state" != "normal" ] && [ -n "$saved_brightness" ]; then
+            write_node "$BACKLIGHT_PATH" "$saved_brightness"
+        else
+            saved_brightness="$current"
+        fi
+        return 0
+    fi
+
+    # Preserve the latest non-thermal brightness so it can be restored once
+    # the temperature returns to normal.
+    if [ "$last_state" = "normal" ] || [ -z "$saved_brightness" ]; then
+        saved_brightness="$current"
+    fi
+
+    case "$level" in
+        ''|*[!0-9]*) return 1 ;;
+    esac
+
+    # Never raise a deliberately dim user setting during a thermal event.
+    if [ "$current" -gt "$level" ]; then
+        write_node "$BACKLIGHT_PATH" "$level"
+    fi
 }
 
 apply_state() {
@@ -144,10 +178,11 @@ apply_state() {
 
     disable_boosts
     cap_cpu_policies "$percent"
-    set_brightness "$brightness"
+    apply_brightness_policy "$state" "$brightness"
 
     setprop twrp.thermal.status "$state" 2>/dev/null || true
     setprop twrp.thermal.temp "$temp" 2>/dev/null || true
+    setprop twrp.thermal.temp_millic "$temp" 2>/dev/null || true
     setprop twrp.thermal.cap_pct "$percent" 2>/dev/null || true
 
     temp_c=$((temp / 1000))
@@ -155,27 +190,28 @@ apply_state() {
 }
 
 last_state=""
+saved_brightness=""
 refresh=0
 log_msg "starting recovery thermal guard"
 
 while true; do
     temp="$(read_cpu_temp 2>/dev/null || echo 0)"
 
-    if [ "$temp" -ge 100000 ]; then
+    if [ "$temp" -ge 80000 ]; then
         state="critical"
-        percent=30
+        percent=25
         brightness="$CRITICAL_BRIGHTNESS"
-    elif [ "$temp" -ge 90000 ]; then
+    elif [ "$temp" -ge 70000 ]; then
         state="hot"
-        percent=40
+        percent=30
         brightness="$HOT_BRIGHTNESS"
-    elif [ "$temp" -ge 80000 ]; then
+    elif [ "$temp" -ge 60000 ]; then
         state="warm"
-        percent=55
+        percent=40
         brightness="$WARM_BRIGHTNESS"
     else
         state="normal"
-        percent=70
+        percent=45
         brightness="$NORMAL_BRIGHTNESS"
     fi
 

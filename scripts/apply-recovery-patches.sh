@@ -24,7 +24,7 @@ SYSTEM_VOLD_PATCH_DIR="$DEVICE_DIR/patches/system-vold"
 THEME_ASSET_DIR="$DEVICE_DIR/assets/twrp-theme"
 HELPER_VALIDATOR="$SCRIPT_DIR/validate-helper-modules.sh"
 EXPECTED_BASE="6bd8134ec8ff4cb29eb25797cbb20796f8455204"
-PIGZ_MAX_CALL='execlp("pigz", "pigz", "-9", "-", NULL)'
+PIGZ_TEST_CALL='execlp("pigz", "pigz", "-9", "-", NULL)'
 DNS_PUBLISH_CALL='/system/bin/twrp-dns-publish wlan0 2>&1'
 NANDSWAP_EXCLUSION='ExcludeAll(Mount_Point + "/nandswap")'
 WIFI_ICON_MARKER='OP15 Wi-Fi status icon START'
@@ -279,9 +279,9 @@ sed -i 's/[[:space:]]\+$//' "$RECOVERY_DIR/gui/theme/common/portrait.xml"
 
 git -C "$RECOVERY_DIR" diff --check
 
-PIGZ_MAX_COUNT="$(grep -F -c "$PIGZ_MAX_CALL" "$RECOVERY_DIR/twrpTar.cpp" 2>/dev/null || true)"
-if [ "$PIGZ_MAX_COUNT" -ne 2 ]; then
-    fail "Expected two pigz -9 backup paths in twrpTar.cpp; found $PIGZ_MAX_COUNT"
+PIGZ_TEST_COUNT="$(grep -F -c "$PIGZ_TEST_CALL" "$RECOVERY_DIR/twrpTar.cpp" 2>/dev/null || true)"
+if [ "$PIGZ_TEST_COUNT" -ne 2 ]; then
+    fail "Expected two parallel pigz -9 backup paths in twrpTar.cpp; found $PIGZ_TEST_COUNT"
 fi
 
 if grep -F -q 'execlp("pigz", "pigz", "-", NULL)' "$RECOVERY_DIR/twrpTar.cpp"; then
@@ -335,7 +335,7 @@ fi
 [ -s "$WIFI_STATUS_ICON" ] || fail "Wi-Fi status icon asset was not installed"
 
 echo "[verified] helper module identities and runtime paths are unversioned"
-echo "[verified] pigz -9 is active for compressed and compressed-encrypted backups"
+echo "[verified] parallel pigz -9 is active for compressed and compressed-encrypted backups"
 echo "[verified] OrangeFox filename compatibility is removed from the file selector"
 echo "[verified] Wi-Fi connection and test paths publish DNS from the root recovery process"
 echo "[verified] FBE backups exclude regeneratable /data/nandswap data"

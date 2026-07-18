@@ -25,6 +25,7 @@ modules=(
     twrp-root-patcher
     twrp-wifi-start
     twrp-smb-mount
+    twrp-thermal-guard
     twrp-decrypt-prereqs
 )
 
@@ -76,6 +77,33 @@ fi
 grep -Fq 'service twrp-wifi-start /system/bin/twrp-wifi-start' \
     "$TREE/recovery/root/init.recovery.wifi.rc" ||
     fail "Wi-Fi init service does not use /system/bin/twrp-wifi-start"
+
+thermal_guard="$TREE/recovery/root/system/bin/twrp-thermal-guard"
+[ -f "$thermal_guard" ] || fail "thermal guard source is missing"
+
+grep -Fq 'LOCAL_POST_INSTALL_CMD = chmod 0755 $(LOCAL_INSTALLED_MODULE)' "$ANDROID_MK" ||
+    fail "thermal guard is not installed as an executable"
+
+grep -Fq 'service twrp-thermal-guard /system/bin/twrp-thermal-guard' "$QCOM_INIT_RC" ||
+    fail "thermal guard init service is missing"
+
+grep -Fq 'start twrp-thermal-guard' "$QCOM_INIT_RC" ||
+    fail "thermal guard is not started during recovery init"
+
+grep -Fqx 'POLL_SECONDS=1' "$thermal_guard" ||
+    fail "thermal guard does not poll once per second"
+
+grep -Fqx 'NORMAL_BRIGHTNESS=preserve' "$thermal_guard" ||
+    fail "thermal guard does not preserve normal TWRP brightness"
+
+grep -Fq 'write /sys/class/backlight/panel0-backlight/brightness 2047' "$QCOM_INIT_RC" ||
+    fail "recovery init does not use the configured default screen brightness"
+
+grep -Fqx 'TW_SCREEN_TIMEOUT := 120' "$TREE/BoardConfig.mk" ||
+    fail "recovery screen timeout is not enabled"
+
+grep -Fq '[ "$temp" -ge 80000 ]' "$thermal_guard" ||
+    fail "thermal guard critical threshold is not 80C"
 
 grep -Fq 'command -v twrp-root-patcher' \
     "$TREE/recovery/root/system/bin/twrp-flash-magisk" ||
@@ -167,6 +195,7 @@ done
 echo "[verified] helper module names are unversioned"
 echo "[verified] PRODUCT_PACKAGES entries match Android.mk declarations"
 echo "[verified] installed helper filenames and runtime consumers remain unchanged"
+echo "[verified] recovery thermal guard is packaged, starts at init, and polls at one-second intervals"
 echo "[verified] Wi-Fi vendor_dlkm fallback does not leave stale error artifacts"
 echo "[verified] bundled Magisk is the default recovery payload"
 echo "[verified] no custom CIFS payloads are staged by the device tree"

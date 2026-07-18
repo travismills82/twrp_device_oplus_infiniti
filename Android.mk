@@ -135,6 +135,15 @@ LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/system/bin
 include $(BUILD_PREBUILT)
 
 include $(CLEAR_VARS)
+LOCAL_MODULE := twrp-thermal-guard
+LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE_CLASS := EXECUTABLES
+LOCAL_SRC_FILES := recovery/root/system/bin/twrp-thermal-guard
+LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/system/bin
+LOCAL_POST_INSTALL_CMD = chmod 0755 $(LOCAL_INSTALLED_MODULE)
+include $(BUILD_PREBUILT)
+
+include $(CLEAR_VARS)
 LOCAL_MODULE := twrp-decrypt-prereqs
 LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE_CLASS := EXECUTABLES

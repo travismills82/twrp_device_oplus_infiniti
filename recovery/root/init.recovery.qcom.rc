@@ -47,6 +47,12 @@ service twrp-touch-start /system/bin/twrp-touch-start
     oneshot
     seclabel u:r:recovery:s0
 
+service twrp-thermal-guard /system/bin/twrp-thermal-guard
+    class core
+    user root
+    group root
+    seclabel u:r:recovery:s0
+
 service twrp-decrypt-prereqs /system/bin/twrp-decrypt-prereqs
     user root
     group root system drmrpc
@@ -59,7 +65,10 @@ on early-fs
     write /proc/sys/walt/sched_lib_mask_force 255
 
 on init
-    write /sys/class/backlight/panel0-backlight/brightness 200
+    # Match TW_DEFAULT_BRIGHTNESS (2047 / 4094) instead of forcing a nearly
+    # black panel before TWRP loads its persisted brightness setting.
+    write /sys/class/backlight/panel0-backlight/brightness 2047
+    start twrp-thermal-guard
     setprop sys.usb.configfs 1
     start vendor.boot-qti
     start twrp-touch-start
