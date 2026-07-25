@@ -284,6 +284,9 @@ base64 -d "$WIFI_STATUS_ICON_B64" > "$WIFI_STATUS_ICON"
 chmod 0644 "$WIFI_STATUS_ICON"
 echo "[installed] portrait_hdpi Wi-Fi status icon: $WIFI_STATUS_ICON"
 
+python3 "$DEVICE_DIR/tools/patch_twrp_magisk_theme.py" \
+    "$RECOVERY_DIR/gui/theme/common/portrait.xml"
+
 sed -i 's/[[:space:]]\+$//' "$RECOVERY_DIR/gui/theme/common/portrait.xml"
 
 git -C "$RECOVERY_DIR" diff --check
@@ -367,6 +370,14 @@ if ! grep -F -q 'DataManager::SetValue("tw_wifi_connected", "1")' "$RECOVERY_DIR
     fail "Wi-Fi connection path does not mark the icon connected"
 fi
 
+for advanced_item in \
+    '/system/bin/twrp-flash-magisk init_boot' \
+    '/system/bin/twrp-ftp-menu' \
+    '/system/bin/twrp-avb-tool'; do
+    grep -F -q "$advanced_item" "$RECOVERY_DIR/gui/theme/common/portrait.xml" ||
+        fail "Advanced theme is missing the required helper entry: $advanced_item"
+done
+
 if ! grep -F -q '<image name="wifi_status" filename="wifi_status" retainaspect="1"/>' \
         "$RECOVERY_DIR/gui/theme/portrait_hdpi/ui.xml" ||
     ! grep -F -q '<image resource="wifi_status"/>' \
@@ -378,6 +389,7 @@ fi
 
 echo "[verified] helper module identities and runtime paths are unversioned"
 echo "[verified] backup compression offers parallel pigz -9 and multithreaded zstd -11"
+echo "[verified] Advanced theme includes bundled Magisk, FTP, and AVB helper menus"
 echo "[verified] OrangeFox filename compatibility is removed from the file selector"
 echo "[verified] Wi-Fi connection and test paths publish DNS from the root recovery process"
 echo "[verified] FBE backups exclude regeneratable /data/nandswap data"

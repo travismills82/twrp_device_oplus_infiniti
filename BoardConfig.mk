@@ -182,11 +182,13 @@ TW_DEVICE_VERSION := OnePlus_15
 # Verified Boot
 # The OnePlus bootloader validates the standalone recovery partition before
 # loading it, even on an unlocked device.  Produce a complete recovery AVB
-# hash footer with the platform test key so the development recovery remains
-# bootable.  This only controls image packaging; patch 0010 keeps the
-# unwanted in-GUI AVB disable actions removed.
+# hash footer so the development recovery remains bootable.  avbtool's
+# legacy raw-RSA signer does not produce a verifiable footer with Android's
+# PKCS#8 test key on this host; use the in-tree AVB PEM test key instead.
+# This only controls image packaging; patch 0010 keeps the unwanted in-GUI
+# AVB disable actions removed.
 BOARD_AVB_ENABLE                           := true
-BOARD_AVB_RECOVERY_KEY_PATH                := build/make/target/product/security/testkey.pk8
+BOARD_AVB_RECOVERY_KEY_PATH                := external/avb/test/data/testkey_rsa2048.pem
 BOARD_AVB_RECOVERY_ALGORITHM               := SHA256_RSA2048
 BOARD_AVB_RECOVERY_ROLLBACK_INDEX          := 0
 BOARD_AVB_RECOVERY_ROLLBACK_INDEX_LOCATION := 0

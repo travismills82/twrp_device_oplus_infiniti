@@ -108,8 +108,8 @@ grep -Fqx 'TW_INCLUDE_ZSTD               := true' "$TREE/BoardConfig.mk" ||
 grep -Eq '^BOARD_AVB_ENABLE[[:space:]]*:?=[[:space:]]*true$' "$TREE/BoardConfig.mk" ||
     fail "standalone recovery is not configured to add its required AVB footer"
 
-grep -Eq '^BOARD_AVB_RECOVERY_KEY_PATH[[:space:]]*:?=[[:space:]]*build/make/target/product/security/testkey\.pk8$' "$TREE/BoardConfig.mk" ||
-    fail "standalone recovery does not use the configured AVB signing key"
+grep -Eq '^BOARD_AVB_RECOVERY_KEY_PATH[[:space:]]*:?=[[:space:]]*external/avb/test/data/testkey_rsa2048\.pem$' "$TREE/BoardConfig.mk" ||
+    fail "standalone recovery does not use the verifiable AVB signing key"
 
 grep -Eq '^BOARD_AVB_RECOVERY_ALGORITHM[[:space:]]*:?=[[:space:]]*SHA256_RSA2048$' "$TREE/BoardConfig.mk" ||
     fail "standalone recovery AVB signing algorithm is not SHA256_RSA2048"
@@ -124,6 +124,9 @@ grep -Fq 'command -v twrp-root-patcher' \
 grep -Fq 'twrp-root-patcher magisk' \
     "$TREE/recovery/root/system/bin/twrp-flash-magisk" ||
     fail "Magisk helper does not invoke twrp-root-patcher"
+
+grep -Fq 'patch_twrp_magisk_theme.py' "$ANDROID_MK" ||
+    fail "recovery build does not patch the Advanced helper menus"
 
 grep -Fq 'twrp-smb-mount mount' "$TREE/README.md" ||
     fail "README no longer documents the twrp-smb-mount runtime command"
@@ -210,6 +213,7 @@ echo "[verified] installed helper filenames and runtime consumers remain unchang
 echo "[verified] recovery thermal guard is packaged, starts at init, and polls at one-second intervals"
 echo "[verified] recovery packages zstd for selectable file-based backup compression"
 echo "[verified] standalone recovery is configured with the required AVB hash footer"
+echo "[verified] recovery build patches Advanced with Magisk, FTP, and AVB menus"
 echo "[verified] Wi-Fi vendor_dlkm fallback does not leave stale error artifacts"
 echo "[verified] bundled Magisk is the default recovery payload"
 echo "[verified] no custom CIFS payloads are staged by the device tree"
