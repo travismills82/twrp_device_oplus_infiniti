@@ -180,9 +180,16 @@ BOOT_SECURITY_PATCH := $(PLATFORM_SECURITY_PATCH)
 TW_DEVICE_VERSION := OnePlus_15
 
 # Verified Boot
-# Keep BOARD_AVB_ENABLE unset so TWRP does not expose the built-in
-# automatic AVB2.0 disable option in the GUI. AVB tools remain packaged
-# through device.mk for manual/scripted device-specific use.
+# The OnePlus bootloader validates the standalone recovery partition before
+# loading it, even on an unlocked device.  Produce a complete recovery AVB
+# hash footer with the platform test key so the development recovery remains
+# bootable.  This only controls image packaging; patch 0010 keeps the
+# unwanted in-GUI AVB disable actions removed.
+BOARD_AVB_ENABLE                           := true
+BOARD_AVB_RECOVERY_KEY_PATH                := build/make/target/product/security/testkey.pk8
+BOARD_AVB_RECOVERY_ALGORITHM               := SHA256_RSA2048
+BOARD_AVB_RECOVERY_ROLLBACK_INDEX          := 0
+BOARD_AVB_RECOVERY_ROLLBACK_INDEX_LOCATION := 0
 
 # Vibrator
 TW_SUPPORT_INPUT_AIDL_HAPTICS := true

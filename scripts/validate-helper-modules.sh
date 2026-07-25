@@ -105,6 +105,15 @@ grep -Fqx 'TW_SCREEN_TIMEOUT := 120' "$TREE/BoardConfig.mk" ||
 grep -Fqx 'TW_INCLUDE_ZSTD               := true' "$TREE/BoardConfig.mk" ||
     fail "recovery does not package the zstd backup compressor"
 
+grep -Eq '^BOARD_AVB_ENABLE[[:space:]]*:?=[[:space:]]*true$' "$TREE/BoardConfig.mk" ||
+    fail "standalone recovery is not configured to add its required AVB footer"
+
+grep -Eq '^BOARD_AVB_RECOVERY_KEY_PATH[[:space:]]*:?=[[:space:]]*build/make/target/product/security/testkey\.pk8$' "$TREE/BoardConfig.mk" ||
+    fail "standalone recovery does not use the configured AVB signing key"
+
+grep -Eq '^BOARD_AVB_RECOVERY_ALGORITHM[[:space:]]*:?=[[:space:]]*SHA256_RSA2048$' "$TREE/BoardConfig.mk" ||
+    fail "standalone recovery AVB signing algorithm is not SHA256_RSA2048"
+
 grep -Fq '[ "$temp" -ge 80000 ]' "$thermal_guard" ||
     fail "thermal guard critical threshold is not 80C"
 
@@ -200,6 +209,7 @@ echo "[verified] PRODUCT_PACKAGES entries match Android.mk declarations"
 echo "[verified] installed helper filenames and runtime consumers remain unchanged"
 echo "[verified] recovery thermal guard is packaged, starts at init, and polls at one-second intervals"
 echo "[verified] recovery packages zstd for selectable file-based backup compression"
+echo "[verified] standalone recovery is configured with the required AVB hash footer"
 echo "[verified] Wi-Fi vendor_dlkm fallback does not leave stale error artifacts"
 echo "[verified] bundled Magisk is the default recovery payload"
 echo "[verified] no custom CIFS payloads are staged by the device tree"
