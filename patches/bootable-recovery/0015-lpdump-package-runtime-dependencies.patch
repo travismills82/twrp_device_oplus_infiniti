@@ -1,0 +1,46 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Travis Mills <travismills82@gmail.com>
+Date: Thu, 30 Jul 2026 18:15:00 -0500
+Subject: [PATCH] recovery: package lpdump runtime dependencies
+
+lpdumpd is included in recovery whenever dynamic partition tools are enabled,
+but its libfs_mgr_binder dependency was omitted from the recovery runtime
+library list. That library in turn loads liblpdump, which needs libsnapshot.
+The linker therefore aborted lpdumpd before it could register lpdump_service,
+leaving the lpdump client unable to inspect logical partition metadata.
+
+Include the missing runtime libraries and make the relink package depend
+directly on the lpdump library set so an incremental recovery build refreshes
+the ramdisk copies.
+---
+ prebuilt/Android.mk | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/prebuilt/Android.mk b/prebuilt/Android.mk
+--- a/prebuilt/Android.mk
++++ b/prebuilt/Android.mk
+@@ -325,6 +325,10 @@ ifeq ($(PRODUCT_USE_DYNAMIC_PARTITIONS),true)
+         RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/liblpdump_interface-V1-cpp.so
+         RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/libprotobuf-cpp-full.so
+         RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/liblpdump_interface-cpp.so
++        # lpdumpd loads this before it can register lpdump_service.
++        RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/libfs_mgr_binder.so
++        # liblpdump loads this while reading dynamic-partition metadata.
++        RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/libsnapshot.so
+     endif
+     ifneq ($(TW_INCLUDE_LPTOOLS),)
+         RECOVERY_BINARY_SOURCE_FILES += $(TARGET_OUT_EXECUTABLES)/lptools
+@@ -465,5 +469,13 @@ else
+ TARGET_LIBRARY_RELINK_FILES := $(notdir $(RECOVERY_LIBRARY_SOURCE_FILES))
+ TARGET_BASE_LIBRARY_RELINK_MODULES := $(basename $(TARGET_LIBRARY_RELINK_FILES))
+ TARGET_RELINK_LIBRARY_MODULES :=  $(filter-out libdexfile, $(TARGET_BASE_LIBRARY_RELINK_MODULES))
+ LOCAL_REQUIRED_MODULES += $(TARGET_RELINK_LIBRARY_MODULES)
++ifneq ($(TW_INCLUDE_LPDUMP),)
++# Refresh all lpdump runtime libraries when any of them is rebuilt.
++LOCAL_ADDITIONAL_DEPENDENCIES += $(TARGET_OUT_SHARED_LIBRARIES)/liblpdump.so \
++    $(TARGET_OUT_SHARED_LIBRARIES)/libprotobuf-cpp-full.so \
++    $(TARGET_OUT_SHARED_LIBRARIES)/liblpdump_interface-cpp.so \
++    $(TARGET_OUT_SHARED_LIBRARIES)/libfs_mgr_binder.so \
++    $(TARGET_OUT_SHARED_LIBRARIES)/libsnapshot.so
++endif
+ include $(BUILD_PHONY_PACKAGE)

@@ -18,9 +18,11 @@ PATCH_DIR="$DEVICE_DIR/patches/bootable-recovery"
 SYSTEM_CORE_DIR="$SOURCE_ROOT/system/core"
 SYSTEM_UPDATE_ENGINE_DIR="$SOURCE_ROOT/system/update_engine"
 SYSTEM_VOLD_DIR="$SOURCE_ROOT/system/vold"
+SYSTEM_EXTRAS_DIR="$SOURCE_ROOT/system/extras"
 SYSTEM_CORE_PATCH_DIR="$DEVICE_DIR/patches/system-core"
 SYSTEM_UPDATE_ENGINE_PATCH_DIR="$DEVICE_DIR/patches/system-update-engine"
 SYSTEM_VOLD_PATCH_DIR="$DEVICE_DIR/patches/system-vold"
+SYSTEM_EXTRAS_PATCH_DIR="$DEVICE_DIR/patches/system-extras"
 THEME_ASSET_DIR="$DEVICE_DIR/assets/twrp-theme"
 HELPER_VALIDATOR="$SCRIPT_DIR/validate-helper-modules.sh"
 EXPECTED_BASE="6bd8134ec8ff4cb29eb25797cbb20796f8455204"
@@ -37,6 +39,11 @@ WLAN_LOGBOX_PLACEMENT='<borderedlogbox toprow="%row1a_y%" bottomrow="%row15_y%"'
 ADVANCED_AVB2_ENTRY='<listitem name="{@disable_avb2=Disable AVB2.0}">'
 ADVANCED_INSTALL_APP_ENTRY='<listitem name="{@reboot_install_app_hdr=Install TWRP App}">'
 FAILED_VAB_SIDELOAD_MARKER='Cancelling failed Virtual A/B update in recovery before sideload.'
+LPDUMP_BINDER_LIBRARY='RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/libfs_mgr_binder.so'
+LPDUMP_SNAPSHOT_LIBRARY='RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/libsnapshot.so'
+LPDUMP_RELINK_DEPENDENCIES='LOCAL_ADDITIONAL_DEPENDENCIES += $(TARGET_OUT_EXECUTABLES)/lpdump $(TARGET_OUT_EXECUTABLES)/lpdumpd'
+LPDUMP_LIBRARY_RELINK_FIRST_LINE='LOCAL_ADDITIONAL_DEPENDENCIES += $(TARGET_OUT_SHARED_LIBRARIES)/liblpdump.so'
+LPDUMP_LIBRARY_RELINK_SNAPSHOT_LINE='    $(TARGET_OUT_SHARED_LIBRARIES)/libsnapshot.so'
 
 fail() {
     echo "ERROR: $*" >&2
@@ -205,6 +212,7 @@ apply_external_patch_series() {
 apply_external_patch_series "$SYSTEM_CORE_DIR" "$SYSTEM_CORE_PATCH_DIR" "system/core"
 apply_external_patch_series "$SYSTEM_UPDATE_ENGINE_DIR" "$SYSTEM_UPDATE_ENGINE_PATCH_DIR" "system/update_engine"
 apply_external_patch_series "$SYSTEM_VOLD_DIR" "$SYSTEM_VOLD_PATCH_DIR" "system/vold"
+apply_external_patch_series "$SYSTEM_EXTRAS_DIR" "$SYSTEM_EXTRAS_PATCH_DIR" "system/extras"
 
 grep -Fq 'Accept vendor modules.softdep entries that omit whitespace after pre/post.' \
     "$SYSTEM_CORE_DIR/libmodprobe/libmodprobe.cpp" ||
@@ -216,6 +224,29 @@ grep -Fq 'errno != EEXIST' "$SYSTEM_VOLD_DIR/KeyStorage.cpp" ||
 grep -Fq "$FAILED_VAB_SIDELOAD_MARKER" \
     "$SYSTEM_UPDATE_ENGINE_DIR/aosp/cleanup_previous_update_action.cc" ||
     fail "recovery update_engine does not clear a failed Virtual A/B update before sideload"
+
+lpdump_service_lookups="$(grep -F -c 'getService(String16("lpdump_service"), &service_);' \
+    "$SYSTEM_EXTRAS_DIR/partition_tools/lpdump_target.cc" || true)"
+[ "$lpdump_service_lookups" -eq 2 ] ||
+    fail "lpdump does not consistently retry the registered lpdump_service binder endpoint"
+
+if grep -Fq 'getService(String16("lpdump"), &service_);' \
+        "$SYSTEM_EXTRAS_DIR/partition_tools/lpdump_target.cc"; then
+    fail "lpdump still retries the nonexistent lpdump binder service"
+fi
+
+grep -Fq "$LPDUMP_BINDER_LIBRARY" "$RECOVERY_DIR/prebuilt/Android.mk" ||
+    fail "recovery does not package libfs_mgr_binder for lpdumpd"
+
+grep -Fq "$LPDUMP_SNAPSHOT_LIBRARY" "$RECOVERY_DIR/prebuilt/Android.mk" ||
+    fail "recovery does not package libsnapshot for lpdumpd"
+
+grep -Fq "$LPDUMP_RELINK_DEPENDENCIES" "$RECOVERY_DIR/prebuilt/Android.mk" ||
+    fail "recovery does not refresh lpdump binaries during incremental builds"
+
+grep -Fq "$LPDUMP_LIBRARY_RELINK_FIRST_LINE" "$RECOVERY_DIR/prebuilt/Android.mk" &&
+    grep -Fq "$LPDUMP_LIBRARY_RELINK_SNAPSHOT_LINE" "$RECOVERY_DIR/prebuilt/Android.mk" ||
+    fail "recovery does not refresh lpdump runtime libraries during incremental builds"
 
 python3 - "$RECOVERY_DIR/gui/action.cpp" <<'PY'
 from pathlib import Path

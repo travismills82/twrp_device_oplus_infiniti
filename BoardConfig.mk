@@ -101,8 +101,13 @@ BOARD_RECOVERYIMAGE_PARTITION_SIZE      := 0x6400000
 BOARD_SUPER_PARTITION_SIZE                  := 18907922432
 BOARD_SUPER_PARTITION_GROUPS                := qti_dynamic_partitions
 BOARD_QTI_DYNAMIC_PARTITIONS_SIZE           := 18903728128
-BOARD_QTI_DYNAMIC_PARTITIONS_PARTITION_LIST := system system_ext product vendor vendor_dlkm odm system_dlkm system_dlkm_oki
+BOARD_QTI_DYNAMIC_PARTITIONS_PARTITION_LIST := system system_ext product vendor vendor_dlkm odm system_dlkm
 BOARD_QTI_DYNAMIC_PARTITIONS_PARTITION_LIST += my_bigball my_carrier my_company my_engineering my_heytap my_manifest my_preload my_product my_region my_stock
+
+# system_dlkm_oki is a stock logical partition exposed by recovery.fstab and
+# twrp.flags for mount, backup, and flash operations. It has no filesystem
+# module in this source tree, so including it here makes Soong attempt to
+# generate a super-image payload it cannot build.
 
 BOARD_ODMIMAGE_FILE_SYSTEM_TYPE := ext4
 TARGET_COPY_OUT_ODM             := odm

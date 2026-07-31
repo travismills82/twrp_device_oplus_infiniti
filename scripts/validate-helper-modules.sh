@@ -22,6 +22,7 @@ fail() {
 }
 
 modules=(
+    twrp-flash-kernel
     twrp-root-patcher
     twrp-wifi-start
     twrp-smb-mount
@@ -114,6 +115,30 @@ grep -Eq '^BOARD_AVB_RECOVERY_KEY_PATH[[:space:]]*:?=[[:space:]]*external/avb/te
 grep -Eq '^BOARD_AVB_RECOVERY_ALGORITHM[[:space:]]*:?=[[:space:]]*SHA256_RSA2048$' "$TREE/BoardConfig.mk" ||
     fail "standalone recovery AVB signing algorithm is not SHA256_RSA2048"
 
+if grep -Eq '^BOARD_QTI_DYNAMIC_PARTITIONS_PARTITION_LIST.*system_dlkm_oki' "$TREE/BoardConfig.mk"; then
+    fail "system_dlkm_oki must remain a recovery-only logical target, not a generated super-image partition"
+fi
+
+lpdump_runtime_patch="$TREE/patches/bootable-recovery/0015-lpdump-package-runtime-dependencies.patch"
+[ -f "$lpdump_runtime_patch" ] ||
+    fail "lpdump recovery runtime dependency patch is missing"
+grep -Fq '+        RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/libfs_mgr_binder.so' \
+    "$lpdump_runtime_patch" ||
+    fail "lpdump recovery runtime dependency patch does not package libfs_mgr_binder"
+grep -Fq '+        RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/libsnapshot.so' \
+    "$lpdump_runtime_patch" ||
+    fail "lpdump recovery runtime dependency patch does not package libsnapshot"
+grep -Fq '+LOCAL_ADDITIONAL_DEPENDENCIES += $(TARGET_OUT_SHARED_LIBRARIES)/liblpdump.so' \
+    "$lpdump_runtime_patch" ||
+    fail "lpdump recovery runtime dependency patch lacks library refresh dependencies"
+
+lpdump_relink_patch="$TREE/patches/bootable-recovery/0016-lpdump-refresh-incremental-recovery-stage.patch"
+[ -f "$lpdump_relink_patch" ] ||
+    fail "lpdump incremental recovery staging patch is missing"
+grep -Fq '+LOCAL_ADDITIONAL_DEPENDENCIES += $(TARGET_OUT_EXECUTABLES)/lpdump $(TARGET_OUT_EXECUTABLES)/lpdumpd' \
+    "$lpdump_relink_patch" ||
+    fail "lpdump incremental recovery staging patch lacks the client dependencies"
+
 grep -Fq '[ "$temp" -ge 80000 ]' "$thermal_guard" ||
     fail "thermal guard critical threshold is not 80C"
 
@@ -124,6 +149,20 @@ grep -Fq 'command -v twrp-root-patcher' \
 grep -Fq 'twrp-root-patcher magisk' \
     "$TREE/recovery/root/system/bin/twrp-flash-magisk" ||
     fail "Magisk helper does not invoke twrp-root-patcher"
+
+kernel_flash="$TREE/recovery/root/system/bin/twrp-flash-kernel"
+grep -Fqx 'MODE=dry-run' "$kernel_flash" ||
+    fail "kernel flash helper must default to a dry run"
+grep -Fq 'lpdump --slot "$slot"' "$kernel_flash" ||
+    fail "kernel flash helper does not inspect the active slot metadata"
+grep -Fq 'Update state: none' "$kernel_flash" ||
+    fail "kernel flash helper does not reject active snapshot updates"
+grep -Fq '/dev/block/bootdevice/by-name/boot${slot}' "$kernel_flash" ||
+    fail "kernel flash helper does not target the active boot slot"
+grep -Fq '/dev/block/mapper/system_dlkm${slot}' "$kernel_flash" ||
+    fail "kernel flash helper does not target the active system_dlkm mapper"
+grep -Fq 'system_dlkm_oki is intentionally not touched' "$kernel_flash" ||
+    fail "kernel flash helper must document that system_dlkm_oki is untouched"
 
 grep -Fq 'patch_twrp_magisk_theme.py' "$ANDROID_MK" ||
     fail "recovery build does not patch the Advanced helper menus"

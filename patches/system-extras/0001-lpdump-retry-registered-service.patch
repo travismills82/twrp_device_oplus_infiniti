@@ -1,0 +1,27 @@
+From 1f3d712c2e0a85ea49d7b51cc9d01a3b4d57c6e2 Mon Sep 17 00:00:00 2001
+From: Travis Mills <travismills82@gmail.com>
+Date: Thu, 30 Jul 2026 14:00:00 -0500
+Subject: [PATCH] lpdump: retry the registered binder service
+
+lpdumpd registers itself as lpdump_service.  The target lpdump client used
+that name for its first lookup, but retried the nonexistent lpdump service
+after requesting lpdumpd start.  Slow daemon startup therefore always ended
+with ENOENT even though the daemon was correctly packaged.
+
+Retry lpdump_service consistently.
+---
+ partition_tools/lpdump_target.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/partition_tools/lpdump_target.cc b/partition_tools/lpdump_target.cc
+--- a/partition_tools/lpdump_target.cc
++++ b/partition_tools/lpdump_target.cc
+@@ -57,7 +57,7 @@ public:
+         int wait_counter = 0;
+         while (status != OK && wait_counter++ < 3) {
+             sleep(1);
+-            status = getService(String16("lpdump"), &service_);
++            status = getService(String16("lpdump_service"), &service_);
+         }
+         if (status != OK || service_ == nullptr) {
+             std::cerr << "Cannot get lpdump service: " << strerror(-status) << std::endl;
