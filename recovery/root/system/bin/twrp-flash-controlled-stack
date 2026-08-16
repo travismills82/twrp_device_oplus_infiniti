@@ -1,0 +1,430 @@
+#!/system/bin/sh
+#
+# Safely flash one or more matching controlled-kernel payloads to the slot
+# currently booted by TWRP.  This is deliberately current-slot only: it never
+# changes slot metadata and refuses an active Virtual A/B update/snapshot.
+#
+# Accepted payloads are independent so a release can supply only the pieces it
+# needs.  Writes are always dependency-first: vendor_dlkm, system_dlkm,
+# vendor_boot, then boot last.  Every selected partition is backed up and every
+# write is SHA-256 read-back verified by default.
+
+set -u
+set -o pipefail
+
+MODE=dry-run
+BACKUP_ENABLED=1
+BACKUP_ROOT=/sdcard/TWRP/kernel-flash-backups
+BOOT_IMAGE=
+VENDOR_BOOT_IMAGE=
+SYSTEM_DLKM_IMAGE=
+VENDOR_DLKM_IMAGE=
+SYSTEM_DLKM_FORMAT=
+VENDOR_DLKM_FORMAT=
+
+ui_print() {
+    echo "[controlled-stack] $*"
+}
+
+fail() {
+    ui_print "ERROR: $*"
+    exit 1
+}
+
+usage() {
+    printf '%s\n' \
+        'Usage:' \
+        '  twrp-flash-controlled-stack [--dry-run|--flash] [--no-backup]' \
+        '      [--backup-dir DIR]' \
+        '      [--boot BOOT_IMAGE] [--vendor-boot VENDOR_BOOT_IMAGE]' \
+        '      [--system-dlkm SYSTEM_DLKM_IMAGE] [--vendor-dlkm VENDOR_DLKM_IMAGE]' \
+        '' \
+        'At least one payload is required. The target is always the slot from' \
+        'which TWRP is currently booted; this helper never changes active-slot' \
+        'metadata. Without --flash, all validation runs but no partition is' \
+        'modified. Backups are enabled by default; --no-backup is an explicit' \
+        'legacy escape hatch and should not be used for controlled stacks.'
+}
+
+is_decimal() {
+    case "$1" in
+        ''|*[!0-9]*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+get_size_bytes() {
+    size="$(wc -c < "$1" 2>/dev/null | tr -d '[:space:]')" || return 1
+    is_decimal "$size" || return 1
+    printf '%s\n' "$size"
+}
+
+get_block_size() {
+    size="$(blockdev --getsize64 "$1" 2>/dev/null | tr -d '[:space:]')" || return 1
+    is_decimal "$size" || return 1
+    printf '%s\n' "$size"
+}
+
+hash_file() {
+    sha256sum "$1" | awk '{print $1}'
+}
+
+hash_block_prefix() {
+    block="$1"
+    bytes="$2"
+    blocks=$((bytes / 4096))
+    dd if="$block" bs=4096 count="$blocks" status=none 2>/dev/null | \
+        sha256sum | awk '{print $1}'
+}
+
+erofs_magic() {
+    image="$1"
+    magic="$(dd if="$image" bs=4 skip=256 count=1 status=none 2>/dev/null | \
+        od -An -tx4 | tr -d '[:space:]')" || return 1
+    [ "$magic" = 'e0f5e1e2' ] || return 1
+
+    blocksize_bits="$(dd if="$image" bs=1 skip=1036 count=1 status=none 2>/dev/null | \
+        od -An -tu1 | tr -d '[:space:]')" || return 1
+    is_decimal "$blocksize_bits" || return 1
+    [ "$blocksize_bits" -ge 9 ] && [ "$blocksize_bits" -le 16 ]
+}
+
+dlkm_format() {
+    image="$1"
+    if tune2fs -l "$image" >/dev/null 2>&1; then
+        printf '%s\n' ext4
+        return 0
+    fi
+    if erofs_magic "$image"; then
+        printf '%s\n' erofs
+        return 0
+    fi
+    return 1
+}
+
+validate_dlkm_target() {
+    format="$1"
+    block="$2"
+    case "$format" in
+        ext4) tune2fs -l "$block" >/dev/null 2>&1 ;;
+        erofs) erofs_magic "$block" ;;
+        *) return 1 ;;
+    esac
+}
+
+require_tool() {
+    command -v "$1" >/dev/null 2>&1 || fail "required tool is unavailable: $1"
+}
+
+ensure_unmounted() {
+    block="$1"
+    resolved="$(readlink -f "$block" 2>/dev/null || true)"
+    [ -n "$resolved" ] || fail "could not resolve block target: $block"
+    if grep -F "$resolved" /proc/mounts >/dev/null 2>&1; then
+        fail "refusing to flash mounted partition: $resolved"
+    fi
+}
+
+require_canoe_cph2747() {
+    prjname="$(getprop ro.boot.prjname 2>/dev/null || true)"
+    model="$(getprop ro.product.model 2>/dev/null || true)"
+    product="$(getprop ro.product.name 2>/dev/null || true)"
+    board="$(getprop ro.board.platform 2>/dev/null || true)"
+
+    [ "$prjname" = 24863 ] ||
+        fail "device guard rejected ro.boot.prjname=${prjname:-unset}"
+    [ "$model" = CPH2747 ] ||
+        fail "device guard rejected ro.product.model=${model:-unset}"
+    [ "$product" = CPH2747 ] ||
+        fail "device guard rejected ro.product.name=${product:-unset}"
+    [ "$board" = canoe ] ||
+        fail "device guard rejected ro.board.platform=${board:-unset}"
+}
+
+backup_partition() {
+    name="$1"
+    block="$2"
+    output="$3"
+    expected_size="$(get_block_size "$block")" ||
+        fail "could not read ${name} backup source size"
+    expected_hash="$(hash_block_prefix "$block" "$expected_size")" ||
+        fail "could not checksum ${name} backup source"
+
+    ui_print "Backing up ${name} to ${output}"
+    dd if="$block" of="$output" bs=4M conv=fsync || fail "backup failed for ${name}"
+    sync
+    actual_size="$(get_size_bytes "$output")" || fail "could not read ${name} backup size"
+    actual_hash="$(hash_file "$output")" || fail "could not checksum ${name} backup"
+    [ "$actual_size" = "$expected_size" ] || fail "${name} backup size mismatch"
+    [ "$actual_hash" = "$expected_hash" ] || fail "${name} backup checksum mismatch"
+    printf '%s\t%s\t%s\tverified\n' "$name" "$actual_size" "$actual_hash" \
+        >> "$BACKUP_MANIFEST" || fail "could not record ${name} backup"
+    printf '%s  %s\n' "$actual_hash" "$(basename "$output")" >> "$BACKUP_DIR/SHA256SUMS" ||
+        fail "could not record ${name} backup checksum"
+    ui_print "Verified backup ${name}: ${actual_hash}"
+}
+
+flash_and_verify() {
+    name="$1"
+    image="$2"
+    block="$3"
+    image_size="$4"
+    expected_hash="$5"
+
+    ui_print "Flashing ${name} to ${block}"
+    dd if="$image" of="$block" bs=4M conv=fsync || fail "flash failed for ${name}"
+    sync
+
+    actual_hash="$(hash_block_prefix "$block" "$image_size")" ||
+        fail "could not read back ${name}"
+    [ "$actual_hash" = "$expected_hash" ] ||
+        fail "read-back checksum mismatch for ${name}"
+    ui_print "Verified ${name}: ${actual_hash}"
+}
+
+validate_magic() {
+    label="$1"
+    image="$2"
+    expected="$3"
+    magic="$(dd if="$image" bs=8 count=1 status=none 2>/dev/null)" ||
+        fail "could not read ${label} image header"
+    [ "$magic" = "$expected" ] || fail "${label} image header is invalid"
+}
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --dry-run) MODE=dry-run ;;
+        --flash) MODE=flash ;;
+        --no-backup) BACKUP_ENABLED=0 ;;
+        --backup-dir)
+            shift
+            [ "$#" -gt 0 ] || fail "--backup-dir requires a directory"
+            BACKUP_ROOT="$1"
+            ;;
+        --boot)
+            shift
+            [ "$#" -gt 0 ] || fail "--boot requires an image"
+            BOOT_IMAGE="$1"
+            ;;
+        --vendor-boot)
+            shift
+            [ "$#" -gt 0 ] || fail "--vendor-boot requires an image"
+            VENDOR_BOOT_IMAGE="$1"
+            ;;
+        --system-dlkm)
+            shift
+            [ "$#" -gt 0 ] || fail "--system-dlkm requires an image"
+            SYSTEM_DLKM_IMAGE="$1"
+            ;;
+        --vendor-dlkm)
+            shift
+            [ "$#" -gt 0 ] || fail "--vendor-dlkm requires an image"
+            VENDOR_DLKM_IMAGE="$1"
+            ;;
+        --help|-h)
+            usage
+            exit 0
+            ;;
+        *) fail "unknown option: $1" ;;
+    esac
+    shift
+done
+
+[ -n "$BOOT_IMAGE$VENDOR_BOOT_IMAGE$SYSTEM_DLKM_IMAGE$VENDOR_DLKM_IMAGE" ] || {
+    usage
+    exit 1
+}
+
+for tool in awk basename blockdev date dd df getprop grep lpdump mkdir od readlink sha256sum sync tr tune2fs wc; do
+    require_tool "$tool"
+done
+
+require_canoe_cph2747
+
+slot="$(getprop ro.boot.slot_suffix 2>/dev/null || true)"
+case "$slot" in
+    _a|_b) ;;
+    *) fail "invalid current slot suffix: ${slot:-unset}" ;;
+esac
+
+BOOT_BLOCK="/dev/block/bootdevice/by-name/boot${slot}"
+VENDOR_BOOT_BLOCK="/dev/block/bootdevice/by-name/vendor_boot${slot}"
+SYSTEM_DLKM_BLOCK="/dev/block/mapper/system_dlkm${slot}"
+VENDOR_DLKM_BLOCK="/dev/block/mapper/vendor_dlkm${slot}"
+
+lpdump_output="$(lpdump --slot "$slot" 2>&1)" ||
+    fail "lpdump failed for ${slot}: ${lpdump_output}"
+case "$lpdump_output" in
+    *"Current slot: ${slot}"*) ;;
+    *) fail "lpdump did not confirm the current slot ${slot}" ;;
+esac
+case "$lpdump_output" in
+    *'Update state: none'*) ;;
+    *) fail "snapshot update is active or metadata is not clean" ;;
+esac
+
+TOTAL_BACKUP_BYTES=0
+SELECTED_TARGETS=
+
+if [ -n "$VENDOR_DLKM_IMAGE" ]; then
+    [ -f "$VENDOR_DLKM_IMAGE" ] && [ -r "$VENDOR_DLKM_IMAGE" ] ||
+        fail "vendor_dlkm image is not a readable regular file: $VENDOR_DLKM_IMAGE"
+    [ -b "$VENDOR_DLKM_BLOCK" ] || fail "vendor_dlkm mapper is unavailable: $VENDOR_DLKM_BLOCK"
+    case "$lpdump_output" in *"Name: vendor_dlkm${slot}"*) ;; *)
+        fail "lpdump did not find vendor_dlkm${slot}" ;; esac
+    ensure_unmounted "$VENDOR_DLKM_BLOCK"
+    VENDOR_DLKM_IMAGE_SIZE="$(get_size_bytes "$VENDOR_DLKM_IMAGE")" ||
+        fail "could not read vendor_dlkm image size"
+    VENDOR_DLKM_BLOCK_SIZE="$(get_block_size "$VENDOR_DLKM_BLOCK")" ||
+        fail "could not read vendor_dlkm target size"
+    [ "$VENDOR_DLKM_IMAGE_SIZE" -gt 0 ] || fail "vendor_dlkm image is empty"
+    [ $((VENDOR_DLKM_IMAGE_SIZE % 4096)) -eq 0 ] ||
+        fail "vendor_dlkm image is not 4096-byte aligned"
+    [ "$VENDOR_DLKM_IMAGE_SIZE" -le "$VENDOR_DLKM_BLOCK_SIZE" ] ||
+        fail "vendor_dlkm image exceeds target capacity"
+    VENDOR_DLKM_FORMAT="$(dlkm_format "$VENDOR_DLKM_IMAGE")" ||
+        fail "vendor_dlkm image is not a supported EROFS or flattened ext4 image"
+    VENDOR_DLKM_HASH="$(hash_file "$VENDOR_DLKM_IMAGE")" ||
+        fail "could not checksum vendor_dlkm image"
+    TOTAL_BACKUP_BYTES=$((TOTAL_BACKUP_BYTES + VENDOR_DLKM_BLOCK_SIZE))
+    SELECTED_TARGETS="$SELECTED_TARGETS vendor_dlkm${slot}"
+fi
+
+if [ -n "$SYSTEM_DLKM_IMAGE" ]; then
+    [ -f "$SYSTEM_DLKM_IMAGE" ] && [ -r "$SYSTEM_DLKM_IMAGE" ] ||
+        fail "system_dlkm image is not a readable regular file: $SYSTEM_DLKM_IMAGE"
+    [ -b "$SYSTEM_DLKM_BLOCK" ] || fail "system_dlkm mapper is unavailable: $SYSTEM_DLKM_BLOCK"
+    case "$lpdump_output" in *"Name: system_dlkm${slot}"*) ;; *)
+        fail "lpdump did not find system_dlkm${slot}" ;; esac
+    ensure_unmounted "$SYSTEM_DLKM_BLOCK"
+    SYSTEM_DLKM_IMAGE_SIZE="$(get_size_bytes "$SYSTEM_DLKM_IMAGE")" ||
+        fail "could not read system_dlkm image size"
+    SYSTEM_DLKM_BLOCK_SIZE="$(get_block_size "$SYSTEM_DLKM_BLOCK")" ||
+        fail "could not read system_dlkm target size"
+    [ "$SYSTEM_DLKM_IMAGE_SIZE" -gt 0 ] || fail "system_dlkm image is empty"
+    [ $((SYSTEM_DLKM_IMAGE_SIZE % 4096)) -eq 0 ] ||
+        fail "system_dlkm image is not 4096-byte aligned"
+    [ "$SYSTEM_DLKM_IMAGE_SIZE" -le "$SYSTEM_DLKM_BLOCK_SIZE" ] ||
+        fail "system_dlkm image exceeds target capacity"
+    SYSTEM_DLKM_FORMAT="$(dlkm_format "$SYSTEM_DLKM_IMAGE")" ||
+        fail "system_dlkm image is not a supported EROFS or flattened ext4 image"
+    SYSTEM_DLKM_HASH="$(hash_file "$SYSTEM_DLKM_IMAGE")" ||
+        fail "could not checksum system_dlkm image"
+    TOTAL_BACKUP_BYTES=$((TOTAL_BACKUP_BYTES + SYSTEM_DLKM_BLOCK_SIZE))
+    SELECTED_TARGETS="$SELECTED_TARGETS system_dlkm${slot}"
+fi
+
+if [ -n "$VENDOR_BOOT_IMAGE" ]; then
+    [ -f "$VENDOR_BOOT_IMAGE" ] && [ -r "$VENDOR_BOOT_IMAGE" ] ||
+        fail "vendor_boot image is not a readable regular file: $VENDOR_BOOT_IMAGE"
+    [ -b "$VENDOR_BOOT_BLOCK" ] || fail "vendor_boot target is unavailable: $VENDOR_BOOT_BLOCK"
+    ensure_unmounted "$VENDOR_BOOT_BLOCK"
+    VENDOR_BOOT_IMAGE_SIZE="$(get_size_bytes "$VENDOR_BOOT_IMAGE")" ||
+        fail "could not read vendor_boot image size"
+    VENDOR_BOOT_BLOCK_SIZE="$(get_block_size "$VENDOR_BOOT_BLOCK")" ||
+        fail "could not read vendor_boot target size"
+    [ "$VENDOR_BOOT_IMAGE_SIZE" -gt 0 ] || fail "vendor_boot image is empty"
+    [ $((VENDOR_BOOT_IMAGE_SIZE % 4096)) -eq 0 ] ||
+        fail "vendor_boot image is not 4096-byte aligned"
+    [ "$VENDOR_BOOT_IMAGE_SIZE" -le "$VENDOR_BOOT_BLOCK_SIZE" ] ||
+        fail "vendor_boot image exceeds target capacity"
+    validate_magic vendor_boot "$VENDOR_BOOT_IMAGE" VNDRBOOT
+    VENDOR_BOOT_HASH="$(hash_file "$VENDOR_BOOT_IMAGE")" ||
+        fail "could not checksum vendor_boot image"
+    TOTAL_BACKUP_BYTES=$((TOTAL_BACKUP_BYTES + VENDOR_BOOT_BLOCK_SIZE))
+    SELECTED_TARGETS="$SELECTED_TARGETS vendor_boot${slot}"
+fi
+
+if [ -n "$BOOT_IMAGE" ]; then
+    [ -f "$BOOT_IMAGE" ] && [ -r "$BOOT_IMAGE" ] ||
+        fail "boot image is not a readable regular file: $BOOT_IMAGE"
+    [ -b "$BOOT_BLOCK" ] || fail "boot target is unavailable: $BOOT_BLOCK"
+    ensure_unmounted "$BOOT_BLOCK"
+    BOOT_IMAGE_SIZE="$(get_size_bytes "$BOOT_IMAGE")" || fail "could not read boot image size"
+    BOOT_BLOCK_SIZE="$(get_block_size "$BOOT_BLOCK")" || fail "could not read boot target size"
+    [ "$BOOT_IMAGE_SIZE" -gt 0 ] || fail "boot image is empty"
+    [ $((BOOT_IMAGE_SIZE % 4096)) -eq 0 ] || fail "boot image is not 4096-byte aligned"
+    [ "$BOOT_IMAGE_SIZE" -le "$BOOT_BLOCK_SIZE" ] || fail "boot image exceeds target capacity"
+    validate_magic boot "$BOOT_IMAGE" ANDROID!
+    BOOT_HASH="$(hash_file "$BOOT_IMAGE")" || fail "could not checksum boot image"
+    TOTAL_BACKUP_BYTES=$((TOTAL_BACKUP_BYTES + BOOT_BLOCK_SIZE))
+    SELECTED_TARGETS="$SELECTED_TARGETS boot${slot}"
+fi
+
+ui_print "Device guard: CPH2747 / canoe / project 24863"
+ui_print "Current slot: ${slot}; targets:${SELECTED_TARGETS}"
+ui_print 'AVB note: this helper does not accept or change vbmeta payloads.'
+ui_print 'Use only a manifest whose AVB relationship has been validated before recovery flashing.'
+[ -z "$VENDOR_DLKM_IMAGE" ] || ui_print "vendor_dlkm: ${VENDOR_DLKM_IMAGE} (${VENDOR_DLKM_FORMAT}, ${VENDOR_DLKM_IMAGE_SIZE} bytes, ${VENDOR_DLKM_HASH})"
+[ -z "$SYSTEM_DLKM_IMAGE" ] || ui_print "system_dlkm: ${SYSTEM_DLKM_IMAGE} (${SYSTEM_DLKM_FORMAT}, ${SYSTEM_DLKM_IMAGE_SIZE} bytes, ${SYSTEM_DLKM_HASH})"
+[ -z "$VENDOR_BOOT_IMAGE" ] || ui_print "vendor_boot: ${VENDOR_BOOT_IMAGE} (${VENDOR_BOOT_IMAGE_SIZE} bytes, ${VENDOR_BOOT_HASH})"
+[ -z "$BOOT_IMAGE" ] || ui_print "boot: ${BOOT_IMAGE} (${BOOT_IMAGE_SIZE} bytes, ${BOOT_HASH})"
+ui_print 'system_dlkm_oki is intentionally not touched.'
+
+if [ "$MODE" = dry-run ]; then
+    ui_print 'DRY RUN PASSED — NO PARTITIONS MODIFIED.'
+    exit 0
+fi
+
+if [ "$BACKUP_ENABLED" -eq 1 ]; then
+    timestamp="$(date +%Y%m%d-%H%M%S)" || fail "could not create backup timestamp"
+    BACKUP_DIR="${BACKUP_ROOT%/}/controlled-stack-${slot#_}-${timestamp}"
+    mkdir -p "$BACKUP_DIR" || fail "could not create backup directory: $BACKUP_DIR"
+    [ -d "$BACKUP_DIR" ] && [ -w "$BACKUP_DIR" ] ||
+        fail "backup directory is not writable: $BACKUP_DIR"
+    available_kb="$(df -k "$BACKUP_DIR" 2>/dev/null | awk 'NR == 2 {print $4}')" ||
+        fail "could not determine backup free space"
+    is_decimal "$available_kb" || fail "backup free-space check returned an invalid value"
+    required_kb=$(((TOTAL_BACKUP_BYTES + 8388608 + 1023) / 1024))
+    [ "$available_kb" -ge "$required_kb" ] ||
+        fail "not enough space for target backups in $BACKUP_DIR"
+
+    {
+        printf 'slot=%s\nmode=%s\ntargets=%s\n' "$slot" "$MODE" "$SELECTED_TARGETS"
+        [ -z "$VENDOR_DLKM_IMAGE" ] || printf 'vendor_dlkm_image=%s\nvendor_dlkm_sha256=%s\n' "$VENDOR_DLKM_IMAGE" "$VENDOR_DLKM_HASH"
+        [ -z "$SYSTEM_DLKM_IMAGE" ] || printf 'system_dlkm_image=%s\nsystem_dlkm_sha256=%s\n' "$SYSTEM_DLKM_IMAGE" "$SYSTEM_DLKM_HASH"
+        [ -z "$VENDOR_BOOT_IMAGE" ] || printf 'vendor_boot_image=%s\nvendor_boot_sha256=%s\n' "$VENDOR_BOOT_IMAGE" "$VENDOR_BOOT_HASH"
+        [ -z "$BOOT_IMAGE" ] || printf 'boot_image=%s\nboot_sha256=%s\n' "$BOOT_IMAGE" "$BOOT_HASH"
+        printf 'avb_payloads=none\nactive_slot_change=none\n'
+    } > "$BACKUP_DIR/manifest.txt" || fail "could not write backup manifest"
+    BACKUP_MANIFEST="$BACKUP_DIR/partition-backup-manifest.tsv"
+    printf 'partition\tbytes\tsha256\tstatus\n' > "$BACKUP_MANIFEST" ||
+        fail "could not create backup manifest"
+
+    [ -z "$VENDOR_DLKM_IMAGE" ] || backup_partition "vendor_dlkm${slot}" "$VENDOR_DLKM_BLOCK" "$BACKUP_DIR/vendor_dlkm${slot}.img"
+    [ -z "$SYSTEM_DLKM_IMAGE" ] || backup_partition "system_dlkm${slot}" "$SYSTEM_DLKM_BLOCK" "$BACKUP_DIR/system_dlkm${slot}.img"
+    [ -z "$VENDOR_BOOT_IMAGE" ] || backup_partition "vendor_boot${slot}" "$VENDOR_BOOT_BLOCK" "$BACKUP_DIR/vendor_boot${slot}.img"
+    [ -z "$BOOT_IMAGE" ] || backup_partition "boot${slot}" "$BOOT_BLOCK" "$BACKUP_DIR/boot${slot}.img"
+else
+    ui_print 'WARNING: target backups disabled explicitly by --no-backup.'
+fi
+
+# Dependency-first ordering.  Boot is intentionally last so a failure in any
+# preceding partition leaves the currently booted Image intact.
+if [ -n "$VENDOR_DLKM_IMAGE" ]; then
+    flash_and_verify "vendor_dlkm${slot}" "$VENDOR_DLKM_IMAGE" "$VENDOR_DLKM_BLOCK" "$VENDOR_DLKM_IMAGE_SIZE" "$VENDOR_DLKM_HASH"
+    validate_dlkm_target "$VENDOR_DLKM_FORMAT" "$VENDOR_DLKM_BLOCK" ||
+        fail "post-flash ${VENDOR_DLKM_FORMAT} verification failed for vendor_dlkm${slot}"
+fi
+if [ -n "$SYSTEM_DLKM_IMAGE" ]; then
+    flash_and_verify "system_dlkm${slot}" "$SYSTEM_DLKM_IMAGE" "$SYSTEM_DLKM_BLOCK" "$SYSTEM_DLKM_IMAGE_SIZE" "$SYSTEM_DLKM_HASH"
+    validate_dlkm_target "$SYSTEM_DLKM_FORMAT" "$SYSTEM_DLKM_BLOCK" ||
+        fail "post-flash ${SYSTEM_DLKM_FORMAT} verification failed for system_dlkm${slot}"
+fi
+if [ -n "$VENDOR_BOOT_IMAGE" ]; then
+    flash_and_verify "vendor_boot${slot}" "$VENDOR_BOOT_IMAGE" "$VENDOR_BOOT_BLOCK" "$VENDOR_BOOT_IMAGE_SIZE" "$VENDOR_BOOT_HASH"
+    validate_magic vendor_boot "$VENDOR_BOOT_BLOCK" VNDRBOOT
+fi
+if [ -n "$BOOT_IMAGE" ]; then
+    flash_and_verify "boot${slot}" "$BOOT_IMAGE" "$BOOT_BLOCK" "$BOOT_IMAGE_SIZE" "$BOOT_HASH"
+    validate_magic boot "$BOOT_BLOCK" ANDROID!
+fi
+
+if [ "$BACKUP_ENABLED" -eq 1 ]; then
+    printf 'result=verified\n' >> "$BACKUP_DIR/manifest.txt" ||
+        fail "could not update backup manifest"
+    ui_print "Backups and manifest: $BACKUP_DIR"
+fi
+
+ui_print "Controlled stack verified on slot ${slot}."
+ui_print 'Reboot to system when ready; active-slot metadata was not changed.'

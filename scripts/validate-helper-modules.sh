@@ -23,6 +23,7 @@ fail() {
 
 modules=(
     twrp-flash-kernel
+    twrp-flash-controlled-stack
     twrp-root-patcher
     twrp-wifi-start
     twrp-smb-mount
@@ -151,24 +152,37 @@ grep -Fq 'twrp-root-patcher magisk' \
     fail "Magisk helper does not invoke twrp-root-patcher"
 
 kernel_flash="$TREE/recovery/root/system/bin/twrp-flash-kernel"
-grep -Fqx 'MODE=dry-run' "$kernel_flash" ||
-    fail "kernel flash helper must default to a dry run"
-grep -Fq 'lpdump --slot "$slot"' "$kernel_flash" ||
-    fail "kernel flash helper does not inspect the active slot metadata"
-grep -Fq 'Update state: none' "$kernel_flash" ||
-    fail "kernel flash helper does not reject active snapshot updates"
-grep -Fq '/dev/block/bootdevice/by-name/boot${slot}' "$kernel_flash" ||
-    fail "kernel flash helper does not target the active boot slot"
-grep -Fq '/dev/block/mapper/system_dlkm${slot}' "$kernel_flash" ||
-    fail "kernel flash helper does not target the active system_dlkm mapper"
-grep -Fq 'SYSTEM_DLKM_FORMAT=erofs' "$kernel_flash" ||
-    fail "kernel flash helper does not detect EROFS system_dlkm images"
-grep -Fq 'erofs_magic' "$kernel_flash" ||
-    fail "kernel flash helper does not verify the EROFS superblock"
-grep -Fq 'backup checksum mismatch' "$kernel_flash" ||
-    fail "kernel flash helper does not verify backup source checksums"
-grep -Fq 'system_dlkm_oki is intentionally not touched' "$kernel_flash" ||
-    fail "kernel flash helper must document that system_dlkm_oki is untouched"
+controlled_stack="$TREE/recovery/root/system/bin/twrp-flash-controlled-stack"
+grep -Fqx 'MODE=--dry-run' "$kernel_flash" ||
+    fail "legacy kernel flash front end must default to a dry run"
+grep -Fq 'twrp-flash-controlled-stack' "$kernel_flash" ||
+    fail "legacy kernel flash front end does not delegate to the controlled-stack helper"
+grep -Fqx 'MODE=dry-run' "$controlled_stack" ||
+    fail "controlled-stack helper must default to a dry run"
+grep -Fq 'lpdump --slot "$slot"' "$controlled_stack" ||
+    fail "controlled-stack helper does not inspect the active slot metadata"
+grep -Fq 'Update state: none' "$controlled_stack" ||
+    fail "controlled-stack helper does not reject active snapshot updates"
+grep -Fq '/dev/block/bootdevice/by-name/boot${slot}' "$controlled_stack" ||
+    fail "controlled-stack helper does not target the active boot slot"
+grep -Fq '/dev/block/bootdevice/by-name/vendor_boot${slot}' "$controlled_stack" ||
+    fail "controlled-stack helper does not target the active vendor_boot slot"
+grep -Fq '/dev/block/mapper/system_dlkm${slot}' "$controlled_stack" ||
+    fail "controlled-stack helper does not target the active system_dlkm mapper"
+grep -Fq '/dev/block/mapper/vendor_dlkm${slot}' "$controlled_stack" ||
+    fail "controlled-stack helper does not target the active vendor_dlkm mapper"
+grep -Fq 'VENDOR_DLKM_FORMAT=' "$controlled_stack" ||
+    fail "controlled-stack helper does not track vendor_dlkm image format"
+grep -Fq 'erofs_magic' "$controlled_stack" ||
+    fail "controlled-stack helper does not verify the EROFS superblock"
+grep -Fq 'backup checksum mismatch' "$controlled_stack" ||
+    fail "controlled-stack helper does not verify backup source checksums"
+grep -Fq 'system_dlkm_oki is intentionally not touched' "$controlled_stack" ||
+    fail "controlled-stack helper must document that system_dlkm_oki is untouched"
+grep -Fq 'require_canoe_cph2747' "$controlled_stack" ||
+    fail "controlled-stack helper lacks the CPH2747 device guard"
+grep -Fq 'Dependency-first ordering' "$controlled_stack" ||
+    fail "controlled-stack helper does not document dependency-first ordering"
 
 grep -Fq 'patch_twrp_magisk_theme.py' "$ANDROID_MK" ||
     fail "recovery build does not patch the Advanced helper menus"

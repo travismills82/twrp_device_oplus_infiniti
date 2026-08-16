@@ -42,6 +42,7 @@ PRODUCT_EXTRA_RECOVERY_KEYS += \
 PRODUCT_PACKAGES += \
 	twrp-dynamic-flash-helper \
 	twrp-flash-kernel \
+	twrp-flash-controlled-stack \
 	twrp-partition-backup \
 	twrp-recovery-tools \
 	twrp-root-patcher \
