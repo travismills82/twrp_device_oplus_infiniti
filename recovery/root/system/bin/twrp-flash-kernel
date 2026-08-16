@@ -1,8 +1,8 @@
 #!/system/bin/sh
 #
-# Flash a matched boot image and flattened ext4 system_dlkm image to the slot
-# from which this recovery was booted. The default mode is deliberately a
-# no-write dry run; only --flash writes partition data.
+# Flash a matched boot image and EROFS or flattened ext4 system_dlkm image to
+# the slot from which this recovery was booted. The default mode is deliberately
+# a no-write dry run; only --flash writes partition data.
 
 set -u
 set -o pipefail
@@ -10,6 +10,7 @@ set -o pipefail
 MODE=dry-run
 BACKUP_ENABLED=1
 BACKUP_ROOT=/sdcard/TWRP/kernel-flash-backups
+SYSTEM_DLKM_FORMAT=""
 
 ui_print() {
     echo "[kernel-flash] $*"
@@ -24,7 +25,7 @@ usage() {
     printf '%s\n' \
         'Usage:' \
         '  twrp-flash-kernel [--dry-run|--flash] [--no-backup]' \
-        '      [--backup-dir DIR] BOOT_IMAGE SYSTEM_DLKM_FLATTENED_EXT4_IMAGE' \
+        '      [--backup-dir DIR] BOOT_IMAGE SYSTEM_DLKM_IMAGE' \
         '' \
         'The target is always the slot from which TWRP is currently booted.' \
         'Without --flash, all validation runs but no partition is modified.' \
@@ -62,6 +63,41 @@ hash_block_prefix() {
     dd if="$block" bs=4096 count="$blocks" status=none 2>/dev/null | sha256sum | awk '{print $1}'
 }
 
+erofs_magic() {
+    image="$1"
+    magic="$(dd if="$image" bs=4 skip=256 count=1 status=none 2>/dev/null | \
+        od -An -tx4 | tr -d '[:space:]')" || return 1
+    [ "$magic" = 'e0f5e1e2' ] || return 1
+
+    blocksize_bits="$(dd if="$image" bs=1 skip=1036 count=1 status=none 2>/dev/null | \
+        od -An -tu1 | tr -d '[:space:]')" || return 1
+    is_decimal "$blocksize_bits" || return 1
+    [ "$blocksize_bits" -ge 9 ] && [ "$blocksize_bits" -le 16 ]
+}
+
+validate_system_dlkm_image() {
+    image="$1"
+
+    if tune2fs -l "$image" >/dev/null 2>&1; then
+        SYSTEM_DLKM_FORMAT=ext4
+        return 0
+    fi
+
+    erofs_magic "$image" || return 1
+    SYSTEM_DLKM_FORMAT=erofs
+    return 0
+}
+
+validate_system_dlkm_target() {
+    block="$1"
+
+    case "$SYSTEM_DLKM_FORMAT" in
+        ext4) tune2fs -l "$block" >/dev/null 2>&1 ;;
+        erofs) erofs_magic "$block" ;;
+        *) return 1 ;;
+    esac
+}
+
 require_tool() {
     command -v "$1" >/dev/null 2>&1 || fail "required tool is unavailable: $1"
 }
@@ -79,11 +115,22 @@ backup_partition() {
     name="$1"
     block="$2"
     output="$3"
+    expected_size="$(get_block_size "$block")" || fail "could not read ${name} backup source size"
+    expected_hash="$(hash_block_prefix "$block" "$expected_size")" ||
+        fail "could not checksum ${name} backup source"
 
     ui_print "Backing up ${name} to ${output}"
     dd if="$block" of="$output" bs=4M conv=fsync || fail "backup failed for ${name}"
     sync
-    sha256sum "$output" >> "$BACKUP_DIR/SHA256SUMS" || fail "could not checksum ${name} backup"
+    actual_size="$(get_size_bytes "$output")" || fail "could not read ${name} backup size"
+    actual_hash="$(hash_file "$output")" || fail "could not checksum ${name} backup"
+    [ "$actual_size" = "$expected_size" ] || fail "${name} backup size mismatch"
+    [ "$actual_hash" = "$expected_hash" ] || fail "${name} backup checksum mismatch"
+    printf '%s\t%s\t%s\tverified\n' "$name" "$actual_size" "$actual_hash" \
+        >> "$BACKUP_MANIFEST" || fail "could not record ${name} backup"
+    printf '%s  %s\n' "$actual_hash" "$(basename "$output")" >> "$BACKUP_DIR/SHA256SUMS" ||
+        fail "could not record ${name} backup checksum"
+    ui_print "Verified backup ${name}: ${actual_hash}"
 }
 
 flash_and_verify() {
@@ -146,7 +193,7 @@ done
 BOOT_IMAGE="$1"
 SYSTEM_DLKM_IMAGE="$2"
 
-for tool in awk blockdev date dd df grep lpdump mkdir readlink sha256sum sync tr tune2fs wc; do
+for tool in awk basename blockdev date dd df grep lpdump mkdir od readlink sha256sum sync tr tune2fs wc; do
     require_tool "$tool"
 done
 
@@ -206,8 +253,8 @@ SYSTEM_DLKM_BLOCK_SIZE="$(get_block_size "$SYSTEM_DLKM_BLOCK")" ||
 boot_magic="$(dd if="$BOOT_IMAGE" bs=8 count=1 status=none 2>/dev/null)" ||
     fail "could not read boot image header"
 [ "$boot_magic" = 'ANDROID!' ] || fail "boot image does not have an Android boot header"
-tune2fs -l "$SYSTEM_DLKM_IMAGE" >/dev/null 2>&1 ||
-    fail "system_dlkm image is not a flattened ext4 filesystem image"
+validate_system_dlkm_image "$SYSTEM_DLKM_IMAGE" ||
+    fail "system_dlkm image is not a supported EROFS or flattened ext4 filesystem image"
 
 BOOT_HASH="$(hash_file "$BOOT_IMAGE")" || fail "could not checksum boot image"
 SYSTEM_DLKM_HASH="$(hash_file "$SYSTEM_DLKM_IMAGE")" ||
@@ -218,6 +265,7 @@ ui_print "Boot: ${BOOT_IMAGE} (${BOOT_IMAGE_SIZE} bytes)"
 ui_print "Boot target: ${BOOT_BLOCK} (${BOOT_BLOCK_SIZE} bytes)"
 ui_print "system_dlkm: ${SYSTEM_DLKM_IMAGE} (${SYSTEM_DLKM_IMAGE_SIZE} bytes)"
 ui_print "system_dlkm target: ${SYSTEM_DLKM_BLOCK} (${SYSTEM_DLKM_BLOCK_SIZE} bytes)"
+ui_print "system_dlkm format: ${SYSTEM_DLKM_FORMAT}"
 ui_print "boot SHA-256: ${BOOT_HASH}"
 ui_print "system_dlkm SHA-256: ${SYSTEM_DLKM_HASH}"
 ui_print 'system_dlkm_oki is intentionally not touched.'
@@ -248,6 +296,9 @@ if [ "$BACKUP_ENABLED" -eq 1 ]; then
             "$SYSTEM_DLKM_IMAGE" "$SYSTEM_DLKM_HASH"
         printf 'boot_target=%s\nsystem_dlkm_target=%s\n' "$BOOT_BLOCK" "$SYSTEM_DLKM_BLOCK"
     } > "$BACKUP_DIR/manifest.txt" || fail "could not write backup manifest"
+    BACKUP_MANIFEST="$BACKUP_DIR/partition-backup-manifest.tsv"
+    printf 'partition\tbytes\tsha256\tstatus\n' > "$BACKUP_MANIFEST" ||
+        fail "could not create backup manifest"
 
     backup_partition "boot${slot}" "$BOOT_BLOCK" "$BACKUP_DIR/boot${slot}.img"
     backup_partition "system_dlkm${slot}" "$SYSTEM_DLKM_BLOCK" \
@@ -260,8 +311,8 @@ fi
 # image remains intact; boot is written only after the matching modules verify.
 flash_and_verify "system_dlkm${slot}" "$SYSTEM_DLKM_IMAGE" "$SYSTEM_DLKM_BLOCK" \
     "$SYSTEM_DLKM_IMAGE_SIZE" "$SYSTEM_DLKM_HASH"
-tune2fs -l "$SYSTEM_DLKM_BLOCK" >/dev/null 2>&1 ||
-    fail "post-flash ext4 verification failed for system_dlkm${slot}"
+validate_system_dlkm_target "$SYSTEM_DLKM_BLOCK" ||
+    fail "post-flash ${SYSTEM_DLKM_FORMAT} verification failed for system_dlkm${slot}"
 
 flash_and_verify "boot${slot}" "$BOOT_IMAGE" "$BOOT_BLOCK" "$BOOT_IMAGE_SIZE" "$BOOT_HASH"
 boot_magic="$(dd if="$BOOT_BLOCK" bs=8 count=1 status=none 2>/dev/null)" ||

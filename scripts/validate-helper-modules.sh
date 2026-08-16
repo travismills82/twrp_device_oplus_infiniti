@@ -161,6 +161,12 @@ grep -Fq '/dev/block/bootdevice/by-name/boot${slot}' "$kernel_flash" ||
     fail "kernel flash helper does not target the active boot slot"
 grep -Fq '/dev/block/mapper/system_dlkm${slot}' "$kernel_flash" ||
     fail "kernel flash helper does not target the active system_dlkm mapper"
+grep -Fq 'SYSTEM_DLKM_FORMAT=erofs' "$kernel_flash" ||
+    fail "kernel flash helper does not detect EROFS system_dlkm images"
+grep -Fq 'erofs_magic' "$kernel_flash" ||
+    fail "kernel flash helper does not verify the EROFS superblock"
+grep -Fq 'backup checksum mismatch' "$kernel_flash" ||
+    fail "kernel flash helper does not verify backup source checksums"
 grep -Fq 'system_dlkm_oki is intentionally not touched' "$kernel_flash" ||
     fail "kernel flash helper must document that system_dlkm_oki is untouched"
 

@@ -250,3 +250,13 @@ twrp-smb-mount guest //192.168.1.25/Public public
 ```
 
 The utility requires CIFS support from the recovery kernel, either built in or provided by a compatible `cifs.ko`. It reports `cifs-unavailable` without changing other recovery services when that prerequisite is missing. SMB1 is intentionally disabled; automatic negotiation tries SMB 3.1.1, 3.0, then 2.1.
+
+# Matched kernel helper
+
+`/system/bin/twrp-flash-kernel` defaults to a no-write dry run and flashes a
+matched `boot.img` plus either an EROFS or flattened ext4 `system_dlkm.img` to
+the current recovery slot only. It validates slot metadata, rejects active
+snapshot updates, backs up both targets by default, verifies each backup
+against its source, writes `system_dlkm` before `boot`, and verifies each
+write by SHA-256 read-back. It intentionally does not touch
+`system_dlkm_oki`.
