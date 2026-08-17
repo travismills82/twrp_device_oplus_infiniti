@@ -1,13 +1,12 @@
 diff --git a/KeyStorage.cpp b/KeyStorage.cpp
-index a186c04..01dfbfd 100644
 --- a/KeyStorage.cpp
 +++ b/KeyStorage.cpp
-@@ -337,7 +337,7 @@ static KeystoreOperation BeginKeystoreOp(Keystore& keystore, const std::string&
+@@ -337,6 +337,9 @@ static KeystoreOperation BeginKeystoreOp(Keystore& keystore, const std::string&
+     auto blob_file = dir + "/" + kFn_keymaster_key_blob;
      LOG(INFO) << "reading blob_file: " << blob_file;
-     std::string blob_dir(kFn_keymaster_key_blob);
-     std::string temp_dir = "/tmp/" + blob_dir + "/";
--    if (TEMP_FAILURE_RETRY(mkdir(temp_dir.c_str(), 0700)) == -1) {
-+    if (TEMP_FAILURE_RETRY(mkdir(temp_dir.c_str(), 0700)) == -1 && errno != EEXIST) {
-         PLOG(ERROR) << "key mkdir " << temp_dir;
-     }
-     auto upgraded_blob_file = temp_dir + kFn_keymaster_key_blob;
++    // Current TWRP vold no longer creates /tmp/keymaster_key_blob here.
++    // The legacy mkdir failure guard (errno != EEXIST) is therefore unnecessary;
++    // KeyMint-upgraded blobs remain in memory and the on-disk blob stays unchanged.
+     // Never persist an upgraded blob: the installed system cannot open a blob
+     // rebound to a newer OS version or patch level.
+     // auto upgraded_blob_file = dir + "/" + kFn_keymaster_key_blob_upgraded;
