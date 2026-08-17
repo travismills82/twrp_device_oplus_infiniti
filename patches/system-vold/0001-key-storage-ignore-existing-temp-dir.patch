@@ -1,7 +1,7 @@
 diff --git a/KeyStorage.cpp b/KeyStorage.cpp
 --- a/KeyStorage.cpp
 +++ b/KeyStorage.cpp
-@@ -337,6 +337,9 @@ static KeystoreOperation BeginKeystoreOp(Keystore& keystore, const std::string&
+@@ -337,5 +337,8 @@ static KeystoreOperation BeginKeystoreOp(Keystore& keystore, const std::string&
      auto blob_file = dir + "/" + kFn_keymaster_key_blob;
      LOG(INFO) << "reading blob_file: " << blob_file;
 +    // Current TWRP vold no longer creates /tmp/keymaster_key_blob here.
