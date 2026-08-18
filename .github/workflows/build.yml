@@ -115,6 +115,20 @@ jobs:
       run: |
         git clone ${{ github.event.inputs.DEVICE_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} device/${{ github.event.inputs.DEVICE_PATH }}
 
+    - name: Validate device-tree executable permissions
+      run: |
+        HOOK="device/${{ github.event.inputs.DEVICE_PATH }}/recovery/root/system/etc/dhcpcd/dhcpcd-run-hooks"
+        if [ ! -f "$HOOK" ]; then
+          echo "Device tree is missing dhcpcd-run-hooks: $HOOK"
+          exit 1
+        fi
+        if [ ! -x "$HOOK" ]; then
+          echo "Device-tree dhcpcd-run-hooks is not executable: $(stat -c '%a %n' "$HOOK")"
+          echo "Fix with: git update-index --chmod=+x recovery/root/system/etc/dhcpcd/dhcpcd-run-hooks"
+          exit 1
+        fi
+        echo "Device-tree DNS hook: $(stat -c '%a %n' "$HOOK")"
+
     - name: Apply device recovery patches
       run: |
         bash device/${{ github.event.inputs.DEVICE_PATH }}/scripts/apply-recovery-patches.sh
