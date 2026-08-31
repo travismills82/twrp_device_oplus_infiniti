@@ -1,0 +1,181 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Travis Mills <travismills82@gmail.com>
+Date: Mon, 31 Aug 2026 19:30:00 -0500
+Subject: [PATCH] theme: use OLED black with OP15 blue accents
+
+Keep the built-in portrait HDPI theme and its existing image resources, but
+replace its gray page, header, status, navigation, dialog, list, console,
+terminal, and keyboard backgrounds with true #000000 via the shared background
+palette.
+Use the existing #0090CA direction for the thin header accent, pressed
+highlights, and list separators so the UI remains legible alongside the OP15
+Wi-Fi status icon.
+
+This intentionally changes XML only. It does not import an external theme,
+add image assets, alter the WLAN pages, or change the Wi-Fi status icon,
+tw_wifi_connected variable, or icon placement.
+---
+ gui/theme/portrait_hdpi/splash.xml | 14 ++++++++++----
+ gui/theme/portrait_hdpi/ui.xml     | 52 +++++++++++++++++++-----------------
+ 2 files changed, 41 insertions(+), 25 deletions(-)
+
+diff --git a/gui/theme/portrait_hdpi/splash.xml b/gui/theme/portrait_hdpi/splash.xml
+--- a/gui/theme/portrait_hdpi/splash.xml
++++ b/gui/theme/portrait_hdpi/splash.xml
+@@ -17,9 +17,12 @@
+ 	<variables>
+ 		<variable name="screen_width" value="1080"/>
+ 		<variable name="screen_height" value="1920"/>
+-		<variable name="background_color" value="#222222"/>
+-		<variable name="header_color" value="#555555"/>
++		<!-- OP15 OLED black theme START -->
++		<variable name="background_color" value="#000000"/>
++		<variable name="header_color" value="#000000"/>
++		<variable name="text_color" value="#EEEEEE"/>
+ 		<variable name="accent_color" value="#0090CA"/>
++		<!-- OP15 OLED black theme END -->
+ 	</variables>
+ 
+ 	<pages>
+@@ -30,6 +33,10 @@
+ 				<placement x="0" y="0" w="%screen_width%" h="456"/>
+ 			</fill>
+ 
++			<fill color="%accent_color%">
++				<placement x="0" y="450" w="%screen_width%" h="6"/>
++			</fill>
++
+ 			<image>
+ 				<image resource="splashlogo"/>
+ 				<placement x="540" y="456" placement="4"/>
+@@ -40,7 +47,7 @@
+ 				<placement x="540" y="1540" placement="4"/>
+ 			</image>
+ 
+-			<text color="%header_color%">
++			<text color="%text_color%">
+ 				<font resource="font_l"/>
+ 				<placement x="540" y="1590" placement="5"/>
+ 				<text>Recovery Project %tw_version%</text>
+@@ -48,4 +55,3 @@
+ 		</page>
+ 	</pages>
+ </recovery>
+-
+diff --git a/gui/theme/portrait_hdpi/ui.xml b/gui/theme/portrait_hdpi/ui.xml
+--- a/gui/theme/portrait_hdpi/ui.xml
++++ b/gui/theme/portrait_hdpi/ui.xml
+@@ -178,22 +178,28 @@
+ 		<variable name="navbar_btn_y" value="1856"/>
+ 		<variable name="keyboard_y" value="1149"/>
+ 		<variable name="keyboard_terminal_y" value="1053"/>
+-		<variable name="background_color" value="#1A1A1A"/>
++		<!-- OP15 OLED black theme START -->
++		<variable name="background_color" value="#000000"/>
++		<variable name="header_color" value="#000000"/>
++		<variable name="status_color" value="#000000"/>
++		<variable name="navbar_color" value="#000000"/>
+ 		<variable name="accent_color" value="#0090CA"/>
+-		<variable name="accent_color_semitransparent" value="#0090CA30"/>
++		<variable name="accent_color_semitransparent" value="#0090CA40"/>
+ 		<variable name="text_color" value="#EEEEEE"/>
++		<variable name="text_secondary_color" value="#B0B0B0"/>
+ 		<variable name="text_button_color" value="#EEEEEE"/>
+ 		<variable name="text_success_color" value="#76FF03"/>
+ 		<variable name="text_fail_color" value="#FF0101"/>
+-		<variable name="highlight_color" value="#1A1A1A80"/>
+-		<variable name="caps_highlight_color" value="#22222280"/>
++		<variable name="highlight_color" value="#0090CA40"/>
++		<variable name="caps_highlight_color" value="#0090CA40"/>
+ 		<variable name="transparent" value="#00000000"/>
+ 		<variable name="semi_transparent" value="#00000099"/>
+ 		<variable name="warning" value="#F8F8A0"/>
+ 		<variable name="error" value="#FF0101"/>
+ 		<variable name="highlight" value="#0090CA"/>
+-		<variable name="fileselector_linecolor" value="#555555"/>
+-		<variable name="fileselector_highlight_color" value="#555555"/>
++		<variable name="fileselector_linecolor" value="#006B95"/>
++		<variable name="fileselector_highlight_color" value="#003B52"/>
++		<!-- OP15 OLED black theme END -->
+ 		<variable name="fileselector_separatorheight" value="2"/>
+ 		<variable name="fileselector_spacing" value="0"/>
+ 		<variable name="fileselector_install_height" value="1152"/>
+@@ -244,10 +250,14 @@
+ 		<template name="page">
+ 			<background color="%background_color%"/>
+ 
+-			<fill color="%accent_color%">
++			<fill color="%header_color%">
+ 				<placement x="0" y="0" w="%screen_width%" h="%header_height%"/>
+ 			</fill>
+ 
++			<fill color="%accent_color%">
++				<placement x="0" y="250" w="%screen_width%" h="6"/>
++			</fill>
++
+ 			<image>
+ 				<condition var1="tw_busy" var2="1"/>
+ 				<image resource="logo"/>
+@@ -261,7 +271,7 @@
+ 				<action function="key">home</action>
+ 			</button>
+ 
+-			<fill color="#00000030">
++			<fill color="%status_color%">
+ 				<condition var1="tw_simulate_actions" var2="0"/>
+ 				<placement x="0" y="0" w="%screen_width%" h="%status_height%"/>
+ 			</fill>
+@@ -362,7 +372,7 @@
+ 
+ 			<!-- Custom position for status bar items if defined END -->
+ 
+-			<fill color="#000000">
++			<fill color="%navbar_color%">
+ 				<condition var1="tw_busy" var2="0"/>
+ 				<placement x="0" y="%navbar_y%" w="%screen_width%" h="%navbar_height%"/>
+ 			</fill>
+@@ -635,10 +645,10 @@
+ 				<condition var1="tw_hide_kb" var2="0"/>
+ 				<placement x="0" y="%keyboard_terminal_y%" w="%screen_width%" h="96"/>
+ 				<keymargin x="0" y="0"/>
+-				<background color="#111111"/>
+-				<key-alphanumeric color="#111111" font="keylabel" textcolor="#EEEEEE"/>
+-				<key-other color="#111111" font="keylabel-small" textcolor="#5b5b5bff"/>
+-				<longpress font="keylabel-longpress" textcolor="#5b5b5bff" x="12" y="0"/>
++				<background color="%background_color%"/>
++				<key-alphanumeric color="%background_color%" font="keylabel" textcolor="%text_color%"/>
++				<key-other color="%background_color%" font="keylabel-small" textcolor="%text_secondary_color%"/>
++				<longpress font="keylabel-longpress" textcolor="%text_secondary_color%" x="12" y="0"/>
+ 				<keylabel key="0:k:29" text="Ctrl"/>
+ 				<keylabel key="0:c:27" text="Esc"/>
+ 				<keylabel key="0:c:9" text="Tab"/>
+@@ -660,10 +670,10 @@
+ 				<condition var1="tw_hide_kb" var2="0"/>
+ 				<placement x="0" y="%keyboard_y%" w="1080" h="644"/>
+ 				<keymargin x="8" y="8"/>
+-				<background color="#111111"/>
+-				<key-alphanumeric color="#111111" font="keylabel" textcolor="#EEEEEE"/>
+-				<key-other color="#111111" font="keylabel-small" textcolor="#5b5b5bff"/>
+-				<longpress font="keylabel-longpress" textcolor="#5b5b5bff" x="12" y="0"/>
++				<background color="%background_color%"/>
++				<key-alphanumeric color="%background_color%" font="keylabel" textcolor="%text_color%"/>
++				<key-other color="%background_color%" font="keylabel-small" textcolor="%text_secondary_color%"/>
++				<longpress font="keylabel-longpress" textcolor="%text_secondary_color%" x="12" y="0"/>
+ 				<keylabel key="0:c:8" text="Bksp" resource="backspace"/>
+ 				<keylabel key="0:action" text="Enter" resource="enter"/>
+ 				<keylabel key=" " text="Space" resource="space"/>
+@@ -713,10 +723,10 @@
+ 				<condition var1="tw_hide_kb" var2="0"/>
+ 				<placement x="0" y="%keyboard_y%" w="1080" h="644"/>
+ 				<keymargin x="8" y="8"/>
+-				<background color="#111111"/>
+-				<key-alphanumeric color="#111111" font="keylabel" textcolor="#EEEEEE"/>
+-				<key-other color="#111111" font="keylabel-small" textcolor="#5b5b5bff"/>
+-				<longpress font="keylabel-longpress" textcolor="#5b5b5bff" x="12" y="0"/>
++				<background color="%background_color%"/>
++				<key-alphanumeric color="%background_color%" font="keylabel" textcolor="%text_color%"/>
++				<key-other color="%background_color%" font="keylabel-small" textcolor="%text_secondary_color%"/>
++				<longpress font="keylabel-longpress" textcolor="%text_secondary_color%" x="12" y="0"/>
+ 				<keylabel key="0:c:8" text="Bksp" resource="backspace"/>
+ 				<keylabel key="0:action" text="Enter" resource="enter"/>
+ 				<keylabel key=" " text="Space" resource="space"/>

@@ -38,6 +38,14 @@ WIFI_STATUS_PLACEMENT='<placement x="720" y="10"/>'
 WLAN_LOGBOX_PLACEMENT='<borderedlogbox toprow="%row1a_y%" bottomrow="%row15_y%"'
 ADVANCED_AVB2_ENTRY='<listitem name="{@disable_avb2=Disable AVB2.0}">'
 ADVANCED_INSTALL_APP_ENTRY='<listitem name="{@reboot_install_app_hdr=Install TWRP App}">'
+OLED_THEME_MARKER='<!-- OP15 OLED black theme START -->'
+OLED_BACKGROUND_VARIABLE='<variable name="background_color" value="#000000"/>'
+OLED_HEADER_VARIABLE='<variable name="header_color" value="#000000"/>'
+OLED_STATUS_VARIABLE='<variable name="status_color" value="#000000"/>'
+OLED_NAVBAR_VARIABLE='<variable name="navbar_color" value="#000000"/>'
+OLED_HEADER_FILL='<fill color="%header_color%">'
+OLED_STATUS_FILL='<fill color="%status_color%">'
+OLED_NAVBAR_FILL='<fill color="%navbar_color%">'
 FAILED_VAB_SIDELOAD_MARKER='Cancelling failed Virtual A/B update in recovery before sideload.'
 LPDUMP_BINDER_LIBRARY='RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/libfs_mgr_binder.so'
 LPDUMP_SNAPSHOT_LIBRARY='RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/libsnapshot.so'
@@ -150,6 +158,29 @@ fi
 
 grep -Fq "$WIFI_STATUS_PLACEMENT" "$RECOVERY_DIR/gui/theme/portrait_hdpi/ui.xml" ||
     fail "Wi-Fi status icon placement was not updated"
+
+OLED_UI="$RECOVERY_DIR/gui/theme/portrait_hdpi/ui.xml"
+OLED_SPLASH="$RECOVERY_DIR/gui/theme/portrait_hdpi/splash.xml"
+
+for oled_variable in \
+    "$OLED_BACKGROUND_VARIABLE" \
+    "$OLED_HEADER_VARIABLE" \
+    "$OLED_STATUS_VARIABLE" \
+    "$OLED_NAVBAR_VARIABLE"; do
+    grep -Fq "$oled_variable" "$OLED_UI" ||
+        fail "portrait_hdpi theme is missing an OLED black palette variable"
+done
+
+grep -Fq "$OLED_THEME_MARKER" "$OLED_UI" ||
+    fail "portrait_hdpi theme is missing the OLED black theme marker"
+
+for oled_fill in "$OLED_HEADER_FILL" "$OLED_STATUS_FILL" "$OLED_NAVBAR_FILL"; do
+    grep -Fq "$oled_fill" "$OLED_UI" ||
+        fail "portrait_hdpi theme does not apply OLED black to a major page region"
+done
+
+grep -Fq "$OLED_BACKGROUND_VARIABLE" "$OLED_SPLASH" ||
+    fail "portrait_hdpi splash does not use the OLED black background"
 
 grep -Fq "$WLAN_LOGBOX_PLACEMENT" "$RECOVERY_DIR/gui/theme/common/portrait.xml" ||
     fail "WLAN log window placement was not updated"
