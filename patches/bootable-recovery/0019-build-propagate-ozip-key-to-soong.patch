@@ -1,0 +1,14 @@
+diff --git a/gui/libguitwrp_defaults.go b/gui/libguitwrp_defaults.go
+index f6a6b7a0..759c8227 100644
+--- a/gui/libguitwrp_defaults.go
++++ b/gui/libguitwrp_defaults.go
+@@ -280,6 +280,9 @@ func globalFlags(ctx android.BaseContext) []string {
+     if getMakeVars(ctx, "TW_NO_NETWORK") == "true" {
+         cflags = append(cflags, "-DTW_NO_NETWORK")
+     }
++    if key := strings.Trim(getMakeVars(ctx, "TW_OZIP_DECRYPT_KEY"), "\""); key != "" {
++        cflags = append(cflags, fmt.Sprintf("-DTW_OZIP_DECRYPT_KEY=\"%s\"", key))
++    }
+     return cflags
+ }
+

@@ -1,0 +1,14 @@
+diff --git a/gui/Android.bp b/gui/Android.bp
+index 3c2fa79a..e73c8853 100644
+--- a/gui/Android.bp
++++ b/gui/Android.bp
+@@ -86,5 +86,8 @@ cc_library_static {
+     static_libs: [
+         "libotautil",
+         "libpng"
+-    ]
++    ],
++    header_libs: [
++        "libvold_headers",
++    ],
+ }
