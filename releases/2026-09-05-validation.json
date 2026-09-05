@@ -1,0 +1,63 @@
+{
+  "date": "2026-09-05",
+  "device": "OnePlus 15 (infiniti)",
+  "tested_firmware": "CPH2747_16.0.10.500(EX01)",
+  "tested_kernel": "6.12.35-android16-5-o-gb42c1af35b26-4k",
+  "image_source_commit": "e920af377731b3fd3aeb4c800e4a1b7139e3e428",
+  "assets": {
+    "recovery.img": {
+      "sha256": "8c6af861feca4365e51bbf84d8caedca77cdaa0ee00b12b4869203746ebd9975",
+      "bytes": 104857600
+    },
+    "TWRP-3.7.1-16-infiniti-2026-09-05.zip": {
+      "sha256": "c033f56a3dd68f1e815476b9ebc0bffd350c895c50a62ed9ba0995c6760a78b3",
+      "bytes": 88956770
+    }
+  },
+  "build": {
+    "target": "twrp_infiniti",
+    "bundled_magisk": true,
+    "jobs": 2,
+    "result": "PASS",
+    "avb_signature": "PASS",
+    "packed_contents": "PASS",
+    "normal_clone_patch_application": "PASS",
+    "source_bases": {
+      "device/oplus/infiniti": "2914fab0b66062b2e0cef9bf04018fa15b4aa295",
+      "bootable/recovery": "6bd8134ec8ff4cb29eb25797cbb20796f8455204",
+      "system/vold": "953de9608eb78380b3c4e39e801c2bc0af7dbddc",
+      "system/core": "1f21da0fc4300c5802da8f4aad885875da950032",
+      "system/update_engine": "b451120ede75393948160631f699c419f427a692",
+      "system/extras": "e7a43388bdbb2774b955ed5c7fca1fa83fd61c64"
+    }
+  },
+  "tests": {
+    "charging_fixture_tests": 10,
+    "decrypt_readiness_tests": 3,
+    "installer_fixture_tests": 9,
+    "installer_on_device_read_only_preflight": "PASS",
+    "installed_image_full_readback": "PASS",
+    "user0_decryption": "PASS",
+    "internal_storage_access": "PASS",
+    "vendor_unmount_error_after_fresh_boot": false,
+    "native_bypass_on_and_off": "PASS",
+    "direct_supervooc_protocol_detected": true,
+    "direct_charger_capability_mW": 120000,
+    "active_high_power_charging": "NOT VERIFIED: battery was at 100 percent",
+    "hub_protocol": "standard USB"
+  },
+  "installer": {
+    "targets": [
+      "recovery_a",
+      "recovery_b"
+    ],
+    "changes_active_slot": false,
+    "accepted_boot_project_ids": [
+      24831,
+      24863
+    ],
+    "image_checksum_before_write": true,
+    "full_partition_readback_after_write": true,
+    "physical_zip_write_test": "not performed; image tested in recovery_a and installer tested with simulated writes plus device preflight"
+  }
+}
