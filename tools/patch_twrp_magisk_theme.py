@@ -41,6 +41,15 @@ REMOVED_ADVANCED_ITEMS = (
 
 ADVANCED_ITEMS = (
     AdvancedListItem(
+        name="Charging",
+        marker='<action function="page">op15_charging</action>',
+        xml='''
+				<listitem name="Charging">
+					<action function="page">op15_charging</action>
+				</listitem>
+''',
+    ),
+    AdvancedListItem(
         name="Flash Magisk",
         marker="/system/bin/twrp-flash-magisk init_boot",
         xml='''
@@ -90,6 +99,59 @@ LISTITEM_BLOCK_RE = re.compile(
     r"^[ \t]*<listitem\b.*?</listitem>[ \t]*\n?",
     flags=re.MULTILINE | re.DOTALL,
 )
+
+
+def charging_page() -> str:
+    items = []
+    for label, command in (
+        ("Charging status", "status"),
+        ("Enable bypass charging", "bypass-on"),
+        ("Disable bypass charging", "bypass-off"),
+        ("Normal charging / Auto SUPERVOOC", "auto"),
+    ):
+        items.append(f'''
+                <listitem name="{label}">
+                    <actions>
+                        <action function="set">tw_back=op15_charging</action>
+                        <action function="set">tw_action=op15charging</action>
+                        <action function="set">tw_action_param={command}</action>
+                        <action function="set">tw_action_text1={label}</action>
+                        <action function="set">tw_action_text2=</action>
+                        <action function="set">tw_complete_text1=Charging result</action>
+                        <action function="set">tw_has_cancel=0</action>
+                        <action function="set">tw_has_action2=0</action>
+                        <action function="set">tw_show_reboot=0</action>
+                        <action function="page">action_page</action>
+                    </actions>
+                </listitem>
+''')
+    return '''
+        <!-- OP15 charging page START -->
+        <page name="op15_charging">
+            <template name="page"/>
+            <text style="text_l">
+                <placement x="%col1_x_header%" y="%row3_header_y%"/>
+                <text>Charging</text>
+            </text>
+            <text style="text_m">
+                <placement x="%col1_x_header%" y="%row4_header_y%"/>
+                <text>Bypass / SUPERVOOC</text>
+            </text>
+            <listbox style="advanced_listbox">
+                <placement x="%indent%" y="%row2a_y%" w="%content_width%" h="%listbox_advanced_height%"/>
+''' + "".join(items) + '''
+            </listbox>
+            <action>
+                <touch key="home"/>
+                <action function="page">main</action>
+            </action>
+            <action>
+                <touch key="back"/>
+                <action function="page">advanced</action>
+            </action>
+        </page>
+        <!-- OP15 charging page END -->
+'''
 
 
 def find_matching_close(text: str, start: int, open_tag: str, close_tag: str) -> int:
@@ -191,6 +253,18 @@ def patch_theme(theme_path: Path) -> int:
             f"[advanced-theme] Added {len(inserts)} Advanced menu item(s): "
             f"{theme_path}"
         )
+
+    # Replace the owned page on repeat runs so incremental builds also pick up
+    # changed actions. Other pages and upstream menu items retain their content.
+    page_pattern = re.compile(
+        r"\n[ \t]*<!-- OP15 charging page START -->.*?<!-- OP15 charging page END -->\n",
+        re.DOTALL,
+    )
+    text = page_pattern.sub("\n", text)
+    if "</pages>" not in text:
+        print("[advanced-theme] Pages container not found", file=sys.stderr)
+        return 1
+    text = re.sub(r"\s*</pages>", charging_page() + "\t</pages>", text, count=1)
 
     if text != original_text:
         theme_path.write_text(text, encoding="utf-8")

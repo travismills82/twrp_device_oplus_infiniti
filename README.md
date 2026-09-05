@@ -54,6 +54,34 @@ Works:
 - [X] Interactive FTP/FTPS backup and restore menu in TWRP Terminal
 - [X] Magisk installation built in to recovery 
 
+## Charging controls
+
+Open **Advanced > Charging** for native OnePlus bypass on/off, a charging status
+report, and **Normal charging / Auto SUPERVOOC**. The same controls are available
+with `twrp-charging status`, `twrp-charging bypass-on`, `twrp-charging bypass-off`,
+and `twrp-charging auto` from the recovery terminal or a root recovery ADB shell.
+
+Bypass uses the OnePlus PLC driver and requires a wired charger plus permission
+from the driver's battery, temperature, and protocol checks. Recovery maintains
+an explicitly requested active session across the driver's five-minute user
+timeout; it clears its request if the cable is removed or the driver stops
+bypass. Enable bypass again after reconnecting. The request is temporary and
+is not saved across boots. Disable bypass to return control to normal charging.
+
+The charging service supplies the native driver readiness handshake. Normal
+charging removes a bypass request and enables the driver's charging vote;
+SUPERVOOC then negotiates automatically with a compatible charger and cable.
+The status report labels SUPERVOOC active only when both the wired connection
+and VOOC charging state are active and the driver reports the SUPERVOOC protocol.
+Adapter capability is not a measurement of actual charging power. Temperature,
+current, voltage, authentication, and input-suspend protections stay under driver
+control.
+
+This recovery image uses the installed boot kernel and its matching OnePlus
+charging modules. Unknown or unavailable driver controls return an error.
+Packaging and simulated driver checks do not establish physical charging power;
+both modes still require validation while booted into this image.
+
 ## Backup compression
 
 When **Enable compression** is selected on the TWRP Backup options page, choose
@@ -285,3 +313,13 @@ The helper validates payload hashes and image structure, but it cannot invent
 or change the AVB chain.  Supply only artifacts whose matching AVB relationship
 has already been validated.  `--no-backup` exists solely for legacy recovery
 diagnostics and is never the normal controlled-stack path.
+
+## Decryption startup
+
+Recovery releases its temporary stock vendor/ODM mounts before starting the
+secure-element, OMAPI, Weaver, touch, and health services. The APEX-free build
+uses ramdisk libraries without mounting stock vendor again for APEX setup.
+`twrp-decrypt-prereqs` checks actual Binder registration with the packaged
+`twrp-service-check`; absent services or a missing checker leave prerequisites
+failed. Credential submission waits for the prerequisite sequence to finish.
+Enter credentials only through the physical recovery GUI.

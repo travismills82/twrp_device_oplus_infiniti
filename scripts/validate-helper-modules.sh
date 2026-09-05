@@ -28,6 +28,7 @@ modules=(
     twrp-wifi-start
     twrp-smb-mount
     twrp-thermal-guard
+    twrp-charging
     twrp-decrypt-prereqs
 )
 

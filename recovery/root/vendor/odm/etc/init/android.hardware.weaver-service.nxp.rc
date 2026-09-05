@@ -2,6 +2,7 @@
 #Junwei.You@BSP.Security.Basic, 2023/10/25, add WAKE_ALARM capabilities for weaver hal
 service vendor.weaver_nxp /odm/bin/hw/android.hardware.weaver-service.nxp
     class hal
+    disabled
     user root
     group root drmrpc
     capabilities WAKE_ALARM

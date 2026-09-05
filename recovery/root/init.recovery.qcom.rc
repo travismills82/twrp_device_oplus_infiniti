@@ -60,6 +60,12 @@ service twrp-decrypt-prereqs /system/bin/twrp-decrypt-prereqs
     oneshot
     seclabel u:r:recovery:s0
 
+service twrp-charging /system/bin/twrp-charging daemon
+    user root
+    group root
+    disabled
+    seclabel u:r:recovery:s0
+
 on early-fs
     write /proc/sys/walt/sched_lib_name "recovery,Updater,updater,update_engine_sideload"
     write /proc/sys/walt/sched_lib_mask_force 255
@@ -71,8 +77,8 @@ on init
     start twrp-thermal-guard
     setprop sys.usb.configfs 1
     start vendor.boot-qti
-    start twrp-touch-start
     setprop prepdecrypt.setpatch true
+    setprop twrp.decrypt.prereq preparing
 
 on property:ro.boot.usbcontroller=*
     setprop sys.usb.controller ${ro.boot.usbcontroller}
@@ -85,7 +91,9 @@ on fs
     symlink /dev/block/platform/soc/${ro.boot.bootdevice} /dev/block/bootdevice
     write /proc/sys/kernel/firmware_config/force_sysfs_fallback 1
 
-on property:twrp.modules.loaded=true
+on property:twrp.fstab.ready=1
+    start twrp-touch-start
+    start twrp-charging
     # Mount firmware
     mkdir /firmware
     mount vfat /dev/block/bootdevice/by-name/modem${ro.boot.slot_suffix} /firmware ro
@@ -97,7 +105,7 @@ on property:twrp.modules.loaded=true
     # Start the gated Wi-Fi loader. The loader exits cleanly if blobs/modules are missing.
     setprop twrp.wifi.enable 1
 
-on property:ro.crypto.state=encrypted && property:ro.boot.dynamic_partitions=true
+on property:twrp.fstab.ready=1 && property:ro.crypto.state=encrypted && property:ro.boot.dynamic_partitions=true
     setprop twrp.decrypt.prereq preparing
     start twrp-decrypt-prereqs
 

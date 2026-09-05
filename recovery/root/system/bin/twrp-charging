@@ -1,0 +1,186 @@
+#!/system/bin/sh
+# OnePlus 15 charging API: charger/v2/oplus_configfs.c and oplus_chg_plc.c.
+# Only native user controls are written; driver safety votes remain authoritative.
+
+CHG=/sys/class/oplus_chg
+PSY=/sys/class/power_supply
+BOOT_READY=/proc/ui_soc_decimal
+LOCK=/tmp/twrp-charging.lock
+REQUEST=twrp.charging.bypass_requested
+
+say() { echo "[charging] $*"; }
+read_node() { cat "$1" 2>/dev/null; }
+plc_state() {
+    local value
+    value=$(read_node "$CHG/common/plc")
+    case "$value" in
+        status=[0-5]) echo "${value#status=}" ;;
+        *) return 1 ;;
+    esac
+}
+write_node() {
+    [ -e "$1" ] && [ -w "$1" ] || { say "Control unavailable: $1"; return 1; }
+    printf '%s\n' "$2" > "$1" || { say "Driver rejected $1"; return 1; }
+}
+require_recovery() {
+    [ "$(id -u)" = 0 ] && [ -n "$(getprop ro.twrp.version)" ] || {
+        say "Charging changes require root in TWRP recovery."
+        return 1
+    }
+}
+lock_controls() {
+    mkdir "$LOCK" 2>/dev/null || { say "Another charging operation is running."; return 1; }
+    trap 'rmdir "$LOCK"' EXIT
+    trap 'exit 1' HUP INT TERM
+}
+wait_value() {
+    local attempt=0
+    while [ "$attempt" -lt 6 ]; do
+        [ "$(read_node "$1")" = "$2" ] && return 0
+        sleep 1
+        attempt=$((attempt + 1))
+    done
+    say "Read-back did not confirm $1 = $2"
+    return 1
+}
+prepare() {
+    local ready
+    ready=$(read_node "$CHG/common/boot_completed")
+    case "$ready" in
+        1) return 0 ;;
+        0) ;;
+        *) say "OnePlus charging driver is not ready."; return 1 ;;
+    esac
+    # This proc write is the native charging userspace readiness handshake.
+    # Its own read is decimal SOC; verify through the driver's boot_completed.
+    read_node "$BOOT_READY" >/dev/null || return 1
+    write_node "$BOOT_READY" 1 || return 1
+    wait_value "$CHG/common/boot_completed" 1 || return 1
+    say "OnePlus charging driver ready; automatic negotiation available."
+}
+set_bypass() {
+    local enable="$1" before after attempt=0
+    before=$(plc_state) || { say "Native bypass control unavailable or unknown ABI."; return 1; }
+    if [ "$enable" = 1 ]; then
+        [ "$(read_node "$PSY/usb/online")" = 1 ] || { say "Connect a wired charger first."; return 1; }
+        case "$before" in
+            2|3|4|5) ;;
+            *) say "Bypass is unavailable under the current driver conditions (status=$before)."; return 1 ;;
+        esac
+    fi
+    # Always send off, even if already disabled, to clear the kernel's user request.
+    write_node "$CHG/common/plc" "switch=$enable|callname=twrp" || return 1
+    # Disable is asynchronous (one second in the native PLC driver).
+    while [ "$attempt" -lt 6 ]; do
+        after=$(plc_state) || after=unknown
+        case "$enable:$after" in
+            1:3|0:0|0:1|0:2|0:5)
+                say "Bypass $( [ "$enable" = 1 ] && echo active || echo off ) (driver status=$after)."
+                return 0 ;;
+        esac
+        sleep 1
+        attempt=$((attempt + 1))
+    done
+    say "Bypass request was not confirmed (driver status=$after)."
+    return 1
+}
+bypass_on() {
+    prepare || return 1
+    if set_bypass 1; then
+        if setprop "$REQUEST" 1; then return 0; fi
+        say "Could not enable bypass session maintenance."
+    fi
+    # Clear a rejected or partially applied request, including retention state.
+    setprop "$REQUEST" 0
+    set_bypass 0 || say "Could not confirm bypass cleanup; inspect charging status."
+    return 1
+}
+bypass_off() {
+    setprop "$REQUEST" 0 || return 1
+    set_bypass 0
+}
+automatic() {
+    local mmi
+    prepare || return 1
+    # A present but unreadable PLC interface is an error, not permission to
+    # claim normal charging while an unknown bypass request may still exist.
+    if [ -e "$CHG/common/plc" ]; then bypass_off || return 1; fi
+    mmi=$(read_node "$CHG/battery/mmi_charging_enable")
+    case "$mmi" in
+        0) write_node "$CHG/battery/mmi_charging_enable" 1 || return 1 ;;
+        1) ;;
+        *) say "Charging enable control unavailable."; return 1 ;;
+    esac
+    wait_value "$CHG/battery/mmi_charging_enable" 1 || return 1
+    say "Normal charging enabled. SUPERVOOC negotiates automatically with a compatible charger and cable."
+    say "Use Charging status to check the negotiated protocol."
+}
+keepalive() {
+    [ "$(getprop "$REQUEST")" = 1 ] || return 0
+    # Refresh only an active session we requested. Never fight a thermal stop,
+    # timeout, charger removal, or another driver decision by enabling it again.
+    if [ "$(read_node "$PSY/usb/online")" = 1 ] && [ "$(plc_state)" = 3 ]; then
+        if set_bypass 1; then return 0; fi
+    fi
+    say "Ending bypass session maintenance; driver no longer confirms active bypass."
+    bypass_off
+}
+status() {
+    local state protocol active online label
+    state=$(plc_state) || state=unknown
+    case "$state" in
+        0) label="unsupported" ;; 1) label="currently not allowed" ;;
+        2) label="off" ;; 3) label="active" ;; 4) label="waiting" ;;
+        5) label="timed out" ;; *) label="unavailable / unknown ABI" ;;
+    esac
+    say "Bypass: $label (driver status=$state)"
+    say "Recovery bypass maintenance: $(getprop "$REQUEST")"
+    protocol=$(read_node "$CHG/common/protocol_type")
+    active=$(read_node "$CHG/battery/voocchg_ing")
+    online=$(read_node "$PSY/usb/online")
+    label="No active wired VOOC session"
+    if [ "$online" = 1 ] && [ "$active" = 1 ]; then
+        case "$protocol" in
+            1) label="VOOC active" ;; 2) label="SUPERVOOC active" ;;
+            *) label="VOOC family active; protocol unconfirmed" ;;
+        esac
+    fi
+    say "$label (protocol=${protocol:-unavailable}, vooc=${active:-unavailable})"
+    for field in status capacity temp current_now voltage_now; do
+        say "Battery $field: $(read_node "$PSY/battery/$field")"
+    done
+    # OnePlus v2 batt_psy_get_prop returns GAUGE_ITEM_CURR directly in mA,
+    # unlike the standard power_supply current unit used by its USB supply.
+    say "Battery units (OnePlus v2): temp=0.1 C, current=mA, voltage=uV."
+    say "USB online: ${online:-unavailable}; type: $(read_node "$PSY/usb/usb_type")"
+    say "Charging enabled: $(read_node "$CHG/battery/mmi_charging_enable")"
+    say "Driver ready: $(read_node "$CHG/common/boot_completed")"
+    say "Adapter capability (mW, not measured draw): $(read_node "$CHG/common/adapter_power")"
+}
+daemon() {
+    local attempt=0
+    # TWRP publishes its version during startup; vendor nodes can arrive later.
+    while [ "$attempt" -lt 60 ]; do
+        if [ -n "$(getprop ro.twrp.version)" ] && [ -r "$CHG/common/boot_completed" ]; then break; fi
+        sleep 1
+        attempt=$((attempt + 1))
+    done
+    require_recovery || return 1
+    while true; do
+        "$0" prepare
+        "$0" keepalive
+        sleep 60
+    done
+}
+
+case "${1:-status}" in
+    status) status ;;
+    daemon) daemon ;;
+    prepare|bypass-on|bypass-off|auto|keepalive)
+        require_recovery && lock_controls || exit 1
+        case "$1" in
+            prepare) prepare ;; bypass-on) bypass_on ;; bypass-off) bypass_off ;;
+            auto) automatic ;; keepalive) keepalive ;;
+        esac ;;
+    *) say "Usage: twrp-charging [status|bypass-on|bypass-off|auto]"; exit 2 ;;
+esac

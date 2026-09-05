@@ -77,6 +77,7 @@ LOCAL_MODULE := twrp-avb-tool
 LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE_CLASS := EXECUTABLES
 LOCAL_SRC_FILES := recovery/root/system/bin/twrp-avb-tool
+LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/tools/patch_twrp_magisk_theme.py
 LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/system/bin
 LOCAL_POST_INSTALL_CMD = chmod 0755 $(LOCAL_INSTALLED_MODULE) && \
 	python3 $(LOCAL_PATH)/tools/patch_twrp_magisk_theme.py \
@@ -159,6 +160,15 @@ LOCAL_MODULE := twrp-thermal-guard
 LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE_CLASS := EXECUTABLES
 LOCAL_SRC_FILES := recovery/root/system/bin/twrp-thermal-guard
+LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/system/bin
+LOCAL_POST_INSTALL_CMD = chmod 0755 $(LOCAL_INSTALLED_MODULE)
+include $(BUILD_PREBUILT)
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := twrp-charging
+LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE_CLASS := EXECUTABLES
+LOCAL_SRC_FILES := recovery/root/system/bin/twrp-charging
 LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/system/bin
 LOCAL_POST_INSTALL_CMD = chmod 0755 $(LOCAL_INSTALLED_MODULE)
 include $(BUILD_PREBUILT)

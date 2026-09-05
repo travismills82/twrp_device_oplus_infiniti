@@ -1,0 +1,53 @@
+--- a/partitionmanager.cpp
++++ b/partitionmanager.cpp
+@@ -314,6 +314,7 @@
+ }
+ 
+ int TWPartitionManager::Process_Fstab(string Fstab_Filename, bool Display_Error, bool recovery_mode) {
++	property_set("twrp.fstab.ready", "0");
+ 	FILE *fstabFile;
+ 	char fstab_line[MAX_FSTAB_LINE_LENGTH];
+ 	bool parse_userdata = false;
+@@ -490,6 +491,10 @@
+ 	if (recovery_mode)
+ 		Process_Keymaster_Version(ven, false);
+ 	if (ven) ven->UnMount(Display_Error);
++	// Device HALs may use files supplied by the recovery ramdisk at these paths.
++	// Publish readiness only after the temporary stock mounts are gone.
++	if ((!ven || !ven->Is_Mounted()) && (!odm || !odm->Is_Mounted()))
++		property_set("twrp.fstab.ready", "1");
+ 	return true;
+ }
+ 
+@@ -520,6 +525,9 @@
+ 
+ 		Unlock_Block_Partitions();
+ 
++		// An APEX-free recovery already supplies its libraries in the ramdisk.
++		// Mounting stock vendor here hides running HALs and can leave it busy.
++#if !defined(TW_EXCLUDE_APEX) || defined(USE_VENDOR_LIBS)
+ 		//Setup Apex before decryption
+ 		TWPartition* sys = PartitionManager.Find_Partition_By_Path(PartitionManager.Get_Android_Root_Path());
+ 		TWPartition* ven = PartitionManager.Find_Partition_By_Path("/vendor");
+@@ -549,6 +557,9 @@
+ 		if (sys)
+ 			sys->UnMount(Display_Error);
+ 	#endif
++#else
++		LOGINFO("Apex is disabled; using recovery ramdisk libraries\n");
++#endif
+ 
+ 		if (!datamedia && !settings_partition && Find_Partition_By_Path("/sdcard") == NULL && Find_Partition_By_Path("/internal_sd") == NULL && Find_Partition_By_Path("/internal_sdcard") == NULL && Find_Partition_By_Path("/emmc") == NULL) {
+ 			// Attempt to automatically identify /data/media emulated storage devices
+--- a/etc/init/se_omapi.rc
++++ b/etc/init/se_omapi.rc
+@@ -1,8 +1,6 @@
+-on late-init
+-    start se_omapi
+-
+ service se_omapi /system/bin/se_omapi
+     class hal
++    disabled
+     user root
+     group root
+     interface aidl android.se.omapi.ISecureElementService/default

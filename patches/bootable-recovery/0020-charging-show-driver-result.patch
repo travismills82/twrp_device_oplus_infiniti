@@ -1,0 +1,47 @@
+--- a/gui/action.cpp
++++ b/gui/action.cpp
+@@ -231,6 +231,7 @@
+ 		ADD_ACTION(dd);
+ 		ADD_ACTION(partitionsd);
+ 		ADD_ACTION(cmd);
++		ADD_ACTION(op15charging);
+ 		ADD_ACTION(terminalcommand);
+ 		ADD_ACTION(reinjecttwrp);
+ 		ADD_ACTION(decrypt);
+@@ -1403,6 +1404,26 @@
+ 	}
+ 
+ 	operation_end(op_status);
++	return 0;
++}
++
++int GUIAction::op15charging(std::string arg)
++{
++	operation_start("Charging");
++	if (arg != "status" && arg != "bypass-on" && arg != "bypass-off" && arg != "auto") {
++		gui_print("Unknown charging action.\n");
++		operation_end(1);
++		return 0;
++	}
++	if (simulate) {
++		simulate_progress_bar();
++		operation_end(0);
++		return 0;
++	}
++	std::string output;
++	int result = TWFunc::Exec_Cmd("/system/bin/twrp-charging " + arg, output, true);
++	gui_print("%s", output.c_str());
++	operation_end(result == 0 ? 0 : 1);
+ 	return 0;
+ }
+ 
+--- a/gui/objects.hpp
++++ b/gui/objects.hpp
+@@ -346,6 +346,7 @@
+ 	int dd(std::string arg);
+ 	int partitionsd(std::string arg);
+ 	int cmd(std::string arg);
++	int op15charging(std::string arg);
+ 	int terminalcommand(std::string arg);
+ 	int killterminal(std::string arg);
+ 	int reinjecttwrp(std::string arg);

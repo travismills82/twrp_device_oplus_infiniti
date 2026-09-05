@@ -6,3 +6,12 @@
 
 soong_namespace {
 }
+
+// Nonblocking service registration check for ordered recovery HAL startup.
+cc_binary {
+    name: "twrp-service-check",
+    recovery: true,
+    srcs: ["tools/service_check.cpp"],
+    shared_libs: ["libbinder_ndk"],
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+}

@@ -65,7 +65,9 @@ PRODUCT_PACKAGES += \
 	twrp-curl-cacert \
 	twrp-touch-start \
 	twrp-thermal-guard \
-	twrp-decrypt-prereqs
+	twrp-charging \
+	twrp-decrypt-prereqs \
+	twrp-service-check
 
 # Recovery init and FBE/decryption userspace
 PRODUCT_PACKAGES += \

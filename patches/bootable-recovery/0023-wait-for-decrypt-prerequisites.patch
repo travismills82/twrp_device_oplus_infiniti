@@ -1,0 +1,21 @@
+--- a/partitionmanager.cpp
++++ b/partitionmanager.cpp
+@@ -2199,6 +2199,18 @@
+ 			return 0;
+ 		}
+ 
++		// The device prerequisite helper opts in by publishing its state.
++		// Do not submit a credential while Weaver/eSE are still being restarted.
++		std::string prereq = android::base::GetProperty("twrp.decrypt.prereq", "");
++		for (int wait = 0; prereq == "preparing" && wait < 60; ++wait) {
++			sleep(1);
++			prereq = android::base::GetProperty("twrp.decrypt.prereq", "");
++		}
++		if (!prereq.empty() && prereq != "ready") {
++			gui_err("decrypt_services_unavailable=Decryption services are not ready. Please retry after recovery finishes starting.");
++			return -1;
++		}
++
+ 		int retry_count = 10;
+ 		while (!TWFunc::Path_Exists("/data/system/users/gatekeeper.password.key") && --retry_count)
+ 			usleep(2000); // A small sleep is needed after mounting /data to ensure reliable decrypt...maybe because of DE?

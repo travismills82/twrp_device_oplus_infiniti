@@ -173,19 +173,10 @@ load_module_if_available() {
 }
 
 binder_service_available() {
-    name="$1"
-
-    if command -v service >/dev/null 2>&1; then
-        out="$(service check "$name" 2>/dev/null || true)"
-        echo "$out" | grep -qi "found" && return 0
-        echo "$out" | grep -qi "not found" && return 1
-    fi
-
-    # If the service command is not available in this recovery build, do not
-    # hard fail here. init service-state checks are still useful.
-    [ ! -x /system/bin/service ] && [ ! -x /sbin/service ] && return 0
-
-    return 1
+    # The recovery image intentionally omits Android's general service utility.
+    # Check Binder directly: process state alone does not prove registration.
+    [ -x /system/bin/twrp-service-check ] || return 1
+    /system/bin/twrp-service-check "$1" >/dev/null 2>&1
 }
 
 wait_binder_service() {
@@ -283,7 +274,10 @@ mount_persist() {
     return 0
 }
 
+setprop twrp.decrypt.prereq preparing 2>/dev/null || true
 set_status preparing
+[ "$(getprop twrp.fstab.ready)" = "1" ] || fail_prereq vendor-not-ready "temporary vendor mounts are not released"
+[ -x /system/bin/twrp-service-check ] || fail_prereq binder-check-missing "Binder readiness checker is missing"
 mount_persist || fail_prereq persist-mount-failed "persist mount setup failed; not starting decrypt services"
 
 # The NXP services reject requests while Android reports boot incomplete.

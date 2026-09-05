@@ -1,5 +1,6 @@
 service vendor.health-default /vendor/bin/hw/android.hardware.health-service.qti
     class hal
+    disabled
     user root
     group root
     capabilities WAKE_ALARM BLOCK_SUSPEND
