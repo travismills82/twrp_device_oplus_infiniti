@@ -5,6 +5,13 @@ PERSIST_VENDOR_MOUNT="/mnt/vendor/persist"
 PERSIST_TWRP_MOUNT="/persist"
 SECURE_ELEMENT_BINDER="android.hardware.secure_element.ISecureElement/eSE1"
 OMAPI_BINDER="android.se.omapi.ISecureElementService/default"
+NFC_BINDER="android.hardware.nfc.INfc/default"
+NFC_SERVICE="vendor.nfc_hal_service"
+NXP_NCI_MODULES="/tmp/vendor_dlkm/lib/modules/nxp-nci.ko"
+NXP_NCI_WAIT_SECONDS=20
+NFC_ODM_MOUNT="/tmp/twrp-nfc-odm"
+NFC_ODM_BIN="/vendor/odm/bin/hw"
+NFC_ODM_LIB="/vendor/odm/lib64"
 CRYPTO_SERVICES="vendor.qseecomd vendor.gatekeeper_default vendor.keymint-qti vendor.weaver_nxp keystore2"
 REQUIRED_BINDER_SERVICES="android.system.keystore2.IKeystoreService/default android.hardware.gatekeeper.IGatekeeper/default android.hardware.security.keymint.IKeyMintDevice/default android.hardware.weaver.IWeaver/default"
 
@@ -130,6 +137,138 @@ wait_binder_service() {
     return 1
 }
 
+# Binder registration proves only that the service process exists.  Android's
+# vold needs a working eSE-backed Weaver transport, so probe its public,
+# credential-free getConfig call before accepting a PIN.
+weaver_config_available() {
+    [ -x /system/bin/twrp-service-check ] || return 1
+    /system/bin/twrp-service-check --weaver-config >/dev/null 2>&1
+}
+
+wait_weaver_config() {
+    timeout="$1"
+    count=0
+
+    while [ "$count" -lt "$timeout" ]; do
+        weaver_config_available && {
+            log_msg "weaver transport is functional"
+            return 0
+        }
+        sleep 1
+        count=$((count + 1))
+    done
+
+    log_msg "weaver transport did not return a valid configuration after ${timeout}s"
+    return 1
+}
+
+nxp_nci_loaded() {
+    [ -d /sys/module/nxp_nci ] || grep -q '^nxp_nci ' /proc/modules 2>/dev/null
+}
+
+wait_nxp_nci_module() {
+    count=0
+
+    while [ "$count" -lt "$NXP_NCI_WAIT_SECONDS" ]; do
+        for module in $NXP_NCI_MODULES; do
+            [ -r "$module" ] && return 0
+        done
+        sleep 1
+        count=$((count + 1))
+    done
+
+    return 1
+}
+
+# Use the active slot's module so a custom GKI kernel receives the exact
+# vendor_dlkm companion selected by the running firmware.  The recovery
+# Wi-Fi loader may finish its vendor_dlkm mount shortly after this helper
+# begins, so wait for that exact file instead of racing it.  Do not treat a
+# legacy character device as readiness; the NFC Binder check below is the
+# functional gate.
+load_nxp_nci_module() {
+    nxp_nci_loaded && {
+        log_msg "NXP NFC transport already loaded"
+        return 0
+    }
+
+    if ! wait_nxp_nci_module; then
+        log_msg "NXP NFC transport module was unavailable after ${NXP_NCI_WAIT_SECONDS}s"
+        return 0
+    fi
+
+    for module in $NXP_NCI_MODULES; do
+        [ -r "$module" ] || continue
+        log_msg "loading NXP NFC transport from $module"
+        if insmod "$module" 2>/tmp/twrp-nxp-nci.err; then
+            sleep 1
+            nxp_nci_loaded && {
+                log_msg "NXP NFC transport loaded"
+                return 0
+            }
+        fi
+        log_msg "NXP NFC transport load failed from $module: $(cat /tmp/twrp-nxp-nci.err 2>/dev/null)"
+    done
+
+    log_msg "NXP NFC transport was not loaded; NFC HAL readiness will decide"
+    return 0
+}
+
+bind_nfc_odm_directory() {
+    source="$1"
+    target="$2"
+
+    is_mounted "$target" && return 0
+    mount -o bind "$source" "$target" 2>/tmp/twrp-nfc-odm-bind.err && return 0
+
+    log_msg "failed binding $source to $target: $(cat /tmp/twrp-nfc-odm-bind.err 2>/dev/null)"
+    return 1
+}
+
+# The NFC HAL is firmware-coupled.  Mount the active slot's ODM partition
+# read-only and bind only its NFC executable/library directories, rather than
+# embedding blobs that can become stale when Android or the kernel changes.
+mount_active_nfc_odm() {
+    slot_suffix="$(getprop ro.boot.slot_suffix 2>/dev/null)"
+    case "$slot_suffix" in
+        _a|_b) ;;
+        *)
+            log_msg "invalid active slot suffix for NFC ODM: $slot_suffix"
+            return 1
+            ;;
+    esac
+
+    mkdir -p "$NFC_ODM_MOUNT" 2>/dev/null || true
+    if ! is_mounted "$NFC_ODM_MOUNT"; then
+        odm_block="/dev/block/mapper/odm${slot_suffix}"
+        [ -e "$odm_block" ] || odm_block="/dev/block/bootdevice/by-name/odm${slot_suffix}"
+        [ -e "$odm_block" ] || {
+            log_msg "active ODM block device is unavailable"
+            return 1
+        }
+
+        log_msg "mounting active NFC ODM from $odm_block"
+        mount -t erofs -o ro "$odm_block" "$NFC_ODM_MOUNT" 2>/tmp/twrp-nfc-odm-mount.err || {
+            log_msg "failed mounting active NFC ODM: $(cat /tmp/twrp-nfc-odm-mount.err 2>/dev/null)"
+            return 1
+        }
+    fi
+
+    [ -x "$NFC_ODM_MOUNT/bin/hw/android.hardware.nfc-service.nxp" ] || {
+        log_msg "active ODM is missing the NXP NFC HAL"
+        return 1
+    }
+    [ -r "$NFC_ODM_MOUNT/lib64/nfc_nci.nqx.default.hw.so" ] || {
+        log_msg "active ODM is missing the NXP NFC transport library"
+        return 1
+    }
+
+    bind_nfc_odm_directory "$NFC_ODM_MOUNT/bin/hw" "$NFC_ODM_BIN" || return 1
+    bind_nfc_odm_directory "$NFC_ODM_MOUNT/lib64" "$NFC_ODM_LIB" || return 1
+    log_msg "active NFC ODM payload is ready"
+    return 0
+}
+
 is_mounted() {
     target="$1"
     grep -q " $target " /proc/mounts 2>/dev/null
@@ -217,10 +356,18 @@ mount_persist || fail_prereq persist-mount-failed "persist mount setup failed; n
 setprop sys.boot_completed 1 2>/dev/null || true
 wait_property sys.boot_completed 1 5 || log_msg "sys.boot_completed did not settle"
 
-# A legacy NFC character node is not a cryptographic readiness signal. Recent
-# OnePlus kernels can use a THN31 front end and expose no /dev/nq-nci node,
-# while the secure-element, OMAPI, and Weaver services remain fully usable.
-# Keep the real service and Binder checks below fail-closed instead.
+# FBE Weaver on this device reaches the eSE through the NXP NFC HAL.  Start
+# that stack before the secure-element service.  This is intentionally gated
+# by the HAL Binder service, not by /dev/nq-nci, so a future transport change
+# gets a clear prerequisite failure rather than a false PIN rejection.
+set_status starting-nfc
+mount_active_nfc_odm || fail_prereq nfc-odm-mount-failed "active NFC ODM payload could not be mounted"
+load_nxp_nci_module
+restart_service "$NFC_SERVICE"
+wait_service_running "$NFC_SERVICE" 20 || fail_prereq nfc-hal-failed "NFC HAL did not become ready"
+wait_binder_service "$NFC_BINDER" 45 || fail_prereq nfc-binder-failed "NFC HAL Binder service did not become ready"
+sleep 2
+
 set_status preparing-secure-element
 start_service vendor.qseecomd
 wait_service_running vendor.qseecomd 20 || fail_prereq qseecomd-failed "vendor.qseecomd did not become ready"
@@ -269,6 +416,8 @@ done
 if [ "$missing_required" -ne 0 ]; then
     fail_prereq failed "required decrypt binder services are not ready; not starting prepdecrypt"
 fi
+
+wait_weaver_config 45 || fail_prereq weaver-config-failed "Weaver eSE transport is unavailable; do not submit a credential"
 
 # Let the HALs settle after registration before prepdecrypt and PIN entry.
 sleep 2

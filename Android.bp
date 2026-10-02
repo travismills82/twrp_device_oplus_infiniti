@@ -12,6 +12,9 @@ cc_binary {
     name: "twrp-service-check",
     recovery: true,
     srcs: ["tools/service_check.cpp"],
-    shared_libs: ["libbinder_ndk"],
+    shared_libs: [
+        "android.hardware.weaver-V2-ndk",
+        "libbinder_ndk",
+    ],
     cflags: ["-Wall", "-Wextra", "-Werror"],
 }

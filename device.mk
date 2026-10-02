@@ -83,7 +83,6 @@ PRODUCT_PACKAGES += \
 # /vendor is mounted over the ramdisk vendor folder.
 PRODUCT_COPY_FILES += \
 	$(DEVICE_PATH)/recovery/root/system/bin/twrp-ftp-menu:$(TARGET_COPY_OUT_RECOVERY)/root/system/bin/twrp-ftp-menu \
-	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/nxp-nci.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/nxp-nci.ko \
 	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/smcinvoke_dlkm.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/smcinvoke_dlkm.ko \
 	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/qmi_helpers.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/qmi_helpers.ko \
 	$(DEVICE_PATH)/recovery/root/vendor/lib/modules/cnss_prealloc.ko:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib/modules/cnss_prealloc.ko \

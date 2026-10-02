@@ -132,6 +132,7 @@ jobs:
     - name: Apply device recovery patches
       run: |
         bash device/${{ github.event.inputs.DEVICE_PATH }}/scripts/apply-recovery-patches.sh
+        python3 device/${{ github.event.inputs.DEVICE_PATH }}/scripts/test-decrypt-readiness.py
         git -C bootable/recovery diff --check
         git -C bootable/recovery status --short
         grep -n "Supplicant network ID" bootable/recovery/gui/action.cpp

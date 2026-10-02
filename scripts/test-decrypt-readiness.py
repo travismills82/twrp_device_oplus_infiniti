@@ -48,8 +48,13 @@ setprop twrp.decrypt.prereq preparing'''+entry.replace('/system/bin/twrp-service
         source = (TREE / 'recovery/root/system/bin/twrp-decrypt-prereqs').read_text()
         self.assertNotIn('NFC_DEVICE=', source)
         self.assertNotIn('nfc-device-missing', source)
-        self.assertNotIn('nxp-nci.ko', source)
         self.assertNotIn('wait_path()', source)
+        self.assertIn('NFC_BINDER="android.hardware.nfc.INfc/default"', source)
+        self.assertIn('NXP_NCI_MODULES=', source)
+        self.assertIn('NXP_NCI_WAIT_SECONDS=20', source)
+        self.assertIn('load_nxp_nci_module', source)
+        self.assertIn('wait_nxp_nci_module', source)
+        self.assertIn('wait_binder_service "$NFC_BINDER" 45', source)
 
         secure_element = source.split('set_status preparing-secure-element', 1)[1]
         secure_element = secure_element.split('\nset_status starting-crypto-services', 1)[0]
@@ -63,10 +68,38 @@ setprop twrp.decrypt.prereq preparing'''+entry.replace('/system/bin/twrp-service
         ):
             self.assertIn(required, secure_element)
 
+    def test_nfc_stack_and_weaver_functional_gate_are_packaged(self):
+        root = TREE / 'recovery/root'
+        source = (root / 'system/bin/twrp-decrypt-prereqs').read_text()
+        self.assertIn('wait_weaver_config 45 || fail_prereq weaver-config-failed', source)
+        self.assertIn('/system/bin/twrp-service-check --weaver-config', source)
+
+        manifest = (root / 'vendor/odm/etc/vintf/manifest/nfc-service.xml').read_text()
+        self.assertIn('<name>android.hardware.nfc</name>', manifest)
+        self.assertIn('<fqname>INfc/default</fqname>', manifest)
+
+        init_rc = (root / 'vendor/odm/etc/init/nfc-service-nxp.rc').read_text()
+        self.assertIn('service vendor.nfc_hal_service /odm/bin/hw/android.hardware.nfc-service.nxp', init_rc)
+        self.assertIn('disabled', init_rc)
+        self.assertIn('seclabel u:r:recovery:s0', init_rc)
+
+        for payload in (
+            'vendor/odm/etc/init/nfc-service-nxp.rc',
+            'vendor/odm/etc/vintf/manifest/nfc-service.xml',
+        ):
+            self.assertTrue((root / payload).is_file(), payload)
+
+        self.assertIn('/tmp/vendor_dlkm/lib/modules/nxp-nci.ko', source)
+        self.assertNotIn('/system/lib/modules/nxp-nci.ko', source)
+        self.assertIn('mount_active_nfc_odm || fail_prereq nfc-odm-mount-failed', source)
+        self.assertIn('/dev/block/mapper/odm${slot_suffix}', source)
+        self.assertIn('bind_nfc_odm_directory "$NFC_ODM_MOUNT/bin/hw" "$NFC_ODM_BIN"', source)
+        self.assertIn('bind_nfc_odm_directory "$NFC_ODM_MOUNT/lib64" "$NFC_ODM_LIB"', source)
+
     def test_early_init_cannot_start_deferred_hals(self):
         root = TREE / 'recovery/root'
         names = {
-            'vendor.secure_element', 'vendor.weaver_nxp',
+            'vendor.nfc_hal_service', 'vendor.secure_element', 'vendor.weaver_nxp',
             'vendor.touch-aidl-2', 'vendor.health-default',
         }
         definitions = {}
