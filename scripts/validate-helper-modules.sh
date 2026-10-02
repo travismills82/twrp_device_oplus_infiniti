@@ -196,6 +196,10 @@ vendor_dlkm_cleanup_count="$(grep -Fxc '    rm -f /tmp/twrp-wifi-vendor-dlkm.err
 [ "$vendor_dlkm_cleanup_count" -eq 2 ] ||
     fail "Wi-Fi vendor_dlkm fallback errors are not cleared before and after success"
 
+sh -n "$wifi_helper" || fail "Wi-Fi runtime helper has invalid shell syntax"
+python3 "$TREE/scripts/test-wifi-runtime-firmware.py" ||
+    fail "Wi-Fi active-slot firmware verifier failed"
+
 grep -Fq 'WITH_BUNDLED_MAGISK ?= true' "$DEVICE_MK" ||
     fail "bundled Magisk is not the default recovery build mode"
 
@@ -275,6 +279,7 @@ echo "[verified] recovery packages zstd for selectable file-based backup compres
 echo "[verified] standalone recovery is configured with the required AVB hash footer"
 echo "[verified] recovery build patches Advanced with Magisk, FTP, and AVB menus"
 echo "[verified] Wi-Fi vendor_dlkm fallback does not leave stale error artifacts"
+echo "[verified] Wi-Fi firmware is linked read-only from the active phone slot"
 echo "[verified] bundled Magisk is the default recovery payload"
 echo "[verified] no custom CIFS payloads are staged by the device tree"
 echo "[verified] raw userdata image is absent while file-level Data backup remains"

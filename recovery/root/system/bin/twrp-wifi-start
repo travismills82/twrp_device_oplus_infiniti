@@ -3,14 +3,13 @@
 IFACE="wlan0"
 SOCKET_DIR="/tmp/recovery/sockets"
 VENDOR_DLKM_MOUNT="/tmp/vendor_dlkm"
+WIFI_VENDOR_MOUNT="/tmp/twrp-wifi-vendor"
+WIFI_ODM_MOUNT="/tmp/twrp-wifi-odm"
+WIFI_RUNTIME_FIRMWARE="/tmp/twrp-wifi-firmware"
 MODULE_DIRS="/system/lib/modules /vendor/lib/modules /vendor_dlkm/lib/modules /lib/modules"
 WPA_CLI="/system/bin/wpa_cli"
 DNS_PUBLISHER="/system/bin/twrp-dns-publish"
-INI_NAME="WCNSS_qcom_cfg.ini"
-INI_SOURCES="/vendor/etc/wifi/peach_v2/$INI_NAME /vendor/etc/wifi/peach/$INI_NAME /vendor/odm/etc/wifi/peach_v2/$INI_NAME /vendor/odm/etc/wifi/peach/$INI_NAME"
-PEACH_FIRMWARE_SOURCES="/vendor/odm/etc/wifi/peach /vendor/etc/wifi/peach /vendor/odm/firmware/peach /vendor/firmware/peach"
-PEACH_FIRMWARE_DESTS="/lib/firmware/peach /vendor/firmware/peach /vendor/odm/firmware/peach"
-WLAN_UPDATE_DIR="/data/vendor/firmware/update/wlan"
+MODEM_PEACH_FIRMWARE="/firmware/image/peach"
 
 log_msg() {
     echo "[twrp-wifi] $1"
@@ -100,7 +99,8 @@ load_module() {
 
 is_mounted() (
     target="$1"
-    grep -q " $target " /proc/mounts 2>/dev/null
+    awk -v target="$target" '$2 == target { found = 1; exit } END { exit !found }' \
+        /proc/mounts 2>/dev/null
 )
 
 find_vendor_dlkm_block() (
@@ -165,76 +165,185 @@ mount_vendor_dlkm_modules() {
     return 0
 }
 
-copy_file_if_present() {
-    src="$1"
-    dst="$2"
+find_active_partition_block() {
+    partition="$1"
+    slot_suffix="$(getprop ro.boot.slot_suffix 2>/dev/null)"
 
-    [ -f "$src" ] || return 1
-    mkdir -p "${dst%/*}" 2>/dev/null || true
-    cp -f "$src" "$dst" 2>/tmp/twrp-wifi-copy.err && {
-        chmod 0644 "$dst" 2>/dev/null || true
-        log_msg "copied $src -> $dst"
-        return 0
-    }
+    case "$slot_suffix" in
+        _a|_b) ;;
+        *)
+            log_msg "invalid active slot suffix for $partition: $slot_suffix"
+            return 1
+            ;;
+    esac
 
-    log_msg "failed copying $src -> $dst: $(cat /tmp/twrp-wifi-copy.err 2>/dev/null)"
+    for block in \
+        "/dev/block/mapper/${partition}${slot_suffix}" \
+        "/dev/block/by-name/${partition}${slot_suffix}" \
+        "/dev/block/bootdevice/by-name/${partition}${slot_suffix}"
+    do
+        if [ -e "$block" ]; then
+            echo "$block"
+            return 0
+        fi
+    done
+
     return 1
 }
 
-copy_dir_contents_if_present() {
+mount_active_partition_readonly() {
+    partition="$1"
+    target="$2"
+    err="/tmp/twrp-wifi-${partition}-mount.err"
+
+    mkdir -p "$target" 2>/dev/null || true
+    is_mounted "$target" && return 0
+
+    block="$(find_active_partition_block "$partition")" || {
+        log_msg "active $partition block device is unavailable"
+        return 1
+    }
+
+    rm -f "$err"
+    log_msg "mounting active $partition from $block"
+    mount -t erofs -o ro "$block" "$target" 2>"$err" || \
+    mount -t ext4 -o ro "$block" "$target" 2>>"$err" || \
+    mount -o ro "$block" "$target" 2>>"$err" || {
+        log_msg "failed mounting active $partition: $(cat "$err" 2>/dev/null)"
+        return 1
+    }
+
+    return 0
+}
+
+bind_readonly_directory() {
     src="$1"
     dst="$2"
 
-    [ -d "$src" ] || return 1
-    [ "$src" = "$dst" ] && return 0
+    [ -d "$src" ] || {
+        log_msg "runtime firmware source is missing: $src"
+        return 1
+    }
 
     mkdir -p "$dst" 2>/dev/null || true
-    cp -af "$src"/. "$dst"/ 2>/tmp/twrp-wifi-copy.err && {
-        log_msg "copied peach firmware $src -> $dst"
-        return 0
-    }
+    is_mounted "$dst" && return 0
 
-    log_msg "failed copying peach firmware $src -> $dst: $(cat /tmp/twrp-wifi-copy.err 2>/dev/null)"
-    return 1
+    mount -o bind "$src" "$dst" 2>/tmp/twrp-wifi-bind.err || {
+        log_msg "failed binding $src to $dst: $(cat /tmp/twrp-wifi-bind.err 2>/dev/null)"
+        return 1
+    }
+    # Sources are read-only physical partitions, but explicitly retain that
+    # property at the bind target as a defense against future layout changes.
+    mount -o remount,bind,ro "$dst" 2>/dev/null || true
+    return 0
 }
 
+link_firmware_tree() {
+    src="$1"
+    dst="$2"
+    linked=0
+
+    [ -d "$src" ] || return 1
+    for entry in "$src"/*; do
+        [ -f "$entry" ] || continue
+        ln -sf "$entry" "$dst/${entry##*/}" || return 1
+        linked=$((linked + 1))
+    done
+
+    [ "$linked" -gt 0 ]
+}
+
+prepare_runtime_peach_view() {
+    peach_runtime="$WIFI_RUNTIME_FIRMWARE/peach"
+
+    mkdir -p "$WIFI_RUNTIME_FIRMWARE" 2>/dev/null || true
+    if ! is_mounted "$WIFI_RUNTIME_FIRMWARE"; then
+        mount -t tmpfs -o mode=0755,size=256k tmpfs "$WIFI_RUNTIME_FIRMWARE" \
+            2>/tmp/twrp-wifi-runtime-mount.err || {
+            log_msg "failed mounting Wi-Fi runtime link view: $(cat /tmp/twrp-wifi-runtime-mount.err 2>/dev/null)"
+            return 1
+        }
+    fi
+
+    mkdir -p "$peach_runtime" 2>/dev/null || true
+    # The view is sealed after its first complete construction.  On a later
+    # property-triggered invocation, reuse it instead of attempting to modify
+    # a read-only tmpfs mount.
+    if [ -r "$peach_runtime/amss20.bin" ] && \
+       [ -r "$peach_runtime/bdwlan.b0a" ] && \
+       [ -r "$peach_runtime/regdb.bin" ]; then
+        return 0
+    fi
+
+    [ -w "$peach_runtime" ] || {
+        log_msg "Wi-Fi runtime link view is incomplete and not writable"
+        return 1
+    }
+
+    rm -f "$peach_runtime"/* 2>/dev/null || true
+    link_firmware_tree "$MODEM_PEACH_FIRMWARE" "$peach_runtime" || {
+        log_msg "active modem Peach firmware has no usable files"
+        return 1
+    }
+    # The active ODM versions override the modem copy when a board-specific
+    # name overlaps (notably BDF and regulatory data).
+    link_firmware_tree "$WIFI_ODM_MOUNT/etc/wifi/peach" "$peach_runtime" || {
+        log_msg "active ODM Peach firmware has no usable files"
+        return 1
+    }
+
+    [ -r "$peach_runtime/amss20.bin" ] && \
+    [ -r "$peach_runtime/bdwlan.b0a" ] && \
+    [ -r "$peach_runtime/regdb.bin" ] || {
+        log_msg "linked Peach firmware view is incomplete"
+        return 1
+    }
+
+    mount -o remount,ro "$WIFI_RUNTIME_FIRMWARE" 2>/tmp/twrp-wifi-runtime-mount.err || {
+        log_msg "failed sealing Wi-Fi runtime link view read-only: $(cat /tmp/twrp-wifi-runtime-mount.err 2>/dev/null)"
+        return 1
+    }
+    return 0
+}
+
+# The modem partition provides the bulk of Peach firmware, while the active
+# ODM partition supplies the board-specific BDF and regulatory files.  Build
+# a tiny symlink view with ODM taking precedence, then bind it at every legacy
+# firmware location that the CNSS driver may query.  This keeps recovery in
+# lock-step with the selected slot without storing a second copy in the image.
 prepare_wlan_firmware() {
     set_status staging-firmware
-    mkdir -p "$WLAN_UPDATE_DIR" 2>/dev/null || true
-    chmod 0755 /data /data/vendor /data/vendor/firmware /data/vendor/firmware/update "$WLAN_UPDATE_DIR" 2>/dev/null || true
 
-    ini_src=""
-    for src in $INI_SOURCES; do
-        if [ -f "$src" ]; then
-            ini_src="$src"
-            break
-        fi
+    mount_active_partition_readonly vendor "$WIFI_VENDOR_MOUNT" || return 1
+    mount_active_partition_readonly odm "$WIFI_ODM_MOUNT" || return 1
+    [ -d "$MODEM_PEACH_FIRMWARE" ] || {
+        log_msg "active modem Peach firmware is unavailable: $MODEM_PEACH_FIRMWARE"
+        return 1
+    }
+    [ -d "$WIFI_VENDOR_MOUNT/etc/wifi" ] || {
+        log_msg "active vendor Wi-Fi configuration is unavailable"
+        return 1
+    }
+    [ -d "$WIFI_ODM_MOUNT/etc/wifi" ] || {
+        log_msg "active ODM Wi-Fi configuration is unavailable"
+        return 1
+    }
+
+    bind_readonly_directory "$WIFI_VENDOR_MOUNT/etc/wifi" /vendor/etc/wifi || return 1
+    bind_readonly_directory "$WIFI_ODM_MOUNT/etc/wifi" /vendor/odm/etc/wifi || return 1
+    # Some firmware loaders use the traditional /odm path while recovery
+    # userspace uses /vendor/odm.  Point both at the active slot's directory.
+    bind_readonly_directory "$WIFI_ODM_MOUNT/etc/wifi" /odm/etc/wifi || return 1
+
+    prepare_runtime_peach_view || return 1
+
+    for dst in /lib/firmware/peach /vendor/firmware/peach /vendor/odm/firmware/peach; do
+        bind_readonly_directory "$peach_runtime" "$dst" || return 1
     done
 
-    if [ -n "$ini_src" ]; then
-        copy_file_if_present "$ini_src" "$WLAN_UPDATE_DIR/$INI_NAME" || true
-        for dst in $PEACH_FIRMWARE_DESTS; do
-            copy_file_if_present "$ini_src" "$dst/$INI_NAME" || true
-        done
-    else
-        log_msg "$INI_NAME not found in known recovery paths"
-    fi
-
-    peach_src=""
-    for src in $PEACH_FIRMWARE_SOURCES; do
-        if [ -d "$src" ]; then
-            peach_src="$src"
-            break
-        fi
-    done
-
-    if [ -n "$peach_src" ]; then
-        for dst in $PEACH_FIRMWARE_DESTS; do
-            copy_dir_contents_if_present "$peach_src" "$dst" || true
-        done
-    else
-        log_msg "peach firmware directory not found in known recovery paths"
-    fi
+    setprop twrp.wifi.firmware active-slot 2>/dev/null || true
+    log_msg "using linked active-slot modem, vendor, and ODM Wi-Fi firmware"
+    return 0
 }
 
 set_fs_ready() {
@@ -274,7 +383,12 @@ prepare_fallback_dns || true
 mount | grep -q " /firmware " || mount -t vfat -o ro "/dev/block/bootdevice/by-name/modem$(getprop ro.boot.slot_suffix)" /firmware 2>/dev/null || true
 
 echo 1 > /proc/sys/kernel/firmware_config/force_sysfs_fallback 2>/dev/null || true
-prepare_wlan_firmware
+if ! prepare_wlan_firmware; then
+    set_status firmware-link-failed
+    set_ready false
+    log_msg "Wi-Fi firmware links are not ready; not loading the WLAN driver"
+    exit 0
+fi
 mount_vendor_dlkm_modules || true
 
 set_status loading-cnss
