@@ -44,6 +44,25 @@ setprop twrp.decrypt.prereq preparing'''+entry.replace('/system/bin/twrp-service
                 result = subprocess.run(['/bin/sh', '-c', script], env=dict(os.environ, FIXTURE_READY=state), capture_output=True)
                 self.assertEqual(result.returncode == 0, succeeds, result.stderr)
 
+    def test_legacy_nfc_node_cannot_block_crypto_readiness(self):
+        source = (TREE / 'recovery/root/system/bin/twrp-decrypt-prereqs').read_text()
+        self.assertNotIn('NFC_DEVICE=', source)
+        self.assertNotIn('nfc-device-missing', source)
+        self.assertNotIn('nxp-nci.ko', source)
+        self.assertNotIn('wait_path()', source)
+
+        secure_element = source.split('set_status preparing-secure-element', 1)[1]
+        secure_element = secure_element.split('\nset_status starting-crypto-services', 1)[0]
+        for required in (
+            'start_service vendor.qseecomd',
+            'wait_service_running vendor.qseecomd 20 || fail_prereq',
+            'start_service vendor.secure_element',
+            'wait_binder_service "$SECURE_ELEMENT_BINDER" 30 || fail_prereq',
+            'start_service se_omapi',
+            'wait_binder_service "$OMAPI_BINDER" 30 || fail_prereq',
+        ):
+            self.assertIn(required, secure_element)
+
     def test_early_init_cannot_start_deferred_hals(self):
         root = TREE / 'recovery/root'
         names = {

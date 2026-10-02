@@ -3,8 +3,6 @@
 PERSIST_BLOCKS="/dev/block/bootdevice/by-name/persist /dev/block/by-name/persist"
 PERSIST_VENDOR_MOUNT="/mnt/vendor/persist"
 PERSIST_TWRP_MOUNT="/persist"
-MODULE_DIRS="/system/lib/modules /vendor/lib/modules /vendor_dlkm/lib/modules /lib/modules"
-NFC_DEVICE="/dev/nq-nci"
 SECURE_ELEMENT_BINDER="android.hardware.secure_element.ISecureElement/eSE1"
 OMAPI_BINDER="android.se.omapi.ISecureElementService/default"
 CRYPTO_SERVICES="vendor.qseecomd vendor.gatekeeper_default vendor.keymint-qti vendor.weaver_nxp keystore2"
@@ -104,71 +102,6 @@ wait_property() {
         count=$((count + 1))
     done
 
-    return 1
-}
-
-wait_path() {
-    path="$1"
-    timeout="$2"
-    count=0
-
-    while [ "$count" -lt "$timeout" ]; do
-        [ -e "$path" ] && return 0
-        sleep 1
-        count=$((count + 1))
-    done
-
-    return 1
-}
-
-module_name() {
-    echo "${1%.ko}" | tr '-' '_'
-}
-
-# Android's recovery shell does not provide function-local variables by
-# default. Keep temporary names in subshells so checking a normalized module
-# name cannot overwrite the original filename used by the caller.
-module_loaded() (
-    mod="$(module_name "$1")"
-    grep -q "^${mod} " /proc/modules 2>/dev/null
-)
-
-find_module() (
-    mod="$1"
-    for dir in $MODULE_DIRS; do
-        if [ -f "$dir/$mod" ]; then
-            echo "$dir/$mod"
-            return 0
-        fi
-    done
-    return 1
-)
-
-load_module_if_available() {
-    mod="$1"
-
-    if module_loaded "$mod"; then
-        log_msg "$mod already loaded"
-        return 0
-    fi
-
-    path="$(find_module "$mod")" || {
-        log_msg "$mod not found in runtime module paths"
-        return 1
-    }
-
-    log_msg "loading $path"
-    if insmod "$path" 2>/tmp/twrp-decrypt-insmod.err; then
-        log_msg "loaded $mod"
-        return 0
-    fi
-
-    if module_loaded "$mod"; then
-        log_msg "$mod loaded despite insmod warning"
-        return 0
-    fi
-
-    log_msg "failed loading $mod: $(cat /tmp/twrp-decrypt-insmod.err 2>/dev/null)"
     return 1
 }
 
@@ -284,25 +217,18 @@ mount_persist || fail_prereq persist-mount-failed "persist mount setup failed; n
 setprop sys.boot_completed 1 2>/dev/null || true
 wait_property sys.boot_completed 1 5 || log_msg "sys.boot_completed did not settle"
 
-# The secure-element HAL requires the Qualcomm secure channel and the NXP NFC
-# device. Older successful boots loaded nxp-nci before the HAL initialized;
-# current vendor init can start the HAL before that device is ready.
-set_status preparing-nfc
+# A legacy NFC character node is not a cryptographic readiness signal. Recent
+# OnePlus kernels can use a THN31 front end and expose no /dev/nq-nci node,
+# while the secure-element, OMAPI, and Weaver services remain fully usable.
+# Keep the real service and Binder checks below fail-closed instead.
+set_status preparing-secure-element
 start_service vendor.qseecomd
 wait_service_running vendor.qseecomd 20 || fail_prereq qseecomd-failed "vendor.qseecomd did not become ready"
 start_service vendor.ssgtzd
 wait_service_running vendor.ssgtzd 20 || true
 
-if [ ! -e "$NFC_DEVICE" ]; then
-    load_module_if_available smcinvoke_dlkm.ko || true
-    load_module_if_available nxp-nci.ko || true
-fi
-
-wait_path "$NFC_DEVICE" 20 || fail_prereq nfc-device-missing "$NFC_DEVICE did not appear; cannot initialize the embedded secure element"
-log_msg "NFC secure-element device ready: $NFC_DEVICE"
-
 # Both daemons may already be running with a cached failed eSE probe. Stop the
-# OMAPI client first, then reinitialize the HAL after persist/QSEE/NFC readiness.
+# OMAPI client first, then reinitialize the HAL after persist/QSEE readiness.
 set_status restarting-secure-element
 stop_service se_omapi || true
 stop_service vendor.secure_element || true
