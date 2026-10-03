@@ -3,6 +3,7 @@
 IFACE="wlan0"
 SOCKET_DIR="/tmp/recovery/sockets"
 VENDOR_DLKM_MOUNT="/tmp/vendor_dlkm"
+SYSTEM_DLKM_MOUNT="/tmp/system_dlkm"
 WIFI_VENDOR_MOUNT="/tmp/twrp-wifi-vendor"
 WIFI_ODM_MOUNT="/tmp/twrp-wifi-odm"
 WIFI_RUNTIME_FIRMWARE="/tmp/twrp-wifi-firmware"
@@ -72,16 +73,17 @@ find_module() (
     return 1
 )
 
-load_module() {
+load_module_at_path() {
     mod="$1"
+    path="$2"
 
     if module_loaded "$mod"; then
         log_msg "$mod already loaded"
         return 0
     fi
 
-    path="$(find_module "$mod")" || {
-        log_msg "missing module: $mod"
+    [ -f "$path" ] || {
+        log_msg "missing module: $path"
         return 1
     }
 
@@ -95,6 +97,17 @@ load_module() {
 
     log_msg "failed loading $mod: $(cat /tmp/twrp-wifi-insmod.err 2>/dev/null)"
     return 1
+}
+
+load_module() {
+    mod="$1"
+
+    path="$(find_module "$mod")" || {
+        log_msg "missing module: $mod"
+        return 1
+    }
+
+    load_module_at_path "$mod" "$path"
 }
 
 is_mounted() (
@@ -112,6 +125,24 @@ find_vendor_dlkm_block() (
         "/dev/block/by-name/vendor_dlkm" \
         "/dev/block/bootdevice/by-name/vendor_dlkm${slot}" \
         "/dev/block/bootdevice/by-name/vendor_dlkm"
+    do
+        if [ -e "$block" ]; then
+            echo "$block"
+            return 0
+        fi
+    done
+    return 1
+)
+
+find_system_dlkm_block() (
+    slot="$(getprop ro.boot.slot_suffix 2>/dev/null)"
+    for block in \
+        "/dev/block/mapper/system_dlkm${slot}" \
+        "/dev/block/mapper/system_dlkm" \
+        "/dev/block/by-name/system_dlkm${slot}" \
+        "/dev/block/by-name/system_dlkm" \
+        "/dev/block/bootdevice/by-name/system_dlkm${slot}" \
+        "/dev/block/bootdevice/by-name/system_dlkm"
     do
         if [ -e "$block" ]; then
             echo "$block"
@@ -162,6 +193,39 @@ mount_vendor_dlkm_modules() {
     fi
 
     rm -f /tmp/twrp-wifi-vendor-dlkm.err
+    return 0
+}
+
+# Keep the active-slot WLAN stack coherent: cfg80211 and the QCA driver live
+# in vendor_dlkm, while their rfkill provider is supplied by system_dlkm.  Do
+# not fall back to the recovery's bundled rfkill.ko, which can belong to a
+# different kernel/module CRC contract.
+mount_system_dlkm_modules() {
+    rm -f /tmp/twrp-wifi-system-dlkm.err
+    mkdir -p "$SYSTEM_DLKM_MOUNT" 2>/dev/null || true
+
+    if ! is_mounted "$SYSTEM_DLKM_MOUNT"; then
+        sdlkm_block="$(find_system_dlkm_block)" || {
+            log_msg "system_dlkm block device not found"
+            return 1
+        }
+
+        log_msg "mounting system_dlkm from $sdlkm_block"
+        mount -t erofs -o ro "$sdlkm_block" "$SYSTEM_DLKM_MOUNT" 2>/tmp/twrp-wifi-system-dlkm.err || \
+        mount -t ext4 -o ro "$sdlkm_block" "$SYSTEM_DLKM_MOUNT" 2>>/tmp/twrp-wifi-system-dlkm.err || \
+        mount -o ro "$sdlkm_block" "$SYSTEM_DLKM_MOUNT" 2>>/tmp/twrp-wifi-system-dlkm.err || {
+            log_msg "failed mounting system_dlkm: $(cat /tmp/twrp-wifi-system-dlkm.err 2>/dev/null)"
+            return 1
+        }
+    fi
+
+    if [ ! -f "$SYSTEM_DLKM_MOUNT/lib/modules/rfkill.ko" ]; then
+        log_msg "rfkill.ko missing from mounted system_dlkm"
+        return 1
+    fi
+
+    log_msg "system_dlkm rfkill ready at $SYSTEM_DLKM_MOUNT/lib/modules/rfkill.ko"
+    rm -f /tmp/twrp-wifi-system-dlkm.err
     return 0
 }
 
@@ -390,6 +454,7 @@ if ! prepare_wlan_firmware; then
     exit 0
 fi
 mount_vendor_dlkm_modules || true
+mount_system_dlkm_modules || true
 
 set_status loading-cnss
 for mod in qmi_helpers.ko cnss_prealloc.ko smem-mailbox.ko cnss_utils.ko cnss_plat_ipc_qmi_svc.ko cnss_nl.ko wlan_firmware_service.ko cnss2.ko; do
@@ -400,9 +465,16 @@ set_fs_ready
 sleep 1
 
 set_status loading-wlan-deps
-for mod in rmnet_mem.ko gsim.ko ipam.ko rfkill.ko cfg80211.ko; do
+for mod in rmnet_mem.ko gsim.ko ipam.ko; do
     load_module "$mod" || true
 done
+
+if [ -f "$SYSTEM_DLKM_MOUNT/lib/modules/rfkill.ko" ]; then
+    load_module_at_path rfkill.ko "$SYSTEM_DLKM_MOUNT/lib/modules/rfkill.ko" || true
+else
+    log_msg "not loading rfkill.ko without the active system_dlkm provider"
+fi
+load_module cfg80211.ko || true
 
 set_fs_ready
 sleep 1

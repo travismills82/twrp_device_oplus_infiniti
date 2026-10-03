@@ -61,6 +61,21 @@ class WifiRuntimeFirmwareTests(unittest.TestCase):
         self.assertIn('linked Peach firmware view is incomplete', self.source)
         self.assertIn('set_status firmware-link-failed', self.source)
 
+    def test_wlan_module_stack_uses_active_slot_system_dlkm_rfkill(self):
+        # The QCA driver and cfg80211 are supplied by vendor_dlkm, but the
+        # matching rfkill provider is in system_dlkm.  Loading the bundled
+        # recovery copy can mix ABI/CRC contracts and prevent wlan0 appearing.
+        for marker in (
+            'SYSTEM_DLKM_MOUNT="/tmp/system_dlkm"',
+            'find_system_dlkm_block()',
+            'mount_system_dlkm_modules()',
+            'rfkill.ko missing from mounted system_dlkm',
+            'mount_system_dlkm_modules || true',
+            'load_module_at_path rfkill.ko "$SYSTEM_DLKM_MOUNT/lib/modules/rfkill.ko"',
+            'not loading rfkill.ko without the active system_dlkm provider',
+        ):
+            self.assertIn(marker, self.source)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -200,6 +200,13 @@ sh -n "$wifi_helper" || fail "Wi-Fi runtime helper has invalid shell syntax"
 python3 "$TREE/scripts/test-wifi-runtime-firmware.py" ||
     fail "Wi-Fi active-slot firmware verifier failed"
 
+grep -Fq 'SYSTEM_DLKM_MOUNT="/tmp/system_dlkm"' "$wifi_helper" ||
+    fail "Wi-Fi helper does not mount active system_dlkm for rfkill"
+grep -Fq 'load_module_at_path rfkill.ko "$SYSTEM_DLKM_MOUNT/lib/modules/rfkill.ko"' "$wifi_helper" ||
+    fail "Wi-Fi helper does not source rfkill from active system_dlkm"
+grep -Fq 'not loading rfkill.ko without the active system_dlkm provider' "$wifi_helper" ||
+    fail "Wi-Fi helper can fall back to an incompatible bundled rfkill module"
+
 grep -Fq 'WITH_BUNDLED_MAGISK ?= true' "$DEVICE_MK" ||
     fail "bundled Magisk is not the default recovery build mode"
 
