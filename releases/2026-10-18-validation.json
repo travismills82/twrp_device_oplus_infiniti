@@ -1,0 +1,53 @@
+{
+  "date": "2026-10-18",
+  "device": "OnePlus 15 (infiniti)",
+  "tested_os": "LineageOS 24 / Android 17",
+  "tested_system_fingerprint": "OnePlus/CPH2745IN/OP611FL1:16/BP2A.250605.015/B.R4T3.1abf132_aeee51_aea830:user/release-keys",
+  "tested_kernel": "6.12.112-android16-6-o-g499f2bb26e85-4k",
+  "image_source_commit": "e2033504a4137ea4c8306cc8850365cfe713f80f",
+  "assets": {
+    "recovery.img": {
+      "sha256": "7789facc5641f3a60c4c25d12c4646d22d9a9ea7de44e0fa1438d19b26653dcf",
+      "bytes": 104857600
+    },
+    "TWRP-3.7.1-16-infiniti-2026-10-18.zip": {
+      "sha256": "9fb00542e11c716882c84a3fd351797940bc0003ae9c5ab843f44f7619a94413",
+      "bytes": 83670725,
+      "embedded_recovery_sha256": "7789facc5641f3a60c4c25d12c4646d22d9a9ea7de44e0fa1438d19b26653dcf"
+    }
+  },
+  "build": {
+    "target": "twrp_infiniti",
+    "bundled_magisk": true,
+    "result": "PASS",
+    "avb_signature": "PASS",
+    "packed_contents": "PASS"
+  },
+  "tests": {
+    "decrypt_readiness_tests": 6,
+    "wifi_runtime_firmware_tests": 5,
+    "installer_fixture_tests": 9,
+    "installer_on_device_read_only_preflight": "PASS",
+    "installed_image_full_readback": "PASS: recovery_a and recovery_b",
+    "lineage_active_runtime": "PASS",
+    "nci_device": "PASS",
+    "nfc_secure_element_weaver": "PASS",
+    "weaver_config_probe": "PASS",
+    "user0_decryption": "PASS",
+    "oxygenos_16_runtime": "legacy fallback source-validated; not live-tested in this release"
+  },
+  "installer": {
+    "targets": [
+      "recovery_a",
+      "recovery_b"
+    ],
+    "changes_active_slot": false,
+    "accepted_boot_project_ids": [
+      24831,
+      24863
+    ],
+    "image_checksum_before_write": true,
+    "full_partition_readback_after_write": true,
+    "physical_zip_write_test": "not performed; device-side dry-run passed and installed image was read back from both slots"
+  }
+}
