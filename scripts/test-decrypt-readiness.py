@@ -79,7 +79,7 @@ setprop twrp.decrypt.prereq preparing'''+entry.replace('/system/bin/twrp-service
         self.assertIn('<fqname>INfc/default</fqname>', manifest)
 
         init_rc = (root / 'vendor/odm/etc/init/nfc-service-nxp.rc').read_text()
-        self.assertIn('service vendor.nfc_hal_service /odm/bin/hw/android.hardware.nfc-service.nxp', init_rc)
+        self.assertIn('service vendor.nfc_hal_service /system/bin/twrp-active-hal nfc', init_rc)
         self.assertIn('disabled', init_rc)
         self.assertIn('seclabel u:r:recovery:s0', init_rc)
 
@@ -91,10 +91,66 @@ setprop twrp.decrypt.prereq preparing'''+entry.replace('/system/bin/twrp-service
 
         self.assertIn('/tmp/vendor_dlkm/lib/modules/nxp-nci.ko', source)
         self.assertNotIn('/system/lib/modules/nxp-nci.ko', source)
-        self.assertIn('mount_active_nfc_odm || fail_prereq nfc-odm-mount-failed', source)
-        self.assertIn('/dev/block/mapper/odm${slot_suffix}', source)
-        self.assertIn('bind_nfc_odm_directory "$NFC_ODM_MOUNT/bin/hw" "$NFC_ODM_BIN"', source)
-        self.assertIn('bind_nfc_odm_directory "$NFC_ODM_MOUNT/lib64" "$NFC_ODM_LIB"', source)
+        self.assertIn('mount_active_partition odm "$LEGACY_NFC_ODM_MOUNT"', source)
+        self.assertIn('bind_nfc_odm_directory "$LEGACY_NFC_ODM_MOUNT/bin/hw" "$LEGACY_NFC_ODM_BIN"', source)
+        self.assertIn('bind_nfc_odm_directory "$LEGACY_NFC_ODM_MOUNT/lib64" "$LEGACY_NFC_ODM_LIB"', source)
+
+        # The active-slot NCI module must be loaded before legacy-layout
+        # detection.  LineageOS 24 keeps its HAL in vendor, not legacy ODM.
+        load = source.index('set_status loading-nfc-transport\nload_nxp_nci_module')
+        runtime = source.index('prepare_active_nfc_runtime || fail_prereq nfc-runtime-unavailable')
+        self.assertLess(load, runtime)
+
+    def test_lineage_active_hal_runtime_is_isolated_and_has_legacy_fallbacks(self):
+        root = TREE / 'recovery/root'
+        source = (root / 'system/bin/twrp-decrypt-prereqs').read_text()
+        wrapper = (root / 'system/bin/twrp-active-hal').read_text()
+        linker_config = (root / 'system/etc/twrp-active-hal.ld.config.txt').read_text()
+
+        for required in (
+            'ACTIVE_VENDOR_MOUNT="/tmp/twrp-crypto-vendor"',
+            'ACTIVE_SYSTEM_MOUNT="/tmp/twrp-crypto-system"',
+            'ACTIVE_ODM_MOUNT="/tmp/twrp-crypto-odm"',
+            'mount_active_partition vendor "$ACTIVE_VENDOR_MOUNT"',
+            'mount_active_partition system "$ACTIVE_SYSTEM_MOUNT"',
+            'mount_active_partition odm "$ACTIVE_ODM_MOUNT"',
+            'nfc_nci_nxp_snxxx.so',
+            'setprop "$ACTIVE_RUNTIME_PROPERTY" lineage',
+            'setprop "$ACTIVE_RUNTIME_PROPERTY" legacy',
+        ):
+            self.assertIn(required, source)
+
+        self.assertIn('export LD_CONFIG_FILE="$ACTIVE_LINKER_CONFIG"', wrapper)
+        self.assertIn('unset LD_LIBRARY_PATH LD_PRELOAD', wrapper)
+        for active_path in (
+            '$ACTIVE_VENDOR_MOUNT/bin/hw/android.hardware.nfc-service.nxp',
+            '$ACTIVE_ODM_MOUNT/bin/hw/android.hardware.secure_element-service.qti',
+            '$ACTIVE_VENDOR_MOUNT/bin/hw/android.hardware.weaver-service.nxp',
+        ):
+            self.assertIn(active_path, wrapper)
+        for legacy_path in (
+            '/odm/bin/hw/android.hardware.nfc-service.nxp',
+            '/vendor/bin/hw/android.hardware.secure_element-service.qti',
+            '/odm/bin/hw/android.hardware.weaver-service.nxp',
+        ):
+            self.assertIn(legacy_path, wrapper)
+
+        self.assertLess(linker_config.index('dir.twrp_active_vendor'), linker_config.index('[recovery]'))
+        self.assertLess(linker_config.index('dir.twrp_active_odm'), linker_config.index('[recovery]'))
+        for required in (
+            '[twrp_active_vendor]',
+            '[twrp_active_odm]',
+            'namespace.default.search.paths = /tmp/twrp-crypto-vendor/lib64',
+            'namespace.default.search.paths += /tmp/twrp-crypto-vendor/lib64/hw',
+            'namespace.system.search.paths = /tmp/twrp-crypto-system/system/lib64',
+            'namespace.default.link.system.allow_all_shared_libs = true',
+        ):
+            self.assertIn(required, linker_config)
+
+        secure_element_rc = (root / 'vendor/etc/init/android.hardware.secure_element-service.qti.rc').read_text()
+        weaver_rc = (root / 'vendor/odm/etc/init/android.hardware.weaver-service.nxp.rc').read_text()
+        self.assertIn('service vendor.secure_element /system/bin/twrp-active-hal secure-element', secure_element_rc)
+        self.assertIn('service vendor.weaver_nxp /system/bin/twrp-active-hal weaver', weaver_rc)
 
     def test_early_init_cannot_start_deferred_hals(self):
         root = TREE / 'recovery/root'

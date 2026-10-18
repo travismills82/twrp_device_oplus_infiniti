@@ -30,6 +30,7 @@ modules=(
     twrp-thermal-guard
     twrp-charging
     twrp-decrypt-prereqs
+    twrp-active-hal
 )
 
 [ -f "$ANDROID_MK" ] || fail "Android.mk was not found"
@@ -215,6 +216,74 @@ grep -Fq 'PRODUCT_PACKAGES += bundled-magisk-apk' "$DEVICE_MK" ||
 
 grep -Eq '^[[:space:]]*init\.recovery\.mksh\.rc([[:space:]]*\\)?[[:space:]]*$' "$DEVICE_MK" ||
     fail "init.recovery.mksh.rc is not selected for the recovery ramdisk"
+
+decrypt_helper="$TREE/recovery/root/system/bin/twrp-decrypt-prereqs"
+active_hal="$TREE/recovery/root/system/bin/twrp-active-hal"
+active_hal_linker_config="$TREE/recovery/root/system/etc/twrp-active-hal.ld.config.txt"
+[ -x "$active_hal" ] || fail "active HAL launcher is missing or not executable"
+[ -f "$active_hal_linker_config" ] || fail "active HAL linker configuration is missing"
+
+grep -Fq 'LOCAL_MODULE := twrp-active-hal-linker-config' "$ANDROID_MK" ||
+    fail "active HAL linker configuration is not packaged"
+grep -Eq '^[[:space:]]*twrp-active-hal-linker-config([[:space:]]*\\)?[[:space:]]*$' "$DEVICE_MK" ||
+    fail "active HAL linker configuration is not selected"
+
+for expected in \
+    'set_status loading-nfc-transport' \
+    'load_nxp_nci_module' \
+    'prepare_active_nfc_runtime || fail_prereq nfc-runtime-unavailable' \
+    'mount_active_partition vendor "$ACTIVE_VENDOR_MOUNT"' \
+    'mount_active_partition system "$ACTIVE_SYSTEM_MOUNT"' \
+    'mount_active_partition odm "$ACTIVE_ODM_MOUNT"' \
+    'nfc_nci_nxp_snxxx.so'; do
+    grep -Fq "$expected" "$decrypt_helper" ||
+        fail "Lineage active-slot decrypt runtime is missing: $expected"
+done
+
+load_line="$(grep -n '^load_nxp_nci_module$' "$decrypt_helper" | tail -n1 | cut -d: -f1)"
+runtime_line="$(grep -n '^prepare_active_nfc_runtime || fail_prereq nfc-runtime-unavailable' "$decrypt_helper" | cut -d: -f1)"
+[ -n "$load_line" ] && [ -n "$runtime_line" ] && [ "$load_line" -lt "$runtime_line" ] ||
+    fail "NXP NCI module is not loaded before active runtime selection"
+
+for expected in \
+    'export LD_CONFIG_FILE="$ACTIVE_LINKER_CONFIG"' \
+    'unset LD_LIBRARY_PATH LD_PRELOAD' \
+    '/odm/bin/hw/android.hardware.nfc-service.nxp' \
+    '/vendor/bin/hw/android.hardware.secure_element-service.qti' \
+    '/odm/bin/hw/android.hardware.weaver-service.nxp'; do
+    grep -Fq "$expected" "$active_hal" ||
+        fail "active HAL launcher is missing its expected runtime path: $expected"
+done
+
+for expected in \
+    'dir.twrp_active_vendor = /tmp/twrp-crypto-vendor/bin' \
+    'dir.twrp_active_odm = /tmp/twrp-crypto-odm/bin' \
+    '[twrp_active_vendor]' \
+    '[twrp_active_odm]' \
+    'namespace.default.search.paths += /tmp/twrp-crypto-vendor/lib64/hw' \
+    'namespace.system.search.paths = /tmp/twrp-crypto-system/system/lib64'; do
+    grep -Fq "$expected" "$active_hal_linker_config" ||
+        fail "active HAL linker configuration is missing: $expected"
+done
+
+vendor_dir_line="$(grep -n '^dir.twrp_active_vendor' "$active_hal_linker_config" | cut -d: -f1)"
+odm_dir_line="$(grep -n '^dir.twrp_active_odm' "$active_hal_linker_config" | cut -d: -f1)"
+recovery_section_line="$(grep -n '^\[recovery\]$' "$active_hal_linker_config" | cut -d: -f1)"
+[ "$vendor_dir_line" -lt "$recovery_section_line" ] && [ "$odm_dir_line" -lt "$recovery_section_line" ] ||
+    fail "active HAL linker directories must precede linker sections"
+
+grep -Fq 'service vendor.nfc_hal_service /system/bin/twrp-active-hal nfc' \
+    "$TREE/recovery/root/vendor/odm/etc/init/nfc-service-nxp.rc" ||
+    fail "NFC service does not use the active HAL launcher"
+grep -Fq 'service vendor.secure_element /system/bin/twrp-active-hal secure-element' \
+    "$TREE/recovery/root/vendor/etc/init/android.hardware.secure_element-service.qti.rc" ||
+    fail "secure-element service does not use the active HAL launcher"
+grep -Fq 'service vendor.weaver_nxp /system/bin/twrp-active-hal weaver' \
+    "$TREE/recovery/root/vendor/odm/etc/init/android.hardware.weaver-service.nxp.rc" ||
+    fail "Weaver service does not use the active HAL launcher"
+
+sh -n "$decrypt_helper" || fail "decrypt prerequisite helper has invalid shell syntax"
+sh -n "$active_hal" || fail "active HAL launcher has invalid shell syntax"
 
 magisk_apk="$TREE/prebuilts/magisk/Magisk.apk"
 [ -f "$magisk_apk" ] || fail "bundled Magisk APK is missing"

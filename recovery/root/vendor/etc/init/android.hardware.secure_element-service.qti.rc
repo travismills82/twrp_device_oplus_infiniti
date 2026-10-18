@@ -1,4 +1,4 @@
-service vendor.secure_element /vendor/bin/hw/android.hardware.secure_element-service.qti
+service vendor.secure_element /system/bin/twrp-active-hal secure-element
     class hal
     disabled
     user root

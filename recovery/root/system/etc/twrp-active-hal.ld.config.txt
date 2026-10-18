@@ -1,0 +1,42 @@
+dir.recovery = /system/bin
+dir.twrp_active_vendor = /tmp/twrp-crypto-vendor/bin
+dir.twrp_active_odm = /tmp/twrp-crypto-odm/bin
+
+[recovery]
+namespace.default.isolated = false
+namespace.default.search.paths = /system/${LIB}
+namespace.default.asan.search.paths = /data/asan/system/${LIB}
+namespace.default.asan.search.paths += /system/${LIB}
+namespace.default.hwasan.search.paths = /system/${LIB}/hwasan
+namespace.default.hwasan.search.paths += /system/${LIB}
+
+[twrp_active_vendor]
+additional.namespaces = system
+namespace.default.isolated = true
+namespace.default.search.paths = /tmp/twrp-crypto-vendor/lib64
+namespace.default.permitted.paths = /tmp/twrp-crypto-vendor
+namespace.default.links = system
+namespace.default.link.system.allow_all_shared_libs = true
+namespace.system.isolated = false
+namespace.system.visible = true
+namespace.system.search.paths = /tmp/twrp-crypto-system/system/lib64
+namespace.system.search.paths += /system/lib64
+namespace.system.permitted.paths = /tmp/twrp-crypto-system/system
+namespace.system.permitted.paths += /system
+
+[twrp_active_odm]
+additional.namespaces = system
+namespace.default.isolated = true
+namespace.default.search.paths = /tmp/twrp-crypto-odm/lib64
+namespace.default.search.paths += /tmp/twrp-crypto-vendor/lib64
+namespace.default.search.paths += /tmp/twrp-crypto-vendor/lib64/hw
+namespace.default.permitted.paths = /tmp/twrp-crypto-odm
+namespace.default.permitted.paths += /tmp/twrp-crypto-vendor
+namespace.default.links = system
+namespace.default.link.system.allow_all_shared_libs = true
+namespace.system.isolated = false
+namespace.system.visible = true
+namespace.system.search.paths = /tmp/twrp-crypto-system/system/lib64
+namespace.system.search.paths += /system/lib64
+namespace.system.permitted.paths = /tmp/twrp-crypto-system/system
+namespace.system.permitted.paths += /system

@@ -1,0 +1,45 @@
+#!/system/bin/sh
+
+# Select the active LineageOS HALs only after twrp-decrypt-prereqs has mounted
+# and validated them.  The legacy OxygenOS services keep their normal linker
+# environment and paths.
+ACTIVE_RUNTIME_PROPERTY="twrp.decrypt.runtime"
+ACTIVE_LINKER_CONFIG="/system/etc/twrp-active-hal.ld.config.txt"
+ACTIVE_VENDOR_MOUNT="/tmp/twrp-crypto-vendor"
+ACTIVE_ODM_MOUNT="/tmp/twrp-crypto-odm"
+
+run_active_runtime() {
+    [ -r "$ACTIVE_LINKER_CONFIG" ] || exit 127
+    export LD_CONFIG_FILE="$ACTIVE_LINKER_CONFIG"
+    unset LD_LIBRARY_PATH LD_PRELOAD
+    exec "$@"
+}
+
+runtime="$(getprop "$ACTIVE_RUNTIME_PROPERTY" 2>/dev/null)"
+
+case "$1" in
+    nfc)
+        if [ "$runtime" = "lineage" ] && \
+            [ -x "$ACTIVE_VENDOR_MOUNT/bin/hw/android.hardware.nfc-service.nxp" ]; then
+            run_active_runtime "$ACTIVE_VENDOR_MOUNT/bin/hw/android.hardware.nfc-service.nxp"
+        fi
+        exec /odm/bin/hw/android.hardware.nfc-service.nxp
+        ;;
+    secure-element)
+        if [ "$runtime" = "lineage" ] && \
+            [ -x "$ACTIVE_ODM_MOUNT/bin/hw/android.hardware.secure_element-service.qti" ]; then
+            run_active_runtime "$ACTIVE_ODM_MOUNT/bin/hw/android.hardware.secure_element-service.qti"
+        fi
+        exec /vendor/bin/hw/android.hardware.secure_element-service.qti
+        ;;
+    weaver)
+        if [ "$runtime" = "lineage" ] && \
+            [ -x "$ACTIVE_VENDOR_MOUNT/bin/hw/android.hardware.weaver-service.nxp" ]; then
+            run_active_runtime "$ACTIVE_VENDOR_MOUNT/bin/hw/android.hardware.weaver-service.nxp"
+        fi
+        exec /odm/bin/hw/android.hardware.weaver-service.nxp
+        ;;
+    *)
+        exit 64
+        ;;
+esac

@@ -67,6 +67,8 @@ PRODUCT_PACKAGES += \
 	twrp-thermal-guard \
 	twrp-charging \
 	twrp-decrypt-prereqs \
+	twrp-active-hal \
+	twrp-active-hal-linker-config \
 	twrp-service-check
 
 # Recovery init and FBE/decryption userspace

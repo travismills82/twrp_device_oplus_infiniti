@@ -9,9 +9,14 @@ NFC_BINDER="android.hardware.nfc.INfc/default"
 NFC_SERVICE="vendor.nfc_hal_service"
 NXP_NCI_MODULES="/tmp/vendor_dlkm/lib/modules/nxp-nci.ko"
 NXP_NCI_WAIT_SECONDS=20
-NFC_ODM_MOUNT="/tmp/twrp-nfc-odm"
-NFC_ODM_BIN="/vendor/odm/bin/hw"
-NFC_ODM_LIB="/vendor/odm/lib64"
+LEGACY_NFC_ODM_MOUNT="/tmp/twrp-nfc-odm"
+LEGACY_NFC_ODM_BIN="/vendor/odm/bin/hw"
+LEGACY_NFC_ODM_LIB="/vendor/odm/lib64"
+ACTIVE_VENDOR_MOUNT="/tmp/twrp-crypto-vendor"
+ACTIVE_SYSTEM_MOUNT="/tmp/twrp-crypto-system"
+ACTIVE_ODM_MOUNT="/tmp/twrp-crypto-odm"
+ACTIVE_NFC_CONFIG="/vendor/etc/libnfc-nxp.conf"
+ACTIVE_RUNTIME_PROPERTY="twrp.decrypt.runtime"
 CRYPTO_SERVICES="vendor.qseecomd vendor.gatekeeper_default vendor.keymint-qti vendor.weaver_nxp keystore2"
 REQUIRED_BINDER_SERVICES="android.system.keystore2.IKeystoreService/default android.hardware.gatekeeper.IGatekeeper/default android.hardware.security.keymint.IKeyMintDevice/default android.hardware.weaver.IWeaver/default"
 
@@ -214,6 +219,97 @@ load_nxp_nci_module() {
     return 0
 }
 
+is_mounted() {
+    target="$1"
+    grep -q " $target " /proc/mounts 2>/dev/null
+}
+
+active_slot_suffix() {
+    slot_suffix="$(getprop ro.boot.slot_suffix 2>/dev/null)"
+    case "$slot_suffix" in
+        _a|_b)
+            echo "$slot_suffix"
+            return 0
+            ;;
+        *)
+            log_msg "invalid active slot suffix: $slot_suffix"
+            return 1
+            ;;
+    esac
+}
+
+active_partition_block() {
+    partition="$1"
+    slot_suffix="$(active_slot_suffix)" || return 1
+
+    for block in \
+        "/dev/block/mapper/${partition}${slot_suffix}" \
+        "/dev/block/bootdevice/by-name/${partition}${slot_suffix}" \
+        "/dev/block/by-name/${partition}${slot_suffix}"; do
+        [ -e "$block" ] && {
+            echo "$block"
+            return 0
+        }
+    done
+
+    log_msg "active ${partition} block device is unavailable"
+    return 1
+}
+
+# Dynamic partitions are ext4 on some firmware builds and EROFS on others.
+# Mount only the active slot and keep the payload read-only in either case.
+mount_active_partition() {
+    partition="$1"
+    mountpoint="$2"
+
+    mkdir -p "$mountpoint" 2>/dev/null || true
+    is_mounted "$mountpoint" && return 0
+
+    block="$(active_partition_block "$partition")" || return 1
+    log_msg "mounting active ${partition} from $block"
+    mount -t erofs -o ro "$block" "$mountpoint" 2>"/tmp/twrp-crypto-${partition}-mount.err" && return 0
+    mount -t ext4 -o ro "$block" "$mountpoint" 2>"/tmp/twrp-crypto-${partition}-mount.err" && return 0
+
+    log_msg "failed mounting active ${partition}: $(cat "/tmp/twrp-crypto-${partition}-mount.err" 2>/dev/null)"
+    return 1
+}
+
+bind_active_file() {
+    source="$1"
+    target="$2"
+
+    [ -r "$source" ] || return 1
+    is_mounted "$target" && return 0
+    mkdir -p "$(dirname "$target")" 2>/dev/null || true
+    [ -e "$target" ] || : > "$target" || return 1
+
+    mount -o bind "$source" "$target" 2>/tmp/twrp-crypto-bind.err && return 0
+    log_msg "failed binding $source to $target: $(cat /tmp/twrp-crypto-bind.err 2>/dev/null)"
+    return 1
+}
+
+# LineageOS 24 keeps the current NXP HAL and Weaver binary in vendor, while
+# the matching secure-element service remains in ODM.  They use a newer C++/
+# Binder ABI than the bundled OxygenOS services, so twrp-active-hal runs them
+# through the isolated linker configuration packaged with recovery.
+prepare_lineage_active_runtime() {
+    mount_active_partition vendor "$ACTIVE_VENDOR_MOUNT" || return 1
+    mount_active_partition system "$ACTIVE_SYSTEM_MOUNT" || return 1
+    mount_active_partition odm "$ACTIVE_ODM_MOUNT" || return 1
+
+    [ -x "$ACTIVE_VENDOR_MOUNT/bin/hw/android.hardware.nfc-service.nxp" ] || return 1
+    [ -r "$ACTIVE_VENDOR_MOUNT/lib64/nfc_nci_nxp_snxxx.so" ] || return 1
+    [ -r "$ACTIVE_VENDOR_MOUNT/etc/libnfc-nci.conf" ] || return 1
+    [ -x "$ACTIVE_VENDOR_MOUNT/bin/hw/android.hardware.weaver-service.nxp" ] || return 1
+    [ -x "$ACTIVE_ODM_MOUNT/bin/hw/android.hardware.secure_element-service.qti" ] || return 1
+    [ -r "$ACTIVE_SYSTEM_MOUNT/system/lib64/libbinder_ndk.so" ] || return 1
+
+    bind_active_file "$ACTIVE_VENDOR_MOUNT/etc/libnfc-nci.conf" "$ACTIVE_NFC_CONFIG" || return 1
+    setprop "$ACTIVE_RUNTIME_PROPERTY" lineage 2>/dev/null || true
+    log_msg "active Lineage NFC, secure-element, and Weaver payload is ready"
+    return 0
+}
+
 bind_nfc_odm_directory() {
     source="$1"
     target="$2"
@@ -225,53 +321,36 @@ bind_nfc_odm_directory() {
     return 1
 }
 
-# The NFC HAL is firmware-coupled.  Mount the active slot's ODM partition
-# read-only and bind only its NFC executable/library directories, rather than
-# embedding blobs that can become stale when Android or the kernel changes.
+# OxygenOS 16 keeps the older NXP stack entirely in ODM.  Preserve this
+# fallback for existing firmware while LineageOS uses the active runtime above.
 mount_active_nfc_odm() {
-    slot_suffix="$(getprop ro.boot.slot_suffix 2>/dev/null)"
-    case "$slot_suffix" in
-        _a|_b) ;;
-        *)
-            log_msg "invalid active slot suffix for NFC ODM: $slot_suffix"
-            return 1
-            ;;
-    esac
+    mount_active_partition odm "$LEGACY_NFC_ODM_MOUNT" || return 1
 
-    mkdir -p "$NFC_ODM_MOUNT" 2>/dev/null || true
-    if ! is_mounted "$NFC_ODM_MOUNT"; then
-        odm_block="/dev/block/mapper/odm${slot_suffix}"
-        [ -e "$odm_block" ] || odm_block="/dev/block/bootdevice/by-name/odm${slot_suffix}"
-        [ -e "$odm_block" ] || {
-            log_msg "active ODM block device is unavailable"
-            return 1
-        }
-
-        log_msg "mounting active NFC ODM from $odm_block"
-        mount -t erofs -o ro "$odm_block" "$NFC_ODM_MOUNT" 2>/tmp/twrp-nfc-odm-mount.err || {
-            log_msg "failed mounting active NFC ODM: $(cat /tmp/twrp-nfc-odm-mount.err 2>/dev/null)"
-            return 1
-        }
-    fi
-
-    [ -x "$NFC_ODM_MOUNT/bin/hw/android.hardware.nfc-service.nxp" ] || {
+    [ -x "$LEGACY_NFC_ODM_MOUNT/bin/hw/android.hardware.nfc-service.nxp" ] || {
         log_msg "active ODM is missing the NXP NFC HAL"
         return 1
     }
-    [ -r "$NFC_ODM_MOUNT/lib64/nfc_nci.nqx.default.hw.so" ] || {
+    [ -r "$LEGACY_NFC_ODM_MOUNT/lib64/nfc_nci.nqx.default.hw.so" ] || {
         log_msg "active ODM is missing the NXP NFC transport library"
         return 1
     }
 
-    bind_nfc_odm_directory "$NFC_ODM_MOUNT/bin/hw" "$NFC_ODM_BIN" || return 1
-    bind_nfc_odm_directory "$NFC_ODM_MOUNT/lib64" "$NFC_ODM_LIB" || return 1
+    bind_nfc_odm_directory "$LEGACY_NFC_ODM_MOUNT/bin/hw" "$LEGACY_NFC_ODM_BIN" || return 1
+    bind_nfc_odm_directory "$LEGACY_NFC_ODM_MOUNT/lib64" "$LEGACY_NFC_ODM_LIB" || return 1
     log_msg "active NFC ODM payload is ready"
     return 0
 }
 
-is_mounted() {
-    target="$1"
-    grep -q " $target " /proc/mounts 2>/dev/null
+prepare_active_nfc_runtime() {
+    setprop "$ACTIVE_RUNTIME_PROPERTY" legacy 2>/dev/null || true
+    if prepare_lineage_active_runtime; then
+        return 0
+    fi
+
+    log_msg "active Lineage runtime was not detected; trying legacy OxygenOS ODM payload"
+    mount_active_nfc_odm || return 1
+    setprop "$ACTIVE_RUNTIME_PROPERTY" legacy 2>/dev/null || true
+    return 0
 }
 
 find_persist_block() {
@@ -356,13 +435,15 @@ mount_persist || fail_prereq persist-mount-failed "persist mount setup failed; n
 setprop sys.boot_completed 1 2>/dev/null || true
 wait_property sys.boot_completed 1 5 || log_msg "sys.boot_completed did not settle"
 
-# FBE Weaver on this device reaches the eSE through the NXP NFC HAL.  Start
-# that stack before the secure-element service.  This is intentionally gated
-# by the HAL Binder service, not by /dev/nq-nci, so a future transport change
-# gets a clear prerequisite failure rather than a false PIN rejection.
-set_status starting-nfc
-mount_active_nfc_odm || fail_prereq nfc-odm-mount-failed "active NFC ODM payload could not be mounted"
+# FBE Weaver on this device reaches the eSE through the NXP NFC HAL. Load the
+# active-slot NCI transport before choosing a userspace layout: LineageOS does
+# not place the NFC HAL in the legacy ODM location, and the old ordering
+# otherwise aborts before the signed active module can create /dev/nq-nci.
+set_status loading-nfc-transport
 load_nxp_nci_module
+
+set_status starting-nfc
+prepare_active_nfc_runtime || fail_prereq nfc-runtime-unavailable "no compatible active NFC runtime was found"
 restart_service "$NFC_SERVICE"
 wait_service_running "$NFC_SERVICE" 20 || fail_prereq nfc-hal-failed "NFC HAL did not become ready"
 wait_binder_service "$NFC_BINDER" 45 || fail_prereq nfc-binder-failed "NFC HAL Binder service did not become ready"

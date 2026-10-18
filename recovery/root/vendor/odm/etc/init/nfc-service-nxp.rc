@@ -1,7 +1,7 @@
 # The decrypt prerequisite helper starts this after it has selected the active
 # vendor_dlkm NFC transport.  Keeping it disabled avoids an eSE probe before
 # the matching module and persistent data paths are ready.
-service vendor.nfc_hal_service /odm/bin/hw/android.hardware.nfc-service.nxp
+service vendor.nfc_hal_service /system/bin/twrp-active-hal nfc
     class hal
     disabled
     user root
