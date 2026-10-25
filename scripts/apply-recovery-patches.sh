@@ -49,6 +49,7 @@ OLED_NAVBAR_FILL='<fill color="%navbar_color%">'
 FAILED_VAB_SIDELOAD_MARKER='Cancelling failed Virtual A/B update in recovery before sideload.'
 ABSENT_STALE_AB_PARTITION_MARKER='Skip stale A/B declarations only when both slots lack the partition.'
 AB_OTA_PRESERVE_RECOVERY_MARKER='Skipping automatic TWRP reflash after an A/B OTA to preserve the payload-provided recovery image.'
+AB_RECOVERY_CLONE_GUARD_MARKER='Skipping dedicated A/B recovery clone to preserve the OTA-provided inactive-slot recovery.'
 LPDUMP_BINDER_LIBRARY='RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/libfs_mgr_binder.so'
 LPDUMP_SNAPSHOT_LIBRARY='RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/libsnapshot.so'
 LPDUMP_RELINK_DEPENDENCIES='LOCAL_ADDITIONAL_DEPENDENCIES += $(TARGET_OUT_EXECUTABLES)/lpdump $(TARGET_OUT_EXECUTABLES)/lpdumpd'
@@ -265,6 +266,13 @@ grep -Fq "$ABSENT_STALE_AB_PARTITION_MARKER" \
 grep -Fq "$AB_OTA_PRESERVE_RECOVERY_MARKER" \
     "$RECOVERY_DIR/twrpinstall/twinstall.cpp" ||
     fail "A/B OTA handling can still overwrite the payload-provided recovery image"
+
+grep -Fq "$AB_RECOVERY_CLONE_GUARD_MARKER" \
+    "$RECOVERY_DIR/twrpRepacker.cpp" ||
+    fail "dedicated A/B recovery slots can still be cloned across the OTA boundary"
+
+grep -Fq 'TW_NO_FLASH_CURRENT_TWRP    := true' "$DEVICE_DIR/BoardConfig.mk" ||
+    fail "the recovery UI still exposes automatic current-TWRP reflashing"
 
 python3 "$DEVICE_DIR/scripts/test-ab-ota-recovery-safety.py" "$RECOVERY_DIR" ||
     fail "A/B OTA recovery safety verifier failed"

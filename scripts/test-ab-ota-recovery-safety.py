@@ -14,12 +14,14 @@ else:
     RECOVERY_DIR = Path(__file__).resolve().parents[4] / "bootable" / "recovery"
 
 SOURCE = RECOVERY_DIR / "twrpinstall" / "twinstall.cpp"
+REPACKER_SOURCE = RECOVERY_DIR / "twrpRepacker.cpp"
 
 
 class AbOtaRecoverySafetyTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.source = SOURCE.read_text(encoding="utf-8")
+        cls.repacker_source = REPACKER_SOURCE.read_text(encoding="utf-8")
         start = cls.source.index("\t\tstd::string ab_binary_name(AB_OTA);")
         end = cls.source.index(
             "\t\t} else {\n\t\t\tstd::string binary_name(\"ui.xml\");", start
@@ -49,6 +51,22 @@ class AbOtaRecoverySafetyTest(unittest.TestCase):
             "A/B OTA failed; recovery slots were not auto-flashed.",
             self.ab_ota_branch,
         )
+
+    def test_dedicated_recovery_clone_is_disabled_for_every_call_path(self) -> None:
+        marker = (
+            "Skipping dedicated A/B recovery clone to preserve the "
+            "OTA-provided inactive-slot recovery."
+        )
+        self.assertIn(marker, self.repacker_source)
+        start = self.repacker_source.index(
+            'if (!slot.empty() && PartitionManager.Find_Partition_By_Path("/recovery")) {'
+        )
+        end = self.repacker_source.index(
+            '\n\tif (!TWFunc::Path_Exists("/ramdisk-files.txt")) {', start
+        )
+        dedicated_recovery_branch = self.repacker_source[start:end]
+        self.assertNotIn('std::string command = "dd bs=1048576', dedicated_recovery_branch)
+        self.assertNotIn('dest= root + "_b"', dedicated_recovery_branch)
 
 
 if __name__ == "__main__":

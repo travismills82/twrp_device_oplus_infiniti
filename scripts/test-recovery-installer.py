@@ -28,8 +28,7 @@ elif name == 'blockdev':
 elif name == 'dd':
     opts = dict(a.split('=', 1) for a in args if '=' in a)
     target = Path(opts['of']).resolve()
-    assert target in ((root/'dev/block/by-name/recovery_a').resolve(),
-                      (root/'dev/block/by-name/recovery_b').resolve())
+    assert target == (root/'dev/block/by-name/recovery_a').resolve()
     with (root/'writes').open('a') as f: f.write(target.name+'\n')
     if os.environ.get('FIXTURE_WRITE_FAIL'): sys.exit(1)
     shutil.copyfile(opts['if'], target)
@@ -92,11 +91,12 @@ class InstallerTests(unittest.TestCase):
                     self.assertEqual(p.read_bytes(), b'original-'+p.name.encode())
         return result.stdout
 
-    def test_exact_payload_written_and_verified_in_both_slots(self):
-        output = self.run_installer(success=True, writes=2)
-        for part in self.parts:
-            self.assertEqual(hashlib.sha256(part.read_bytes()).hexdigest(), self.sha)
-            self.assertIn('Verified '+part.name, output)
+    def test_exact_payload_written_and_verified_in_slot_a_only(self):
+        output = self.run_installer(success=True, writes=1)
+        self.assertEqual(hashlib.sha256(self.parts[0].read_bytes()).hexdigest(), self.sha)
+        self.assertEqual(self.parts[1].read_bytes(), b'original-recovery_b')
+        self.assertIn('Verified recovery_a', output)
+        self.assertIn('recovery_b was left untouched', output)
 
     def test_dry_run_checks_package_without_writing(self):
         self.assertIn('Preflight passed', self.run_installer(success=True, option='--dry-run'))
@@ -113,20 +113,19 @@ class InstallerTests(unittest.TestCase):
         self.run_installer(FIXTURE_SIZE='103809024')
         self.run_installer(FIXTURE_SIZE='unavailable')
 
-    def test_missing_slot_is_rejected_before_writes(self):
-        self.parts[1].unlink()
+    def test_missing_slot_a_is_rejected_before_writes(self):
+        self.parts[0].unlink()
         self.run_installer()
 
-    def test_aliasing_slots_are_rejected_before_writes(self):
+    def test_slot_b_is_not_required_or_touched(self):
         self.parts[1].unlink()
-        self.parts[1].symlink_to(self.parts[0])
-        self.assertIn('same partition', self.run_installer())
+        self.run_installer(success=True, writes=1)
 
-    def test_write_failure_stops_before_second_slot(self):
+    def test_write_failure_leaves_slot_b_untouched(self):
         self.assertIn('Failed to write recovery_a', self.run_installer(writes=1, FIXTURE_WRITE_FAIL='1'))
         self.assertEqual(self.parts[1].read_bytes(), b'original-recovery_b')
 
-    def test_readback_mismatch_stops_before_second_slot(self):
+    def test_readback_mismatch_leaves_slot_b_untouched(self):
         self.assertIn('Readback mismatch for recovery_a', self.run_installer(writes=1, FIXTURE_READBACK_FAIL='1'))
         self.assertEqual(self.parts[1].read_bytes(), b'original-recovery_b')
 

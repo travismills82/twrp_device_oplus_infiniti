@@ -4,9 +4,11 @@
 # Usage:
 #   build-twrp-installer.sh RECOVERY_IMAGE OUTPUT_ZIP TWRP_VERSION DEVICE_NAME
 #
-# The generated update-binary writes recovery.img to both recovery_a and
-# recovery_b. The package is created from scratch and contains no inherited
-# recovery-project branding or installer payloads.
+# The generated update-binary writes recovery.img only to recovery_a. It
+# deliberately preserves recovery_b because an A/B OTA supplies that target
+# recovery together with its matching boot and AVB chain. The package is
+# created from scratch and contains no inherited recovery-project branding or
+# installer payloads.
 
 set -euo pipefail
 
@@ -137,7 +139,7 @@ VERSION="$($UNZIP_BIN -p "$ZIPFILE" META-INF/com/google/android/twrp-version 2>/
 ui_print ""
 ui_print "========================================"
 ui_print "  $VERSION"
-ui_print "  Dual-slot recovery installer"
+ui_print "  Slot-A recovery installer"
 ui_print "========================================"
 ui_print "Package: $(basename "$ZIPFILE")"
 ui_print "Target: OnePlus 15 (infiniti)"
@@ -158,26 +160,20 @@ actual_sha="$(sha256sum "$IMAGE")" || abort_install "Cannot verify recovery.img"
 [ "${actual_sha%% *}" = "$IMAGE_SHA256" ] || abort_install "Recovery image checksum mismatch"
 
 RECOVERY_A="$(find_partition recovery_a || true)"
-RECOVERY_B="$(find_partition recovery_b || true)"
 
 [ -n "$RECOVERY_A" ] || abort_install "recovery_a partition was not found"
-[ -n "$RECOVERY_B" ] || abort_install "recovery_b partition was not found"
 
 IMAGE_SIZE="$(wc -c < "$IMAGE" | tr -d ' ')"
 case "$IMAGE_SIZE" in
     ''|*[!0-9]*) abort_install "Unable to determine recovery.img size" ;;
 esac
 [ "$IMAGE_SIZE" = 104857600 ] || abort_install "Unexpected recovery image size"
-[ "$(readlink -f "$RECOVERY_A")" != "$(readlink -f "$RECOVERY_B")" ] || \
-    abort_install "Both recovery slots resolve to the same partition"
-
 ui_print "Image size: $IMAGE_SIZE bytes"
-ui_print "Slot A: $RECOVERY_A"
-ui_print "Slot B: $RECOVERY_B"
+ui_print "Target: recovery_a ($RECOVERY_A)"
+ui_print "recovery_b is intentionally preserved for official A/B OTA recovery"
 ui_print ""
 
 check_partition_size "$RECOVERY_A" "$IMAGE_SIZE"
-check_partition_size "$RECOVERY_B" "$IMAGE_SIZE"
 
 # Optional command-line preflight; TWRP's normal three-argument invocation flashes.
 case "${4:-}" in
@@ -190,13 +186,13 @@ case "${4:-}" in
 esac
 
 flash_partition recovery_a "$RECOVERY_A"
-flash_partition recovery_b "$RECOVERY_B"
 
 rm -rf "$TMPDIR"
 
 ui_print ""
 ui_print "Successfully installed $VERSION"
-ui_print "Flashed recovery_a and recovery_b"
+ui_print "Flashed recovery_a only"
+ui_print "recovery_b was left untouched to preserve the OTA-provided recovery"
 ui_print "No active slot was changed."
 ui_print ""
 exit 0
@@ -212,16 +208,20 @@ UPDATER
 printf '%s for %s\n' "$TWRP_VERSION" "$DEVICE_NAME" > "$META_DIR/twrp-version"
 
 cat > "$WORK_DIR/INSTALL.txt" <<EOF
-$TWRP_VERSION Dual-Slot Recovery Installer
+$TWRP_VERSION Slot-A Recovery Installer
 
 Device: $DEVICE_NAME
 
-This package installs the included recovery.img to both recovery_a and
-recovery_b. It does not change the active boot slot.
+This package installs the included recovery.img only to recovery_a. It does
+not change the active boot slot and deliberately leaves recovery_b untouched.
+Official A/B OTAs supply recovery_b with a matching boot and AVB chain, so
+overwriting it with a generic recovery image can prevent the target slot from
+booting.
 
 Install through TWRP on OnePlus 15 only (boot project 24831 or 24863).
-The installer checks the image checksum and both partition sizes before writing,
-then verifies each complete partition against the packaged image checksum.
+The installer checks the image checksum and recovery_a size before writing,
+then verifies the complete recovery_a readback against the packaged image
+checksum.
 EOF
 
 cp "$RECOVERY_IMAGE" "$WORK_DIR/recovery.img"
@@ -250,7 +250,12 @@ unzip -Z1 "$OUTPUT_ZIP" | grep -qx 'recovery.img.sha256'
 PACKED_SHA256="$(unzip -p "$OUTPUT_ZIP" recovery.img | sha256sum)"
 [ "${PACKED_SHA256%% *}" = "${IMAGE_SHA256%% *}" ] || fail "ZIP recovery payload differs from the input image"
 unzip -p "$OUTPUT_ZIP" META-INF/com/google/android/update-binary | grep -q 'find_partition recovery_a'
-unzip -p "$OUTPUT_ZIP" META-INF/com/google/android/update-binary | grep -q 'find_partition recovery_b'
+if unzip -p "$OUTPUT_ZIP" META-INF/com/google/android/update-binary | \
+    grep -q -E 'find_partition recovery_b|flash_partition recovery_b'; then
+    fail "Generated installer can modify recovery_b"
+fi
+unzip -p "$OUTPUT_ZIP" META-INF/com/google/android/update-binary | \
+    grep -q 'recovery_b was left untouched'
 unzip -p "$OUTPUT_ZIP" META-INF/com/google/android/update-binary | grep -q 'Successfully installed'
 
 if unzip -Z1 "$OUTPUT_ZIP" | grep -i -E -q 'OrangeFox|Orange Fox|OFRP'; then

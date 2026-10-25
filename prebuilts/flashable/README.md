@@ -14,13 +14,17 @@ The generated installer:
 
 - displays the TWRP version and target device;
 - extracts the newly built `recovery.img`;
-- flashes it to both `recovery_a` and `recovery_b`;
+- flashes it only to `recovery_a`;
 - leaves the active slot unchanged;
 - requires TWRP and OnePlus 15 boot project ID 24831 or 24863;
 - validates the packaged SHA-256 before writing;
-- requires two distinct recovery partitions of exactly 100 MiB each;
-- verifies the complete readback after each write; and
+- requires `recovery_a` to be exactly 100 MiB;
+- verifies the complete `recovery_a` readback after the write; and
 - checks generated installer text for inherited recovery branding.
+
+`recovery_b` is intentionally not touched. Official A/B updates write its
+recovery image as part of a matching boot and AVB set; overwriting it can make
+the newly updated slot unbootable.
 
 The builder also compares the ZIP payload against the input image. The build
 workflow scans the uncompressed recovery ramdisk separately. Test installer

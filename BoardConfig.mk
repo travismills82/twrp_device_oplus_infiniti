@@ -146,6 +146,8 @@ TW_MTP_DEVICE               := "/dev/mtp_usb"
 TW_USE_NEW_MINADBD          := true
 TW_USE_SHA2                 := true
 TW_USE_TWTOOLS              := true
+# Dedicated recovery slots must never be cloned into an OTA target slot.
+TW_NO_FLASH_CURRENT_TWRP    := true
 
 # TWRP display
 TW_BRIGHTNESS_PATH := "/sys/class/backlight/panel0-backlight/brightness"

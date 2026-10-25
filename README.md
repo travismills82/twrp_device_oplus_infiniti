@@ -27,12 +27,13 @@ If there is no error, `recovery.img` will be found in `out/target/product/infini
 fastboot flash recovery recovery.img
 ```
 
-or
-
 ```shell
 fastboot flash recovery_a recovery.img
-fastboot flash recovery_b recovery.img
 ```
+
+Do not flash `recovery_b` with this recovery. It is preserved for the
+payload-provided recovery image from official A/B updates, which must remain
+matched with that slot's boot and AVB chain.
 
 ## Features
 
@@ -63,6 +64,11 @@ recovery after an A/B install, even when the upstream automatic-reflash setting
 was previously enabled. This preserves the target slot's AVB chain and prevents
 an unsuccessful OTA from modifying either recovery slot after the payload has
 failed.
+
+The upstream **Flash Current TWRP** clone operation is disabled for this
+device's dedicated A/B recovery partitions, and its automatic-reflash setting
+is hidden. Neither a UI action nor a stale setting can copy a custom recovery
+over the inactive slot's OTA-provided recovery.
 
 After a successful official OTA, boot the new Android slot first. Reinstall or
 boot TWRP only after that target slot has been confirmed healthy.

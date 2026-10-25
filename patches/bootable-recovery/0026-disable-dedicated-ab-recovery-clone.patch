@@ -1,0 +1,44 @@
+diff --git a/twrpRepacker.cpp b/twrpRepacker.cpp
+index d6f8ed79..ba215e74 100755
+--- a/twrpRepacker.cpp
++++ b/twrpRepacker.cpp
+@@ -311,34 +311,11 @@ bool twrpRepacker::Flash_Current_Twrp() {
+ 	if (slot.empty())
+ 		slot = android::base::GetProperty("ro.boot.slot", "");
+ 	if (!slot.empty() && PartitionManager.Find_Partition_By_Path("/recovery")) {
+-		std::string root,src, dest;
+-		std::string dest_partition = "/recovery";
+-		root = "/dev/block/bootdevice/by-name" + dest_partition;
+-		if (slot == "_a" || slot == "a") {
+-			src = root + "_a";
+-			dest= root + "_b";
+-		}
+-		else {
+-			src = root + "_b";
+-			dest= root + "_a";
+-		}
+-		PartitionManager.Unlock_Block_Partitions();
+-
+-		// only copy the relevant active slot to the inactive slot, on the basis that the recovery currently running
+-		// in the active slot can simply be copied over to the inactive slot, so that both have the same recovery image
+-		std::string command = "dd bs=1048576 if=" + src + " of=" + dest;
+-		LOGINFO("Command=%s\n", command.c_str());
+-
+-		if (TWFunc::Exec_Cmd(command) != 0) {
+-			LOGERR("Failed to flash the %s image\n", dest_partition.c_str());
+-			return false;
+-		}
+-		else {
+-			gui_print("Finished flashing the %s image\n", dest_partition.c_str());
+-			return true;
+-		}
+-		// if we reach here, something is awry - bale out
+-		return false;
++		// An official A/B payload provides the inactive recovery together with
++		// matching boot and AVB metadata. Never clone a custom recovery over it.
++		gui_warn("Skipping dedicated A/B recovery clone to preserve the OTA-provided inactive-slot recovery.");
++		LOGINFO("Skipping dedicated A/B recovery clone to preserve the OTA-provided inactive-slot recovery.\n");
++		return true;
+ 	}
+ 
+ 	if (!TWFunc::Path_Exists("/ramdisk-files.txt")) {

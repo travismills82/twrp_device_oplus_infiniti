@@ -258,7 +258,7 @@ jobs:
         echo "TWRP_ZIP=$OUT_DIR/${IMAGE_NAME%.img}.zip" >> "$GITHUB_ENV"
         kill $TIP_PID && exit 0
 
-    - name: Build clean dual-slot flashable ZIP
+    - name: Build clean slot-A flashable ZIP
       run: |
         BUILDER="device/${{ github.event.inputs.DEVICE_PATH }}/${{ github.event.inputs.FLASHABLE_INSTALLER_BUILDER }}"
 
@@ -276,7 +276,11 @@ jobs:
         unzip -t "$TWRP_ZIP"
         unzip -p "$TWRP_ZIP" META-INF/com/google/android/twrp-version
         unzip -p "$TWRP_ZIP" META-INF/com/google/android/update-binary | grep -q 'find_partition recovery_a'
-        unzip -p "$TWRP_ZIP" META-INF/com/google/android/update-binary | grep -q 'find_partition recovery_b'
+        if unzip -p "$TWRP_ZIP" META-INF/com/google/android/update-binary | \
+          grep -q -E 'find_partition recovery_b|flash_partition recovery_b'; then
+          echo "Generated installer can modify recovery_b"
+          exit 1
+        fi
 
         if unzip -Z1 "$TWRP_ZIP" | grep -i -E -q 'OrangeFox|Orange Fox|OFRP'; then
           echo "OrangeFox/OFRP filename found in generated installer"
