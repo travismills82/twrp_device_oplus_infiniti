@@ -203,7 +203,9 @@ TW_SUPPORT_INPUT_AIDL_HAPTICS := true
 
 # Other TWRP Configurations
 TARGET_RECOVERY_QCOM_RTC_FIX            := true
-TW_CUSTOM_CPU_TEMP_PATH                 := "/sys/class/thermal/thermal_zone45/temp" # CPU sensor used by recovery display and thermal guard
+# ColorOS can renumber thermal_zoneN across firmware/kernel updates. The
+# recovery patch resolves the hottest live cpu-* sensor under this directory.
+TW_CUSTOM_CPU_TEMP_PATH                 := "/sys/class/thermal"
 TW_EXCLUDE_APEX                         := true
 TW_EXCLUDE_DEFAULT_USB_INIT             := true
 TW_EXCLUDE_TWRP_APP                     := true

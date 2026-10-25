@@ -97,6 +97,26 @@ grep -Fq 'start twrp-thermal-guard' "$QCOM_INIT_RC" ||
 grep -Fqx 'POLL_SECONDS=1' "$thermal_guard" ||
     fail "thermal guard does not poll once per second"
 
+if grep -Fq 'PRIMARY_TEMP_PATH=' "$thermal_guard"; then
+    fail "thermal guard must not use a fixed thermal-zone number"
+fi
+grep -Fq 'type="$(cat "${zone%/temp}/type" 2>/dev/null)" || continue' "$thermal_guard" ||
+    fail "thermal guard does not identify CPU sensors by thermal-zone type"
+grep -Fq 'cpu-*) ;;' "$thermal_guard" ||
+    fail "thermal guard does not restrict readings to CPU thermal sensors"
+grep -Fq '*trip*) continue ;;' "$thermal_guard" ||
+    fail "thermal guard does not exclude fixed CPU trip thresholds"
+grep -Eq '^TW_CUSTOM_CPU_TEMP_PATH[[:space:]]*:?=[[:space:]]*"/sys/class/thermal"$' "$TREE/BoardConfig.mk" ||
+    fail "recovery UI does not use dynamic CPU thermal discovery"
+
+cpu_temp_patch="$TREE/patches/bootable-recovery/0024-data-discover-cpu-thermal-zones.patch"
+[ -f "$cpu_temp_patch" ] ||
+    fail "dynamic CPU thermal discovery patch is missing"
+grep -Fq 'read_cpu_temperature_directory' "$cpu_temp_patch" ||
+    fail "dynamic CPU thermal discovery patch lacks directory scanning"
+grep -Fq 'type.find("trip")' "$cpu_temp_patch" ||
+    fail "dynamic CPU thermal discovery patch does not exclude trip thresholds"
+
 grep -Fqx 'NORMAL_BRIGHTNESS=preserve' "$thermal_guard" ||
     fail "thermal guard does not preserve normal TWRP brightness"
 
@@ -232,9 +252,14 @@ for expected in \
     'set_status loading-nfc-transport' \
     'load_nxp_nci_module' \
     'prepare_active_nfc_runtime || fail_prereq nfc-runtime-unavailable' \
+    'prepare_coloros17_active_runtime()' \
     'mount_active_partition vendor "$ACTIVE_VENDOR_MOUNT"' \
     'mount_active_partition system "$ACTIVE_SYSTEM_MOUNT"' \
     'mount_active_partition odm "$ACTIVE_ODM_MOUNT"' \
+    'android.hardware.nfc2-service.nxp' \
+    'nfc_nci_nxp_snxxx_v2.so' \
+    'COLOROS_NFC_CONFIG="/odm/etc/libnfc-nci.conf"' \
+    'COLOROS_NFC_CONFIG_DIR="/odm/etc/nfc"' \
     'nfc_nci_nxp_snxxx.so'; do
     grep -Fq "$expected" "$decrypt_helper" ||
         fail "Lineage active-slot decrypt runtime is missing: $expected"
@@ -248,6 +273,7 @@ runtime_line="$(grep -n '^prepare_active_nfc_runtime || fail_prereq nfc-runtime-
 for expected in \
     'export LD_CONFIG_FILE="$ACTIVE_LINKER_CONFIG"' \
     'unset LD_LIBRARY_PATH LD_PRELOAD' \
+    '$ACTIVE_ODM_MOUNT/bin/hw/android.hardware.nfc2-service.nxp' \
     '/odm/bin/hw/android.hardware.nfc-service.nxp' \
     '/vendor/bin/hw/android.hardware.secure_element-service.qti' \
     '/odm/bin/hw/android.hardware.weaver-service.nxp'; do

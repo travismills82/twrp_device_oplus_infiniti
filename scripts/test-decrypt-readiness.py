@@ -152,6 +152,37 @@ setprop twrp.decrypt.prereq preparing'''+entry.replace('/system/bin/twrp-service
         self.assertIn('service vendor.secure_element /system/bin/twrp-active-hal secure-element', secure_element_rc)
         self.assertIn('service vendor.weaver_nxp /system/bin/twrp-active-hal weaver', weaver_rc)
 
+    def test_coloros17_active_odm_runtime_is_firmware_coupled(self):
+        root = TREE / 'recovery/root'
+        source = (root / 'system/bin/twrp-decrypt-prereqs').read_text()
+        wrapper = (root / 'system/bin/twrp-active-hal').read_text()
+
+        for required in (
+            'COLOROS_NFC_CONFIG="/odm/etc/libnfc-nci.conf"',
+            'COLOROS_NFC_CONFIG_DIR="/odm/etc/nfc"',
+            'prepare_coloros17_active_runtime()',
+            'android.hardware.nfc2-service.nxp',
+            'nfc_nci_nxp_snxxx_v2.so',
+            'android.hardware.nfc-V2-ndk.so',
+            'vendor.nxp.nxpnfc_aidl-V1-ndk.so',
+            'bind_active_file "$ACTIVE_ODM_MOUNT/etc/libnfc-nci.conf" "$COLOROS_NFC_CONFIG"',
+            'bind_active_directory "$ACTIVE_ODM_MOUNT/etc/nfc" "$COLOROS_NFC_CONFIG_DIR"',
+            'setprop "$ACTIVE_RUNTIME_PROPERTY" coloros17',
+        ):
+            self.assertIn(required, source)
+
+        self.assertLess(
+            source.index('if prepare_coloros17_active_runtime; then'),
+            source.index('if prepare_lineage_active_runtime; then'),
+        )
+        for required in (
+            '[ "$runtime" = "coloros17" ]',
+            '$ACTIVE_ODM_MOUNT/bin/hw/android.hardware.nfc2-service.nxp',
+            '$ACTIVE_ODM_MOUNT/bin/hw/android.hardware.secure_element-service.qti',
+            '$ACTIVE_ODM_MOUNT/bin/hw/android.hardware.weaver-service.nxp',
+        ):
+            self.assertIn(required, wrapper)
+
     def test_early_init_cannot_start_deferred_hals(self):
         root = TREE / 'recovery/root'
         names = {

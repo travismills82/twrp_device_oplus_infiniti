@@ -91,7 +91,7 @@ for patch in "${PATCHES[@]}"; do
     # the script verifies the expected source state before and after applying
     # every patch.
     case "$name" in
-        0007-ors-fix-restore-resource-and-cli-help.patch|0008-init-drop-legacy-recovery-service-import.patch|0009-theme-raise-wlan-log-window.patch|0010-theme-remove-advanced-avb-and-app-actions.patch)
+        0007-ors-fix-restore-resource-and-cli-help.patch|0008-init-drop-legacy-recovery-service-import.patch|0009-theme-raise-wlan-log-window.patch|0010-theme-remove-advanced-avb-and-app-actions.patch|0024-data-discover-cpu-thermal-zones.patch)
             apply_opts+=(--unidiff-zero)
             ;;
     esac

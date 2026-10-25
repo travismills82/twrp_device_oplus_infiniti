@@ -12,7 +12,6 @@
 # second interval during a compressed backup. Apply the baseline cap from the
 # first pass and reassess once a second.
 POLL_SECONDS=1
-PRIMARY_TEMP_PATH="/sys/class/thermal/thermal_zone45/temp"
 BACKLIGHT_PATH="/sys/class/backlight/panel0-backlight/brightness"
 
 # Let TWRP own the normal screen-brightness setting. The guard only applies a
@@ -57,19 +56,24 @@ normalize_temp() {
 }
 
 read_cpu_temp() {
-    if temp="$(read_int "$PRIMARY_TEMP_PATH")"; then
-        normalize_temp "$temp"
-        return 0
-    fi
-
     max_temp=0
     for zone in /sys/class/thermal/thermal_zone*/temp; do
         [ -r "$zone" ] || continue
+        type="$(cat "${zone%/temp}/type" 2>/dev/null)" || continue
+        # Thermal-zone numbers are not stable across firmware updates. Only
+        # accept live CPU sensors and exclude fixed cpu-hw-trip thresholds.
+        case "$type" in
+            cpu-*) ;;
+            *) continue ;;
+        esac
+        case "$type" in
+            *trip*) continue ;;
+        esac
         temp="$(read_int "$zone")" || continue
         temp="$(normalize_temp "$temp")"
-        # Ignore obviously invalid thermal readings.
+        # Ignore invalid or implausible CPU readings.
         [ "$temp" -gt 0 ] || continue
-        [ "$temp" -lt 200000 ] || continue
+        [ "$temp" -lt 150000 ] || continue
         [ "$temp" -gt "$max_temp" ] && max_temp="$temp"
     done
 

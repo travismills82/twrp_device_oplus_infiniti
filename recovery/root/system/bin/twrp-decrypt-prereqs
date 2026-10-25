@@ -16,6 +16,8 @@ ACTIVE_VENDOR_MOUNT="/tmp/twrp-crypto-vendor"
 ACTIVE_SYSTEM_MOUNT="/tmp/twrp-crypto-system"
 ACTIVE_ODM_MOUNT="/tmp/twrp-crypto-odm"
 ACTIVE_NFC_CONFIG="/vendor/etc/libnfc-nxp.conf"
+COLOROS_NFC_CONFIG="/odm/etc/libnfc-nci.conf"
+COLOROS_NFC_CONFIG_DIR="/odm/etc/nfc"
 ACTIVE_RUNTIME_PROPERTY="twrp.decrypt.runtime"
 CRYPTO_SERVICES="vendor.qseecomd vendor.gatekeeper_default vendor.keymint-qti vendor.weaver_nxp keystore2"
 REQUIRED_BINDER_SERVICES="android.system.keystore2.IKeystoreService/default android.hardware.gatekeeper.IGatekeeper/default android.hardware.security.keymint.IKeyMintDevice/default android.hardware.weaver.IWeaver/default"
@@ -288,6 +290,45 @@ bind_active_file() {
     return 1
 }
 
+bind_active_directory() {
+    source="$1"
+    target="$2"
+
+    [ -d "$source" ] || return 1
+    mkdir -p "$target" 2>/dev/null || return 1
+    is_mounted "$target" && return 0
+
+    mount -o bind "$source" "$target" 2>/tmp/twrp-crypto-bind.err && return 0
+    log_msg "failed binding $source to $target: $(cat /tmp/twrp-crypto-bind.err 2>/dev/null)"
+    return 1
+}
+
+# ColorOS 17 moves the NXP AIDL service and its v2 transport from the
+# legacy OxygenOS ODM layout. Keep the implementation firmware-coupled by
+# using only the active slot's read-only payload, including its project-aware
+# NFC configuration directory.
+prepare_coloros17_active_runtime() {
+    mount_active_partition vendor "$ACTIVE_VENDOR_MOUNT" || return 1
+    mount_active_partition system "$ACTIVE_SYSTEM_MOUNT" || return 1
+    mount_active_partition odm "$ACTIVE_ODM_MOUNT" || return 1
+
+    [ -x "$ACTIVE_ODM_MOUNT/bin/hw/android.hardware.nfc2-service.nxp" ] || return 1
+    [ -r "$ACTIVE_ODM_MOUNT/lib64/nfc_nci_nxp_snxxx_v2.so" ] || return 1
+    [ -r "$ACTIVE_ODM_MOUNT/lib64/android.hardware.nfc-V2-ndk.so" ] || return 1
+    [ -r "$ACTIVE_ODM_MOUNT/lib64/vendor.nxp.nxpnfc_aidl-V1-ndk.so" ] || return 1
+    [ -r "$ACTIVE_ODM_MOUNT/etc/libnfc-nci.conf" ] || return 1
+    [ -d "$ACTIVE_ODM_MOUNT/etc/nfc" ] || return 1
+    [ -x "$ACTIVE_ODM_MOUNT/bin/hw/android.hardware.weaver-service.nxp" ] || return 1
+    [ -x "$ACTIVE_ODM_MOUNT/bin/hw/android.hardware.secure_element-service.qti" ] || return 1
+    [ -r "$ACTIVE_SYSTEM_MOUNT/system/lib64/libbinder_ndk.so" ] || return 1
+
+    bind_active_file "$ACTIVE_ODM_MOUNT/etc/libnfc-nci.conf" "$COLOROS_NFC_CONFIG" || return 1
+    bind_active_directory "$ACTIVE_ODM_MOUNT/etc/nfc" "$COLOROS_NFC_CONFIG_DIR" || return 1
+    setprop "$ACTIVE_RUNTIME_PROPERTY" coloros17 2>/dev/null || true
+    log_msg "active ColorOS 17 NFC2, secure-element, and Weaver payload is ready"
+    return 0
+}
+
 # LineageOS 24 keeps the current NXP HAL and Weaver binary in vendor, while
 # the matching secure-element service remains in ODM.  They use a newer C++/
 # Binder ABI than the bundled OxygenOS services, so twrp-active-hal runs them
@@ -343,11 +384,15 @@ mount_active_nfc_odm() {
 
 prepare_active_nfc_runtime() {
     setprop "$ACTIVE_RUNTIME_PROPERTY" legacy 2>/dev/null || true
+    if prepare_coloros17_active_runtime; then
+        return 0
+    fi
+
     if prepare_lineage_active_runtime; then
         return 0
     fi
 
-    log_msg "active Lineage runtime was not detected; trying legacy OxygenOS ODM payload"
+    log_msg "active Android 17 runtime was not detected; trying legacy OxygenOS ODM payload"
     mount_active_nfc_odm || return 1
     setprop "$ACTIVE_RUNTIME_PROPERTY" legacy 2>/dev/null || true
     return 0

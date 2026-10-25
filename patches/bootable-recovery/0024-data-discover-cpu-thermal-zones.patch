@@ -1,0 +1,93 @@
+diff --git a/data.cpp b/data.cpp
+index 00000000..00000000 100644
+--- a/data.cpp
++++ b/data.cpp
+@@ -18,0 +19 @@
++#include <dirent.h>
+@@ -19,0 +21 @@
++#include <sys/stat.h>
+@@ -567,0 +570,67 @@ void DataManager::SetBackupFolder()
++#ifdef TW_CUSTOM_CPU_TEMP_PATH
++static bool is_cpu_temperature_directory(const string& path)
++{
++	struct stat st;
++	return stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
++}
++
++// Some Qualcomm firmware versions reorder thermal_zoneN at every boot. When
++// the custom path names the thermal directory, choose the hottest live CPU
++// sensor by type instead of binding the UI to an unstable numeric zone.
++static bool read_cpu_temperature_directory(const string& path, string& results)
++{
++	DIR* directory = opendir(path.c_str());
++	if (directory == nullptr)
++		return false;
++
++	unsigned long max_temp = 0;
++	struct dirent* entry;
++	while ((entry = readdir(directory)) != nullptr) {
++		string zone(entry->d_name);
++		if (zone.compare(0, 12, "thermal_zone") != 0)
++			continue;
++
++		string type;
++		string zone_path = path + "/" + zone;
++		if (TWFunc::read_file(zone_path + "/type", type) != 0)
++			continue;
++		if (type.compare(0, 4, "cpu-") != 0 || type.find("trip") != string::npos)
++			continue;
++
++		string value;
++		if (TWFunc::read_file(zone_path + "/temp", value) != 0)
++			continue;
++
++		char* end = nullptr;
++		unsigned long temp = strtoul(value.c_str(), &end, 10);
++		if (end == value.c_str() || temp == 0)
++			continue;
++
++		// Android reports millidegrees, although a few kernels use whole or
++		// deci-degrees. Normalize before choosing the hottest CPU sensor.
++		if (temp < 150)
++			temp *= 1000;
++		else if (temp < 1000)
++			temp *= 100;
++		if (temp >= 150000)
++			continue;
++
++		if (temp > max_temp)
++			max_temp = temp;
++	}
++	closedir(directory);
++
++	if (max_temp == 0)
++		return false;
++	results = TWFunc::to_string(max_temp);
++	return true;
++}
++
++static bool read_cpu_temperature(const string& path, string& results)
++{
++	if (is_cpu_temperature_directory(path))
++		return read_cpu_temperature_directory(path, results);
++	return TWFunc::read_file(path, results) == 0;
++}
++#endif
++
+@@ -662,0 +732 @@ void DataManager::SetDefaultValues()
++	bool cpu_temp_available;
+@@ -664,0 +735,6 @@ void DataManager::SetDefaultValues()
++	if (is_cpu_temperature_directory(cpu_temp_file)) {
++		string results;
++		cpu_temp_available = read_cpu_temperature(cpu_temp_file, results);
++	} else {
++		cpu_temp_available = TWFunc::Path_Exists(cpu_temp_file);
++	}
+@@ -666,0 +743 @@ void DataManager::SetDefaultValues()
++	cpu_temp_available = TWFunc::Path_Exists(cpu_temp_file);
+@@ -668 +745 @@ void DataManager::SetDefaultValues()
+-	if (TWFunc::Path_Exists(cpu_temp_file)) {
++	if (cpu_temp_available) {
+@@ -1047 +1124 @@ int DataManager::GetMagicValue(const string& varName, string& value)
+-			if (TWFunc::read_file(cpu_temp_file, results) != 0)
++			if (!read_cpu_temperature(cpu_temp_file, results))

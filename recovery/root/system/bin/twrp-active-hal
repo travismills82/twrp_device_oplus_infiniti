@@ -1,7 +1,7 @@
 #!/system/bin/sh
 
-# Select the active LineageOS HALs only after twrp-decrypt-prereqs has mounted
-# and validated them.  The legacy OxygenOS services keep their normal linker
+# Select active Android 17 HALs only after twrp-decrypt-prereqs has mounted
+# and validated them. The legacy OxygenOS services keep their normal linker
 # environment and paths.
 ACTIVE_RUNTIME_PROPERTY="twrp.decrypt.runtime"
 ACTIVE_LINKER_CONFIG="/system/etc/twrp-active-hal.ld.config.txt"
@@ -23,10 +23,14 @@ case "$1" in
             [ -x "$ACTIVE_VENDOR_MOUNT/bin/hw/android.hardware.nfc-service.nxp" ]; then
             run_active_runtime "$ACTIVE_VENDOR_MOUNT/bin/hw/android.hardware.nfc-service.nxp"
         fi
+        if [ "$runtime" = "coloros17" ] && \
+            [ -x "$ACTIVE_ODM_MOUNT/bin/hw/android.hardware.nfc2-service.nxp" ]; then
+            run_active_runtime "$ACTIVE_ODM_MOUNT/bin/hw/android.hardware.nfc2-service.nxp"
+        fi
         exec /odm/bin/hw/android.hardware.nfc-service.nxp
         ;;
     secure-element)
-        if [ "$runtime" = "lineage" ] && \
+        if { [ "$runtime" = "lineage" ] || [ "$runtime" = "coloros17" ]; } && \
             [ -x "$ACTIVE_ODM_MOUNT/bin/hw/android.hardware.secure_element-service.qti" ]; then
             run_active_runtime "$ACTIVE_ODM_MOUNT/bin/hw/android.hardware.secure_element-service.qti"
         fi
@@ -36,6 +40,10 @@ case "$1" in
         if [ "$runtime" = "lineage" ] && \
             [ -x "$ACTIVE_VENDOR_MOUNT/bin/hw/android.hardware.weaver-service.nxp" ]; then
             run_active_runtime "$ACTIVE_VENDOR_MOUNT/bin/hw/android.hardware.weaver-service.nxp"
+        fi
+        if [ "$runtime" = "coloros17" ] && \
+            [ -x "$ACTIVE_ODM_MOUNT/bin/hw/android.hardware.weaver-service.nxp" ]; then
+            run_active_runtime "$ACTIVE_ODM_MOUNT/bin/hw/android.hardware.weaver-service.nxp"
         fi
         exec /odm/bin/hw/android.hardware.weaver-service.nxp
         ;;
