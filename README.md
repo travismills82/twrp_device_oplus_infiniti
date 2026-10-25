@@ -54,6 +54,19 @@ Works:
 - [X] Interactive FTP/FTPS backup and restore menu in TWRP Terminal
 - [X] Magisk installation built in to recovery 
 
+## A/B OTA safety
+
+For an A/B OTA, the signed payload supplies the inactive slot's `recovery`,
+`vbmeta`, boot, and firmware images as one matched set. TWRP therefore never
+copies the currently running TWRP image over the payload-provided target
+recovery after an A/B install, even when the upstream automatic-reflash setting
+was previously enabled. This preserves the target slot's AVB chain and prevents
+an unsuccessful OTA from modifying either recovery slot after the payload has
+failed.
+
+After a successful official OTA, boot the new Android slot first. Reinstall or
+boot TWRP only after that target slot has been confirmed healthy.
+
 ## Charging controls
 
 Open **Advanced > Charging** for native OnePlus bypass on/off, a charging status

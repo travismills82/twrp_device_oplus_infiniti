@@ -1,0 +1,37 @@
+diff --git a/twrpinstall/twinstall.cpp b/twrpinstall/twinstall.cpp
+index 089ea14d..419e9a7c 100755
+--- a/twrpinstall/twinstall.cpp
++++ b/twrpinstall/twinstall.cpp
+@@ -357,16 +357,25 @@ int TWinstall_zip(const char* path, int* wipe_cache, bool check_for_digest) {
+ 			if (!vendor_mount_state)
+ 				PartitionManager.UnMount_By_Path("/vendor", false);
+ 			if (!system_mount_state)
+ 				PartitionManager.UnMount_By_Path(PartitionManager.Get_Android_Root_Path(), false);
+-			if (android::base::GetBoolProperty("ro.virtual_ab.enabled", false)) {
++			if (ret_val == INSTALL_SUCCESS &&
++				android::base::GetBoolProperty("ro.virtual_ab.enabled", false)) {
+ 				PartitionManager.Unlock_Block_Partitions();
+ 				PartitionManager.Prepare_All_Super_Volumes();
+ 				gui_warn("mount_vab_partitions=Devices on super may not mount until rebooting recovery.");
+ 			}
+-			gui_warn("flash_ab_reboot=To flash additional zips, please reboot recovery to switch to the updated slot.");
+-			DataManager::GetValue(TW_AUTO_REFLASHTWRP_VAR, reflashtwrp);
+-			if (reflashtwrp) {
+-			twrpRepacker repacker;
+-			repacker.Flash_Current_Twrp();
++			if (ret_val == INSTALL_SUCCESS) {
++				gui_warn("flash_ab_reboot=To flash additional zips, please reboot recovery to switch to the updated slot.");
++				DataManager::GetValue(TW_AUTO_REFLASHTWRP_VAR, reflashtwrp);
++				if (reflashtwrp) {
++					// The payload has already written the target recovery and its matching
++					// AVB descriptor. Copying the source TWRP image over that partition
++					// can invalidate the target boot chain before Android starts.
++					gui_warn("Skipping automatic TWRP reflash after an A/B OTA to preserve the payload-provided recovery image.");
++					LOGINFO("Skipping automatic TWRP reflash after successful A/B OTA.\n");
++				}
++			} else {
++				// Never write the inactive recovery after an unsuccessful payload.
++				gui_err("A/B OTA failed; recovery slots were not auto-flashed.");
+ 			}
+ 		} else {
+ 			std::string binary_name("ui.xml");

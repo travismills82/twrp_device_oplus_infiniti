@@ -48,6 +48,7 @@ OLED_STATUS_FILL='<fill color="%status_color%">'
 OLED_NAVBAR_FILL='<fill color="%navbar_color%">'
 FAILED_VAB_SIDELOAD_MARKER='Cancelling failed Virtual A/B update in recovery before sideload.'
 ABSENT_STALE_AB_PARTITION_MARKER='Skip stale A/B declarations only when both slots lack the partition.'
+AB_OTA_PRESERVE_RECOVERY_MARKER='Skipping automatic TWRP reflash after an A/B OTA to preserve the payload-provided recovery image.'
 LPDUMP_BINDER_LIBRARY='RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/libfs_mgr_binder.so'
 LPDUMP_SNAPSHOT_LIBRARY='RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/libsnapshot.so'
 LPDUMP_RELINK_DEPENDENCIES='LOCAL_ADDITIONAL_DEPENDENCIES += $(TARGET_OUT_EXECUTABLES)/lpdump $(TARGET_OUT_EXECUTABLES)/lpdumpd'
@@ -260,6 +261,13 @@ grep -Fq "$FAILED_VAB_SIDELOAD_MARKER" \
 grep -Fq "$ABSENT_STALE_AB_PARTITION_MARKER" \
     "$SYSTEM_UPDATE_ENGINE_DIR/payload_consumer/partition_update_generator_android.cc" ||
     fail "recovery update_engine does not tolerate absent stale A/B partition declarations"
+
+grep -Fq "$AB_OTA_PRESERVE_RECOVERY_MARKER" \
+    "$RECOVERY_DIR/twrpinstall/twinstall.cpp" ||
+    fail "A/B OTA handling can still overwrite the payload-provided recovery image"
+
+python3 "$DEVICE_DIR/scripts/test-ab-ota-recovery-safety.py" "$RECOVERY_DIR" ||
+    fail "A/B OTA recovery safety verifier failed"
 
 lpdump_service_lookups="$(grep -F -c 'getService(String16("lpdump_service"), &service_);' \
     "$SYSTEM_EXTRAS_DIR/partition_tools/lpdump_target.cc" || true)"
