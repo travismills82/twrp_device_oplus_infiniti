@@ -1,0 +1,59 @@
+{
+  "date": "2026-10-25",
+  "device": "OnePlus 15 (infiniti)",
+  "tested_os": "ColorOS 17 / Android 17",
+  "tested_system_display_id": "CPH2745_17.0.0.102(EX01)",
+  "tested_product": "OP611FL1",
+  "tested_project_id": 24863,
+  "tested_slot_after_validation": "b",
+  "tested_kernel": "6.12.69-android16-6-g242e1a07f878-ab15865446-4k",
+  "image_source_commit": "c3025521ee29f57ab05cf03cba47ba67ca0074ce",
+  "assets": {
+    "TWRP-3.7.1-16-infiniti-2026-10-25-c302552.img": {
+      "sha256": "401ef2ccba7bcdb4a707ba3ccfb20aca02bb3e3861d9c69ea49f022a2de5985f",
+      "bytes": 104857600
+    },
+    "TWRP-3.7.1-16-infiniti-slot-a-2026-10-25-c302552.zip": {
+      "sha256": "4f7c33325bb54a26bd991a64eb2144b38f1b98f1bde031c5e7a742fa6db446c4",
+      "bytes": 83674338,
+      "embedded_recovery_sha256": "401ef2ccba7bcdb4a707ba3ccfb20aca02bb3e3861d9c69ea49f022a2de5985f"
+    }
+  },
+  "build": {
+    "target": "twrp_infiniti",
+    "bundled_magisk": true,
+    "result": "PASS",
+    "avb_signature": "PASS: SHA256_RSA2048 recovery hash footer",
+    "packed_contents": "PASS"
+  },
+  "tests": {
+    "clean_recovery_patch_application": "PASS: 26 patches applied in order to TWRP source 6bd8134ec8ff4cb29eb25797cbb20796f8455204",
+    "ab_ota_recovery_safety_tests": 5,
+    "sideload_usb_tests": 4,
+    "wifi_runtime_firmware_tests": 5,
+    "installer_fixture_tests": 9,
+    "installer_on_device_read_only_preflight": "PASS",
+    "recovery_a_full_readback": "PASS: equals release image SHA-256",
+    "recovery_b_preservation": "PASS: retained official ColorOS 17 SHA-256 74ccbb2e598ba7135c85a3feace4e8403132a388ff0470e01047d7a9ee98f719 across two recovery-A boots",
+    "clean_recovery_boots": 2,
+    "coloros17_slot_b_runtime_after_test": "PASS",
+    "user0_decryption": "not performed; no credential was submitted during this release validation",
+    "legacy_oxygenos_runtime": "fallback retained; not freshly hardware-tested in this release"
+  },
+  "installer": {
+    "targets": [
+      "recovery_a"
+    ],
+    "preserves": [
+      "recovery_b"
+    ],
+    "changes_active_slot": false,
+    "accepted_boot_project_ids": [
+      24831,
+      24863
+    ],
+    "image_checksum_before_write": true,
+    "full_partition_readback_after_write": true,
+    "physical_zip_write_test": "not performed; on-device dry-run passed and recovery_a was flashed separately with a full readback"
+  }
+}
