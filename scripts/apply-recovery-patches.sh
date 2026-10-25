@@ -47,6 +47,7 @@ OLED_HEADER_FILL='<fill color="%header_color%">'
 OLED_STATUS_FILL='<fill color="%status_color%">'
 OLED_NAVBAR_FILL='<fill color="%navbar_color%">'
 FAILED_VAB_SIDELOAD_MARKER='Cancelling failed Virtual A/B update in recovery before sideload.'
+ABSENT_STALE_AB_PARTITION_MARKER='Skip stale A/B declarations only when both slots lack the partition.'
 LPDUMP_BINDER_LIBRARY='RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/libfs_mgr_binder.so'
 LPDUMP_SNAPSHOT_LIBRARY='RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/libsnapshot.so'
 LPDUMP_RELINK_DEPENDENCIES='LOCAL_ADDITIONAL_DEPENDENCIES += $(TARGET_OUT_EXECUTABLES)/lpdump $(TARGET_OUT_EXECUTABLES)/lpdumpd'
@@ -255,6 +256,10 @@ grep -Fq 'errno != EEXIST' "$SYSTEM_VOLD_DIR/KeyStorage.cpp" ||
 grep -Fq "$FAILED_VAB_SIDELOAD_MARKER" \
     "$SYSTEM_UPDATE_ENGINE_DIR/aosp/cleanup_previous_update_action.cc" ||
     fail "recovery update_engine does not clear a failed Virtual A/B update before sideload"
+
+grep -Fq "$ABSENT_STALE_AB_PARTITION_MARKER" \
+    "$SYSTEM_UPDATE_ENGINE_DIR/payload_consumer/partition_update_generator_android.cc" ||
+    fail "recovery update_engine does not tolerate absent stale A/B partition declarations"
 
 lpdump_service_lookups="$(grep -F -c 'getService(String16("lpdump_service"), &service_);' \
     "$SYSTEM_EXTRAS_DIR/partition_tools/lpdump_target.cc" || true)"
