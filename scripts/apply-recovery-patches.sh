@@ -269,6 +269,9 @@ grep -Fq "$AB_OTA_PRESERVE_RECOVERY_MARKER" \
 python3 "$DEVICE_DIR/scripts/test-ab-ota-recovery-safety.py" "$RECOVERY_DIR" ||
     fail "A/B OTA recovery safety verifier failed"
 
+python3 "$DEVICE_DIR/scripts/test-sideload-usb.py" ||
+    fail "ADB sideload USB ownership verifier failed"
+
 lpdump_service_lookups="$(grep -F -c 'getService(String16("lpdump_service"), &service_);' \
     "$SYSTEM_EXTRAS_DIR/partition_tools/lpdump_target.cc" || true)"
 [ "$lpdump_service_lookups" -eq 2 ] ||

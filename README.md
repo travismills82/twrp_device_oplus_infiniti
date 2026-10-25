@@ -67,6 +67,10 @@ failed.
 After a successful official OTA, boot the new Android slot first. Reinstall or
 boot TWRP only after that target slot has been confirmed healthy.
 
+ADB sideload gives FunctionFS exclusively to recovery's `minadbd`; the normal
+ADB daemon is restarted when sideload exits. This prevents a competing daemon
+from leaving the host in ordinary recovery ADB mode with no sideload transport.
+
 ## Charging controls
 
 Open **Advanced > Charging** for native OnePlus bypass on/off, a charging status

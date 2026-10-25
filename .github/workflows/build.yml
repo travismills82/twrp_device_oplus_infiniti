@@ -133,6 +133,7 @@ jobs:
       run: |
         bash device/${{ github.event.inputs.DEVICE_PATH }}/scripts/apply-recovery-patches.sh
         python3 device/${{ github.event.inputs.DEVICE_PATH }}/scripts/test-ab-ota-recovery-safety.py bootable/recovery
+        python3 device/${{ github.event.inputs.DEVICE_PATH }}/scripts/test-sideload-usb.py
         python3 device/${{ github.event.inputs.DEVICE_PATH }}/scripts/test-decrypt-readiness.py
         python3 device/${{ github.event.inputs.DEVICE_PATH }}/scripts/test-wifi-runtime-firmware.py
         git -C bootable/recovery diff --check
