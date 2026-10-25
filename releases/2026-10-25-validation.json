@@ -1,0 +1,58 @@
+{
+  "date": "2026-10-25",
+  "device": "OnePlus 15 (infiniti)",
+  "tested_os": "ColorOS 17 / Android 17",
+  "tested_system_display_id": "CP2A.260605.016 release-keys",
+  "tested_product": "OP60FFL1",
+  "tested_project_id": 24863,
+  "tested_kernel": "6.12.69-android16-6-g242e1a07f878-ab15865446-4k",
+  "image_source_commit": "7e39b8a794c3765c24b269eced56e29608011885",
+  "assets": {
+    "recovery.img": {
+      "sha256": "5426a9d93a2ba35f90a1c1d5e443afdd16e8863bea35acf9117079172fbe77a9",
+      "bytes": 104857600
+    },
+    "TWRP-3.7.1-16-infiniti-2026-10-25.zip": {
+      "sha256": "08b5b41e4348c2d44c36cb3b8f791f5c7c94ff2cdb48f8b5d991d9e897a480e6",
+      "bytes": 83675784,
+      "embedded_recovery_sha256": "5426a9d93a2ba35f90a1c1d5e443afdd16e8863bea35acf9117079172fbe77a9"
+    }
+  },
+  "build": {
+    "target": "twrp_infiniti",
+    "bundled_magisk": true,
+    "result": "PASS",
+    "avb_signature": "PASS",
+    "packed_contents": "PASS"
+  },
+  "tests": {
+    "decrypt_readiness_tests": 7,
+    "wifi_runtime_firmware_tests": 5,
+    "installer_fixture_tests": 9,
+    "installer_on_device_read_only_preflight": "PASS",
+    "installed_image_full_readback": "PASS: recovery_a; recovery_b deliberately retained as stock rollback",
+    "clean_recovery_boots": 2,
+    "coloros17_active_runtime": "PASS",
+    "nci_device": "PASS",
+    "nfc_secure_element_weaver": "PASS",
+    "weaver_config_probe": "PASS",
+    "wifi_scan_and_control_socket": "PASS",
+    "dynamic_cpu_thermal": "PASS: cpu-* type discovery; fixed trip sensors excluded",
+    "user0_decryption": "not performed; credential submission remains user-controlled",
+    "legacy_oxygenos_runtime": "legacy fallback retained; not freshly hardware-tested in this release"
+  },
+  "installer": {
+    "targets": [
+      "recovery_a",
+      "recovery_b"
+    ],
+    "changes_active_slot": false,
+    "accepted_boot_project_ids": [
+      24831,
+      24863
+    ],
+    "image_checksum_before_write": true,
+    "full_partition_readback_after_write": true,
+    "physical_zip_write_test": "not performed; device-side dry-run passed and recovery_a was fully read back"
+  }
+}
