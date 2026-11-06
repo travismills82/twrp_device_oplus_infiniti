@@ -94,7 +94,7 @@ for patch in "${PATCHES[@]}"; do
     # the script verifies the expected source state before and after applying
     # every patch.
     case "$name" in
-        0007-ors-fix-restore-resource-and-cli-help.patch|0008-init-drop-legacy-recovery-service-import.patch|0009-theme-raise-wlan-log-window.patch|0010-theme-remove-advanced-avb-and-app-actions.patch|0024-data-discover-cpu-thermal-zones.patch|0027-storage-guard-missing-partition.patch|0028-native-backup-restore-safety.patch)
+        0007-ors-fix-restore-resource-and-cli-help.patch|0008-init-drop-legacy-recovery-service-import.patch|0009-theme-raise-wlan-log-window.patch|0010-theme-remove-advanced-avb-and-app-actions.patch|0024-data-discover-cpu-thermal-zones.patch|0027-storage-guard-missing-partition.patch|0028-native-backup-restore-safety.patch|0029-gui-adreno-gles-compositor.patch)
             apply_opts+=(--unidiff-zero)
             ;;
     esac
@@ -472,6 +472,9 @@ if ! grep -F -q '<image name="wifi_status" filename="wifi_status" retainaspect="
 fi
 
 [ -s "$WIFI_STATUS_ICON" ] || fail "Wi-Fi status icon asset was not installed"
+
+python3 -B "$SCRIPT_DIR/test-gpu-renderer.py" "$SOURCE_ROOT" ||
+    fail "GPU compositor source/build safety contracts failed"
 
 echo "[verified] helper module identities and runtime paths are unversioned"
 echo "[verified] backup compression offers parallel pigz -9 and multithreaded zstd -11"

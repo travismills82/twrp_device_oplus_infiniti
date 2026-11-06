@@ -1,0 +1,465 @@
+diff --git a/minuitwrp/Android.bp b/minuitwrp/Android.bp
+index f2d92c9a..1a996130 100644
+--- a/minuitwrp/Android.bp
++++ b/minuitwrp/Android.bp
+@@ -33 +33,2 @@ cc_library_shared {
+-        "bootable/recovery/gui/include"
++        "bootable/recovery/gui/include",
++        "frameworks/native/opengl/include",
+@@ -36,0 +38 @@ cc_library_shared {
++        "graphics_gles.cpp",
+@@ -54,0 +57,2 @@ cc_library_shared {
++	"libdl",
++	"libdl_android",
+@@ -57 +61,2 @@ cc_library_shared {
+-    static_libs: ["libpixelflinger_twrp"]
++    static_libs: ["libpixelflinger_twrp"],
++    cppflags: ["-fexceptions"],
+diff --git a/minuitwrp/graphics.cpp b/minuitwrp/graphics.cpp
+index f266178a..8ae9e02e 100644
+--- a/minuitwrp/graphics.cpp
++++ b/minuitwrp/graphics.cpp
+@@ -38,0 +39 @@
++#include "graphics_gles.h"
+@@ -119,0 +121 @@ void gr_clip(int x, int y, int w, int h)
++    if (gr_rotation == 0) gr_gpu_clip(x, y, w, h, true);
+@@ -140,0 +143 @@ void gr_noclip()
++    gr_gpu_clip(0, 0, gr_draw->width, gr_draw->height, false);
+@@ -148,0 +152,2 @@ void gr_line(int x0, int y0, int x1, int y1, int width)
++    // Keep Pixelflinger's exact line/pattern-lock rasterization semantics.
++    gr_gpu_cpu_write();
+@@ -203,0 +209 @@ void gr_color(unsigned char r, unsigned char g, unsigned char b, unsigned char a
++    gr_gpu_color(r, g, b, a);
+@@ -223,0 +230 @@ void gr_clear()
++    gr_gpu_cpu_write();
+@@ -247,0 +255 @@ void gr_fill(int x, int y, int w, int h)
++    if (gr_rotation == 0 && gr_gpu_fill(x, y, w, h)) return;
+@@ -276,0 +285 @@ void gr_blit(gr_surface source, int sx, int sy, int w, int h, int dx, int dy)
++    if (gr_rotation == 0 && gr_gpu_blit(surface, sx, sy, w, h, dx, dy)) return;
+@@ -343,0 +353,7 @@ void gr_flip() {
++    gr_gpu_flush();
++    // Root-only diagnostic request; fixed RAM destination, no storage mounts.
++    // Also works in CPU mode for pixel-for-pixel GUI comparison.
++    if (property_get_bool("twrp.gpu.capture", false)) {
++        printf("[twrp-gpu] GUI screenshot result=%d\n", gr_save_screenshot("/tmp/twrp-gpu-ui.png"));
++        property_set("twrp.gpu.capture", "0");
++    }
+@@ -415,0 +432,3 @@ int gr_init(void)
++    // Rotated/non-32-bit framebuffers retain the existing software renderer.
++    if (gr_rotation == 0) gr_gpu_init(gr_context, gr_draw);
++
+@@ -423,0 +443 @@ void gr_exit(void)
++    gr_gpu_exit();
+@@ -447,0 +468 @@ int gr_get_surface(gr_surface* surface)
++    gr_gpu_flush();
+@@ -474,0 +496 @@ void gr_write_frame_to_file(int fd)
++    gr_gpu_flush();
+diff --git a/minuitwrp/graphics_utils.cpp b/minuitwrp/graphics_utils.cpp
+index 03b333ac..7eb650a1 100644
+--- a/minuitwrp/graphics_utils.cpp
++++ b/minuitwrp/graphics_utils.cpp
+@@ -24,0 +25 @@
++#include "graphics_gles.h"
+@@ -32,0 +34 @@ int gr_save_screenshot(const char *dest)
++    gr_gpu_flush();
+diff --git a/minuitwrp/truetype.cpp b/minuitwrp/truetype.cpp
+index d224fbb1..e4a1a461 100644
+--- a/minuitwrp/truetype.cpp
++++ b/minuitwrp/truetype.cpp
+@@ -29,0 +30 @@
++#include "graphics_gles.h"
+@@ -615,0 +617,6 @@ int twrpTruetype::gr_ttf_textExWH(void *context, int x, int y,
++	if (gr_rotation == 0 && gr_gpu_blit(&e->surface, 0, 0,
++			r_disp-l_disp, b_disp-t_disp, l_disp, t_disp)) {
++		pthread_mutex_unlock(&font->mutex);
++		return res;
++	}
++
+diff --git a/minuitwrp/graphics_gles.h b/minuitwrp/graphics_gles.h
+new file mode 100644
+index 00000000..806f862a
+--- /dev/null
++++ b/minuitwrp/graphics_gles.h
+@@ -0,0 +1,17 @@
++/* SPDX-License-Identifier: Apache-2.0 */
++#pragma once
++
++#include <pixelflinger/pixelflinger.h>
++#include "minuitwrp/minui.h"
++
++// All calls belong to the GUI/render thread. Fonts are rasterized by FreeType;
++// their A8 masks, images and solid rectangles are composited by GLES.
++void gr_gpu_init(GGLContext* cpu, GRSurface* target);
++void gr_gpu_color(unsigned char r, unsigned char g, unsigned char b, unsigned char a);
++void gr_gpu_clip(int x, int y, int w, int h, bool enabled);
++bool gr_gpu_fill(int x, int y, int w, int h);
++bool gr_gpu_blit(const GGLSurface* source, int sx, int sy, int w, int h, int x, int y);
++void gr_gpu_flush();
++// Synchronize before a CPU-only operation, then re-upload on the next GPU draw.
++void gr_gpu_cpu_write();
++void gr_gpu_exit();
+diff --git a/minuitwrp/graphics_gles.cpp b/minuitwrp/graphics_gles.cpp
+new file mode 100644
+index 00000000..e2ac9e7b
+--- /dev/null
++++ b/minuitwrp/graphics_gles.cpp
+@@ -0,0 +1,359 @@
++/* SPDX-License-Identifier: Apache-2.0 */
++// Optional off-screen GLES compositor. Existing DRM/fbdev scanout is unchanged.
++// Vendor code lives in its own linker namespace, never a global LD_LIBRARY_PATH.
++#include "graphics_gles.h"
++#include <EGL/egl.h>
++#include <GLES2/gl2.h>
++#include <android/dlext.h>
++#include <cutils/properties.h>
++#include <algorithm>
++#include <array>
++#include <cstdio>
++#include <cstring>
++#include <dlfcn.h>
++#include <stdexcept>
++#include <string>
++#include <vector>
++
++extern "C" android_namespace_t* android_create_namespace(const char*, const char*,
++        const char*, uint64_t, const char*, android_namespace_t*);
++extern "C" bool android_link_namespaces(android_namespace_t*, android_namespace_t*, const char*);
++
++namespace {
++constexpr size_t kLimit = 32 * 1024 * 1024;
++struct Command {
++    bool texture = false;
++    int x, y, w, h, sx = 0, sy = 0;
++    std::array<unsigned char, 4> color;
++    std::array<int, 4> clip;
++    bool clipped;
++    GGLSurface image{};
++    std::vector<unsigned char> pixels;
++};
++
++struct Renderer {
++    GGLContext* cpu = nullptr;
++    GRSurface* target = nullptr;
++    std::array<unsigned char, 4> color{{255, 255, 255, 255}};
++    std::array<int, 4> clip{{0, 0, 0, 0}};
++    bool clipped = false, active = false, tried = false, upload = true, dirty = false;
++    int left = 0, top = 0, right = 0, bottom = 0;
++    size_t journal_bytes = 0;
++    unsigned long frames = 0;
++    std::vector<Command> journal;
++    std::vector<unsigned char> readback;
++    android_namespace_t* ns = nullptr;
++    void *egl = nullptr, *gles = nullptr;
++    EGLDisplay display = EGL_NO_DISPLAY;
++    EGLSurface surface = EGL_NO_SURFACE;
++    EGLContext context = EGL_NO_CONTEXT;
++    GLuint program = 0, texture = 0;
++    GLint size_uniform = -1, color_uniform = -1, mode_uniform = -1;
++
++#define EGL_FN(name) decltype(&name) name##Fn = nullptr
++#define GL_FN(name) decltype(&name) name##Fn = nullptr
++    EGL_FN(eglGetDisplay); EGL_FN(eglInitialize); EGL_FN(eglChooseConfig);
++    EGL_FN(eglBindAPI); EGL_FN(eglCreatePbufferSurface); EGL_FN(eglCreateContext);
++    EGL_FN(eglMakeCurrent); EGL_FN(eglDestroyContext); EGL_FN(eglDestroySurface);
++    EGL_FN(eglTerminate);
++    GL_FN(glGetString); GL_FN(glGetError); GL_FN(glCreateShader); GL_FN(glShaderSource);
++    GL_FN(glCompileShader); GL_FN(glGetShaderiv); GL_FN(glCreateProgram);
++    GL_FN(glAttachShader); GL_FN(glBindAttribLocation); GL_FN(glLinkProgram);
++    GL_FN(glGetProgramiv); GL_FN(glUseProgram); GL_FN(glDeleteShader);
++    GL_FN(glDeleteProgram); GL_FN(glGetUniformLocation); GL_FN(glUniform2f);
++    GL_FN(glUniform4f); GL_FN(glUniform1i); GL_FN(glViewport); GL_FN(glScissor);
++    GL_FN(glEnable); GL_FN(glDisable); GL_FN(glBlendFunc); GL_FN(glGenTextures);
++    GL_FN(glBindTexture); GL_FN(glTexParameteri); GL_FN(glTexImage2D);
++    GL_FN(glPixelStorei); GL_FN(glVertexAttribPointer); GL_FN(glEnableVertexAttribArray);
++    GL_FN(glDrawArrays); GL_FN(glReadPixels); GL_FN(glDeleteTextures);
++#undef EGL_FN
++#undef GL_FN
++
++    template<class T> T Symbol(void* lib, const char* name) {
++        void* result = dlsym(lib, name);
++        if (!result) throw std::runtime_error(std::string("missing symbol ") + name);
++        return reinterpret_cast<T>(result);
++    }
++    void Check(bool good, const char* message) {
++        if (!good) throw std::runtime_error(message);
++    }
++    void Property(const char* value) { property_set("twrp.gpu.renderer", value); }
++    bool Enabled() { return property_get_bool("twrp.gpu.enable", true); }
++
++    void Start() {
++        if (active || tried || !target || !Enabled() ||
++            !property_get_bool("twrp.gpu.ready", false)) return;
++        tried = true;
++        try {
++            Check(target->data && target->pixel_bytes == 4 && target->width > 0 && target->height > 0 &&
++                  target->width <= 4096 && target->height <= 4096 &&
++                  target->row_bytes >= target->width * 4 &&
++                  (target->format == GGL_PIXEL_FORMAT_RGBA_8888 ||
++                   target->format == GGL_PIXEL_FORMAT_RGBX_8888), "unsupported framebuffer format");
++            // The device helper makes these read-only, active-slot views. Only
++            // bionic is shared with recovery; no vendor C++ object crosses APIs.
++            const char* paths = "/system/lib64:/tmp/twrp-gpu-vendor/lib64/egl:"
++                "/tmp/twrp-gpu-vendor/lib64/hw:/tmp/twrp-gpu-vendor/lib64:"
++                "/tmp/twrp-gpu-system/system/lib64";
++            if (!ns) {
++                ns = android_create_namespace("twrp_gles", paths, paths, 1,
++                        "/system:/tmp/twrp-gpu-vendor:/tmp/twrp-gpu-system", nullptr);
++                Check(ns != nullptr, "cannot create GPU linker namespace");
++                // libvndksupport uses libdl_android. Share the real linker,
++                // never load the on-disk ld-android placeholder into this ns.
++                Check(android_link_namespaces(ns, nullptr, "libc.so:libm.so:libdl.so:libdl_android.so:ld-android.so"),
++                        "cannot link bionic into GPU namespace");
++            }
++            android_dlextinfo info{};
++            info.flags = ANDROID_DLEXT_USE_NAMESPACE;
++            info.library_namespace = ns;
++            if (!egl) egl = android_dlopen_ext("/tmp/twrp-gpu-vendor/lib64/egl/libEGL_adreno.so", RTLD_NOW | RTLD_LOCAL, &info);
++            if (!egl) { const char* error = dlerror(); throw std::runtime_error(error ? error : "cannot load vendor EGL"); }
++            if (!gles) gles = android_dlopen_ext("/tmp/twrp-gpu-vendor/lib64/egl/libGLESv2_adreno.so", RTLD_NOW | RTLD_LOCAL, &info);
++            Check(gles != nullptr, "cannot load vendor GLES");
++#define LOAD_EGL(name) name##Fn = Symbol<decltype(name##Fn)>(egl, #name)
++#define LOAD_GL(name) name##Fn = Symbol<decltype(name##Fn)>(gles, #name)
++            LOAD_EGL(eglGetDisplay); LOAD_EGL(eglInitialize); LOAD_EGL(eglChooseConfig);
++            LOAD_EGL(eglBindAPI); LOAD_EGL(eglCreatePbufferSurface); LOAD_EGL(eglCreateContext);
++            LOAD_EGL(eglMakeCurrent); LOAD_EGL(eglDestroyContext); LOAD_EGL(eglDestroySurface);
++            LOAD_EGL(eglTerminate);
++            LOAD_GL(glGetString); LOAD_GL(glGetError); LOAD_GL(glCreateShader); LOAD_GL(glShaderSource);
++            LOAD_GL(glCompileShader); LOAD_GL(glGetShaderiv); LOAD_GL(glCreateProgram);
++            LOAD_GL(glAttachShader); LOAD_GL(glBindAttribLocation); LOAD_GL(glLinkProgram);
++            LOAD_GL(glGetProgramiv); LOAD_GL(glUseProgram); LOAD_GL(glDeleteShader);
++            LOAD_GL(glDeleteProgram); LOAD_GL(glGetUniformLocation); LOAD_GL(glUniform2f);
++            LOAD_GL(glUniform4f); LOAD_GL(glUniform1i); LOAD_GL(glViewport); LOAD_GL(glScissor);
++            LOAD_GL(glEnable); LOAD_GL(glDisable); LOAD_GL(glBlendFunc); LOAD_GL(glGenTextures);
++            LOAD_GL(glBindTexture); LOAD_GL(glTexParameteri); LOAD_GL(glTexImage2D);
++            LOAD_GL(glPixelStorei); LOAD_GL(glVertexAttribPointer); LOAD_GL(glEnableVertexAttribArray);
++            LOAD_GL(glDrawArrays); LOAD_GL(glReadPixels); LOAD_GL(glDeleteTextures);
++#undef LOAD_EGL
++#undef LOAD_GL
++            display = eglGetDisplayFn(EGL_DEFAULT_DISPLAY);
++            EGLint major, minor, count;
++            Check(display != EGL_NO_DISPLAY && eglInitializeFn(display, &major, &minor), "EGL initialization failed");
++            Check(eglBindAPIFn(EGL_OPENGL_ES_API), "EGL ES API unavailable");
++            const EGLint attrs[] = {EGL_SURFACE_TYPE, EGL_PBUFFER_BIT, EGL_RENDERABLE_TYPE,
++                EGL_OPENGL_ES2_BIT, EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8,
++                EGL_ALPHA_SIZE, 8, EGL_NONE};
++            EGLConfig config;
++            Check(eglChooseConfigFn(display, attrs, &config, 1, &count) && count == 1, "no EGL pbuffer config");
++            const EGLint dimensions[] = {EGL_WIDTH, target->width, EGL_HEIGHT, target->height, EGL_NONE};
++            surface = eglCreatePbufferSurfaceFn(display, config, dimensions);
++            const EGLint version[] = {EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE};
++            context = eglCreateContextFn(display, config, EGL_NO_CONTEXT, version);
++            Check(surface != EGL_NO_SURFACE && context != EGL_NO_CONTEXT &&
++                  eglMakeCurrentFn(display, surface, surface, context), "cannot make GPU context current");
++            const char* renderer = reinterpret_cast<const char*>(glGetStringFn(GL_RENDERER));
++            Check(renderer && strstr(renderer, "Adreno") && !strstr(renderer, "SwiftShader"), "not a hardware Adreno renderer");
++            auto Shader = [&](GLenum type, const char* text) {
++                GLuint id = glCreateShaderFn(type);
++                glShaderSourceFn(id, 1, &text, nullptr); glCompileShaderFn(id);
++                GLint ok = 0; glGetShaderivFn(id, GL_COMPILE_STATUS, &ok);
++                if (!ok) { glDeleteShaderFn(id); throw std::runtime_error("GPU shader compilation failed"); }
++                return id;
++            };
++            GLuint vertex = Shader(GL_VERTEX_SHADER,
++                "attribute vec2 pos; attribute vec2 uv; uniform vec2 size; varying vec2 tc;"
++                "void main(){gl_Position=vec4(pos.x*2./size.x-1.,1.-pos.y*2./size.y,0.,1.);tc=uv;}");
++            GLuint fragment = Shader(GL_FRAGMENT_SHADER,
++                "precision mediump float; varying vec2 tc; uniform vec4 color; uniform int mode; uniform sampler2D image;"
++                // Match GGL_REPLACE for A8: texture alpha replaces, rather
++                // than multiplies, the current color's alpha.
++                "void main(){if(mode==0)gl_FragColor=color;else if(mode==2)gl_FragColor=vec4(color.rgb,texture2D(image,tc).a);"
++                "else gl_FragColor=texture2D(image,tc);}");
++            program = glCreateProgramFn(); glAttachShaderFn(program, vertex); glAttachShaderFn(program, fragment);
++            glBindAttribLocationFn(program, 0, "pos"); glBindAttribLocationFn(program, 1, "uv");
++            glLinkProgramFn(program); glDeleteShaderFn(vertex); glDeleteShaderFn(fragment);
++            GLint ok = 0; glGetProgramivFn(program, GL_LINK_STATUS, &ok); Check(ok, "GPU program link failed");
++            glUseProgramFn(program); glViewportFn(0, 0, target->width, target->height);
++            size_uniform = glGetUniformLocationFn(program, "size");
++            color_uniform = glGetUniformLocationFn(program, "color");
++            mode_uniform = glGetUniformLocationFn(program, "mode");
++            glUniform2fFn(size_uniform, target->width, target->height);
++            glUniform1iFn(glGetUniformLocationFn(program, "image"), 0);
++            glGenTexturesFn(1, &texture); glBindTextureFn(GL_TEXTURE_2D, texture);
++            glTexParameteriFn(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
++            glTexParameteriFn(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
++            glTexParameteriFn(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
++            glTexParameteriFn(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
++            glPixelStoreiFn(GL_UNPACK_ALIGNMENT, 1); glPixelStoreiFn(GL_PACK_ALIGNMENT, 1);
++            glBlendFuncFn(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
++            glEnableVertexAttribArrayFn(0); glEnableVertexAttribArrayFn(1);
++            Check(glGetErrorFn() == GL_NO_ERROR, "GPU setup error");
++            readback.resize(static_cast<size_t>(target->width) * target->height * 4);
++            active = true; upload = true; Property("gles-pending");
++            printf("[twrp-gpu] GLES compositor initialized: %s, %dx%d; DRM scanout + readback\n", renderer, target->width, target->height);
++        } catch (const std::exception& e) { Fail(e.what()); }
++    }
++
++    void CpuState(const Command& cmd) {
++        GGLint value[4];
++        for (int i = 0; i < 4; ++i) value[i] = cmd.color[i] * 257 + 1;
++        cpu->color4xv(cpu, value);
++        cpu->scissor(cpu, cmd.clip[0], cmd.clip[1], cmd.clip[2], cmd.clip[3]);
++        if (cmd.clipped) cpu->enable(cpu, GGL_SCISSOR_TEST); else cpu->disable(cpu, GGL_SCISSOR_TEST);
++    }
++    void Replay() {
++        for (auto& cmd : journal) {
++            CpuState(cmd);
++            bool opaque = cmd.texture ? cmd.image.format == GGL_PIXEL_FORMAT_RGBX_8888 : cmd.color[3] == 255;
++            if (opaque) cpu->disable(cpu, GGL_BLEND); else cpu->enable(cpu, GGL_BLEND);
++            if (cmd.texture) {
++                cmd.image.data = cmd.pixels.data();
++                cpu->bindTexture(cpu, &cmd.image);
++                cpu->texEnvi(cpu, GGL_TEXTURE_ENV, GGL_TEXTURE_ENV_MODE, GGL_REPLACE);
++                cpu->texGeni(cpu, GGL_S, GGL_TEXTURE_GEN_MODE, GGL_ONE_TO_ONE);
++                cpu->texGeni(cpu, GGL_T, GGL_TEXTURE_GEN_MODE, GGL_ONE_TO_ONE);
++                cpu->enable(cpu, GGL_TEXTURE_2D);
++                cpu->texCoord2i(cpu, cmd.sx - cmd.x, cmd.sy - cmd.y);
++            }
++            cpu->recti(cpu, cmd.x, cmd.y, cmd.x + cmd.w, cmd.y + cmd.h);
++            cpu->disable(cpu, GGL_TEXTURE_2D); cpu->enable(cpu, GGL_BLEND);
++        }
++        Command state{}; state.color = color; state.clip = clip; state.clipped = clipped;
++        CpuState(state);
++        journal.clear(); journal_bytes = 0; dirty = false;
++    }
++    void Stop() {
++        active = false;
++        if (display != EGL_NO_DISPLAY && eglMakeCurrentFn) {
++            eglMakeCurrentFn(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
++            if (context != EGL_NO_CONTEXT) eglDestroyContextFn(display, context);
++            if (surface != EGL_NO_SURFACE) eglDestroySurfaceFn(display, surface);
++            eglTerminateFn(display);
++        }
++        display = EGL_NO_DISPLAY; surface = EGL_NO_SURFACE; context = EGL_NO_CONTEXT;
++        program = texture = 0;
++        // Keep the namespace's DSO handles until process exit. Unloading a
++        // vendor DSO with live driver TLS is unsafe; they are bounded to one set.
++    }
++    void Fail(const char* reason) {
++        printf("[twrp-gpu] CPU fallback: %s\n", reason);
++        if (cpu && !journal.empty()) Replay();
++        Stop(); Property("cpu-fallback");
++    }
++    void Quad(const Command& c) {
++        if (c.clipped) {
++            glEnableFn(GL_SCISSOR_TEST);
++            glScissorFn(c.clip[0], target->height - c.clip[1] - c.clip[3], std::max(0, c.clip[2]), std::max(0, c.clip[3]));
++        } else glDisableFn(GL_SCISSOR_TEST);
++        const bool mask = c.texture && c.image.format == GGL_PIXEL_FORMAT_A_8;
++        const bool opaque = c.texture ? c.image.format == GGL_PIXEL_FORMAT_RGBX_8888 : c.color[3] == 255;
++        if (opaque) glDisableFn(GL_BLEND); else glEnableFn(GL_BLEND);
++        glUniform4fFn(color_uniform, c.color[0]/255.f, c.color[1]/255.f, c.color[2]/255.f, c.color[3]/255.f);
++        glUniform1iFn(mode_uniform, c.texture ? (mask ? 2 : 1) : 0);
++        float u0 = 0, v0 = 0, u1 = 1, v1 = 1;
++        if (c.texture) {
++            GLenum format = mask ? GL_ALPHA : GL_RGBA;
++            glTexImage2DFn(GL_TEXTURE_2D, 0, format, c.image.width, c.image.height, 0, format, GL_UNSIGNED_BYTE, c.pixels.data());
++            u0 = float(c.sx)/c.image.width; v0 = float(c.sy)/c.image.height;
++            u1 = float(c.sx+c.w)/c.image.width; v1 = float(c.sy+c.h)/c.image.height;
++        }
++        const GLfloat vertices[] = {float(c.x),float(c.y),u0,v0, float(c.x+c.w),float(c.y),u1,v0,
++            float(c.x),float(c.y+c.h),u0,v1, float(c.x+c.w),float(c.y+c.h),u1,v1};
++        glVertexAttribPointerFn(0, 2, GL_FLOAT, GL_FALSE, 4*sizeof(GLfloat), vertices);
++        glVertexAttribPointerFn(1, 2, GL_FLOAT, GL_FALSE, 4*sizeof(GLfloat), vertices+2);
++        glDrawArraysFn(GL_TRIANGLE_STRIP, 0, 4);
++        Check(glGetErrorFn() == GL_NO_ERROR, "GLES draw error");
++    }
++    void Upload() {
++        if (!upload) return;
++        Command base{}; base.x = base.y = 0; base.w = target->width; base.h = target->height;
++        base.texture = true; base.image.width = base.w; base.image.height = base.h;
++        base.image.format = GGL_PIXEL_FORMAT_RGBX_8888;
++        base.pixels.resize(static_cast<size_t>(base.w)*base.h*4);
++        for (int y = 0; y < base.h; ++y)
++            memcpy(base.pixels.data()+static_cast<size_t>(y)*base.w*4, target->data+static_cast<size_t>(y)*target->row_bytes, base.w*4);
++        Quad(base); upload = false;
++    }
++    void Damage(const Command& c) {
++        int64_t l=std::max<int64_t>(0,c.x), t=std::max<int64_t>(0,c.y);
++        int64_t r=std::min<int64_t>(target->width,int64_t(c.x)+c.w);
++        int64_t b=std::min<int64_t>(target->height,int64_t(c.y)+c.h);
++        if(c.clipped) {
++            l=std::max<int64_t>(l,c.clip[0]); t=std::max<int64_t>(t,c.clip[1]);
++            r=std::min<int64_t>(r,int64_t(c.clip[0])+c.clip[2]);
++            b=std::min<int64_t>(b,int64_t(c.clip[1])+c.clip[3]);
++        }
++        if(l>=r || t>=b) return;
++        if(!dirty) { left=l; top=t; right=r; bottom=b; dirty=true; }
++        else { left=std::min<int64_t>(left,l); top=std::min<int64_t>(top,t);
++               right=std::max<int64_t>(right,r); bottom=std::max<int64_t>(bottom,b); }
++    }
++    void Flush() {
++        if (!active) return;
++        if (!Enabled()) { Replay(); Stop(); tried = false; Property("cpu-disabled"); return; }
++        if (journal.empty()) return;
++        try {
++            // Transfer only the clipped damage bounding box, not 14 MiB for
++            // every changing clock/progress/text label. Commit only on success.
++            if(dirty) {
++                int width=right-left, height=bottom-top;
++                glReadPixelsFn(left, target->height-bottom, width, height, GL_RGBA, GL_UNSIGNED_BYTE, readback.data());
++                Check(glGetErrorFn() == GL_NO_ERROR, "GPU readback/context lost");
++                for (int y=0; y<height; ++y)
++                    memcpy(target->data+static_cast<size_t>(top+y)*target->row_bytes+left*4,
++                           readback.data()+static_cast<size_t>(height-1-y)*width*4, width*4);
++            }
++            journal.clear(); journal_bytes = 0; dirty = false;
++            ++frames; Property("gles");
++            char value[32]; snprintf(value, sizeof(value), "%lu", frames);
++            property_set("twrp.gpu.frames", value);
++            if (frames == 1 || frames % 300 == 0) printf("[twrp-gpu] GPU-composited frames: %lu\n", frames);
++        } catch (const std::exception& e) { Fail(e.what()); }
++    }
++    bool Draw(const GGLSurface* image, int sx, int sy, int w, int h, int x, int y) {
++        Start();
++        if (!active) return false;
++        if (w <= 0 || h <= 0) return true;
++        size_t bytes = 0;
++        int bpp = 4;
++        if (image) {
++            bpp = image->format == GGL_PIXEL_FORMAT_A_8 ? 1 : 4;
++            if ((image->format != GGL_PIXEL_FORMAT_A_8 && image->format != GGL_PIXEL_FORMAT_RGBA_8888 &&
++                 image->format != GGL_PIXEL_FORMAT_RGBX_8888) || !image->data || image->width <= 0 || image->height <= 0 ||
++                 image->width > 4096 || image->height > 4096 || image->stride < image->width || sx < 0 || sy < 0 ||
++                 w > image->width-sx || h > image->height-sy) {
++                Flush(); upload = true; return false;
++            }
++            bytes = static_cast<size_t>(image->width)*image->height*bpp;
++            if (bytes > kLimit) { Flush(); upload = true; return false; }
++        }
++        if (journal.size() >= 8192 || bytes > kLimit-journal_bytes) Flush();
++        if (!active) return false;
++        // Allocate/copy before touching the GPU or committing a journal entry.
++        // On allocation failure, synchronize earlier primitives and let the
++        // original software operation handle this primitive.
++        Command command{};
++        try {
++            command.x=x; command.y=y; command.w=w; command.h=h; command.sx=sx; command.sy=sy;
++            command.color=color; command.clip=clip; command.clipped=clipped;
++            command.texture=image != nullptr;
++            if (image) {
++                command.image=*image; command.image.stride=image->width; command.image.data=nullptr;
++                command.pixels.resize(bytes);
++                for (int row=0; row<image->height; ++row)
++                    memcpy(command.pixels.data()+static_cast<size_t>(row)*image->width*bpp,
++                           image->data+static_cast<size_t>(row)*image->stride*bpp, image->width*bpp);
++            }
++            Upload();
++            journal.push_back(std::move(command)); journal_bytes += bytes;
++        } catch (const std::exception&) { Flush(); Fail("GPU journal allocation/upload failed"); return false; }
++        try { Damage(journal.back()); Quad(journal.back()); }
++        catch (const std::exception& e) { Fail(e.what()); }
++        // If rendering failed, Fail replayed this primitive in software.
++        return true;
++    }
++};
++Renderer gpu;
++} // namespace
++
++void gr_gpu_init(GGLContext* cpu, GRSurface* target) { gpu.cpu=cpu; gpu.target=target; gpu.Property("cpu"); }
++void gr_gpu_color(unsigned char r, unsigned char g, unsigned char b, unsigned char a) { gpu.color={{r,g,b,a}}; }
++void gr_gpu_clip(int x, int y, int w, int h, bool enabled) { gpu.clip={{x,y,w,h}}; gpu.clipped=enabled; }
++bool gr_gpu_fill(int x, int y, int w, int h) { return gpu.Draw(nullptr,0,0,w,h,x,y); }
++bool gr_gpu_blit(const GGLSurface* s, int sx, int sy, int w, int h, int x, int y) { return gpu.Draw(s,sx,sy,w,h,x,y); }
++void gr_gpu_flush() { gpu.Flush(); }
++void gr_gpu_cpu_write() { gpu.Flush(); gpu.upload=true; }
++void gr_gpu_exit() { gpu.Flush(); gpu.Stop(); }

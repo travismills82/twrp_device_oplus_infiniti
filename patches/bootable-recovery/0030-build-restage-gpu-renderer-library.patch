@@ -1,0 +1,14 @@
+diff --git a/prebuilt/Android.mk b/prebuilt/Android.mk
+index dee2735..444a8dd 100644
+--- a/prebuilt/Android.mk
++++ b/prebuilt/Android.mk
+@@ -455,6 +455,9 @@ LOCAL_MODULE := relink_libraries
+ LOCAL_MODULE_TAGS := optional
+ LOCAL_MODULE_CLASS := EXECUTABLES
+ LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/
++# Restage the actual renderer, not only its exported ABI, on incremental builds.
++LOCAL_ADDITIONAL_DEPENDENCIES += $(TARGET_OUT_SHARED_LIBRARIES)/libminuitwrp.so \
++    $(TARGET_OUT_SHARED_LIBRARIES)/bootstrap/libdl_android.so
+ ifneq ($(TARGET_ARCH), arm64)
+     ifneq ($(TARGET_ARCH), x86_64)
+         LOCAL_POST_INSTALL_CMD += $(RELINK) $(TARGET_RECOVERY_ROOT_OUT)/system/lib $(RECOVERY_LIBRARY_SOURCE_FILES)

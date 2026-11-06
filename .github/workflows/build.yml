@@ -137,6 +137,7 @@ jobs:
         python3 device/${{ github.event.inputs.DEVICE_PATH }}/scripts/test-decrypt-readiness.py
         python3 device/${{ github.event.inputs.DEVICE_PATH }}/scripts/test-wifi-runtime-firmware.py
         python3 device/${{ github.event.inputs.DEVICE_PATH }}/scripts/test-native-backup.py .
+        python3 device/${{ github.event.inputs.DEVICE_PATH }}/scripts/test-gpu-renderer.py .
         g++ -std=c++17 -Wall -Wextra -Werror -I bootable/recovery device/${{ github.event.inputs.DEVICE_PATH }}/scripts/test-native-backup-safety.cpp -o /tmp/test-native-backup-safety
         /tmp/test-native-backup-safety "$(mktemp -d /tmp/twrp-native-backup-safety.XXXXXX)"
         git -C bootable/recovery diff --check
@@ -260,6 +261,10 @@ jobs:
         echo "TWRP_IMAGE=$OUT_DIR/$IMAGE_NAME" >> "$GITHUB_ENV"
         echo "TWRP_ZIP=$OUT_DIR/${IMAGE_NAME%.img}.zip" >> "$GITHUB_ENV"
         kill $TIP_PID && exit 0
+
+    - name: Verify packed GPU renderer and startup
+      run: |
+        python3 device/${{ github.event.inputs.DEVICE_PATH }}/scripts/verify-gpu-image.py "$TWRP_IMAGE" --root .
 
     - name: Build clean slot-A flashable ZIP
       run: |

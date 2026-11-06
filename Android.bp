@@ -7,6 +7,23 @@
 soong_namespace {
 }
 
+// Developer-only, off-screen conformance test; not installed in normal recovery.
+cc_binary {
+    name: "twrp-gpu-render-test",
+    recovery: true,
+    installable: false,
+    srcs: ["tools/gpu_render_test.cpp"],
+    include_dirs: [
+        "bootable/recovery/minuitwrp",
+        "bootable/recovery/minuitwrp/include",
+        "bootable/recovery/libpixelflinger/include",
+        "bootable/recovery",
+        "bootable/recovery/gui/include",
+    ],
+    shared_libs: ["libminuitwrp", "libcutils"],
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+}
+
 // Off-screen diagnostic only; this does NOT claim the GUI uses GPU rendering.
 cc_binary {
     name: "twrp-gpu-probe",

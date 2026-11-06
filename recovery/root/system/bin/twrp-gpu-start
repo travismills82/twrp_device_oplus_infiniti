@@ -1,0 +1,103 @@
+#!/system/bin/sh
+# Active-slot, read-only Adreno preparation. No block writes, forced module
+# loading, global linker environment, clock forcing or SELinux changes.
+set -eu
+PATH=/system/bin:/system/xbin
+export PATH
+ROOT=/tmp/twrp-gpu
+VENDOR=/tmp/twrp-gpu-vendor
+SYSTEM=/tmp/twrp-gpu-system
+DLKM=/tmp/twrp-gpu-dlkm
+
+log() { echo "[twrp-gpu] $*"; }
+fail() { log "$*; retaining CPU renderer"; setprop twrp.gpu.status "$1"; exit 1; }
+ro_mount() {
+    real="$(readlink -f "$1")"
+    awk -v path="$real" '$2 == path && $4 ~ /(^|,)ro(,|$)/ {ok=1} END {exit !ok}' /proc/mounts
+}
+mount_active() {
+    name="$1"; target="$2"
+    block="/dev/block/mapper/${name}${slot}"
+    [ -b "$block" ] || fail active-partition-unavailable
+    if ro_mount "$target"; then
+        real="$(readlink -f "$target")"
+        mounted="$(awk -v path="$real" '$2 == path {print $1; exit}' /proc/mounts)"
+        [ "$(readlink -f "$mounted")" = "$(readlink -f "$block")" ] || fail wrong-slot-view
+        return 0
+    fi
+    [ ! -L "$target" ] || fail unexpected-view-link
+    mkdir -p "$target"
+    mount -t erofs -o ro "$block" "$target" 2>"$ROOT/mount-$name.log" ||
+        mount -t ext4 -o ro,noload "$block" "$target" 2>>"$ROOT/mount-$name.log" || fail readonly-mount-failed
+    ro_mount "$target" || fail view-not-readonly
+}
+
+[ -n "$(getprop ro.twrp.version)" ] || exit 64
+[ "$(getprop ro.board.platform)" = sm8850 ] || exit 64
+setprop twrp.gpu.ready 0
+if [ "$(getprop twrp.gpu.enable)" = 0 ]; then setprop twrp.gpu.status disabled; exit 0; fi
+mkdir -p "$ROOT"
+mkdir "$ROOT/lock" 2>/dev/null || exit 0
+trap 'rmdir "$ROOT/lock"' EXIT
+setprop twrp.gpu.status preparing
+slot="$(getprop ro.boot.slot_suffix)"
+case "$slot" in _a|_b) ;; *) fail invalid-slot ;; esac
+
+mount_active vendor "$VENDOR"
+mount_active system "$SYSTEM"
+mount_active vendor_dlkm "$DLKM"
+for lib in libEGL_adreno.so libGLESv2_adreno.so eglSubDriverAndroid.so; do
+    [ -r "$VENDOR/lib64/egl/$lib" ] || fail driver-library-missing
+done
+[ -r "$VENDOR/lib64/hw/mapper.qti.so" ] || fail graphics-mapper-missing
+[ -r "$DLKM/lib/modules/msm_kgsl.ko" ] || fail kgsl-module-missing
+
+# Firmware is <1 MiB on the qualified COS17 firmware. Copy only bounded gen8
+# GPU files into RAM, with recovery-readable labels, rather than bundle blobs
+# or expose unlabeled files on the newer vendor filesystem to ueventd.
+mkdir -p "$ROOT/firmware" /vendor/firmware
+chcon u:object_r:vendor_file:s0 "$ROOT" "$ROOT/firmware" || fail firmware-label-failed
+total=0; count=0
+for file in "$VENDOR"/firmware/gen8*; do
+    [ -f "$file" ] || continue
+    base="${file##*/}"
+    case "$base" in gen8[0-9][0-9][0-9][0-9]_aqe.fw|gen8[0-9][0-9][0-9][0-9]_sqe.fw|gen8[0-9][0-9][0-9][0-9]_gmu.bin|gen8[0-9][0-9][0-9][0-9]_zap.mbn) ;; *) continue ;; esac
+    size="$(stat -c %s "$file")"
+    total=$((total + size)); [ "$total" -le 8388608 ] || fail firmware-too-large
+    cp "$file" "$ROOT/firmware/$base"
+    chmod 0644 "$ROOT/firmware/$base"
+    chcon u:object_r:vendor_file:s0 "$ROOT/firmware/$base" || fail firmware-label-failed
+    if [ -e "/vendor/firmware/$base" ] || [ -L "/vendor/firmware/$base" ]; then
+        cmp -s "$file" "/vendor/firmware/$base" || fail conflicting-firmware
+    else
+        ln -s "$ROOT/firmware/$base" "/vendor/firmware/$base"
+    fi
+    count=$((count + 1))
+done
+[ "$count" -ge 4 ] || fail firmware-missing
+
+if ! grep -q '^msm_kgsl ' /proc/modules; then
+    # Respect the active firmware dependency graph/blocklist. Rewrite paths in
+    # RAM only; the vendor_dlkm filesystem and its module files remain read-only.
+    modules="$DLKM/lib/modules"
+    mkdir -p "$ROOT/modules"
+    sed "s|/vendor/lib/modules/|$modules/|g" "$modules/modules.dep" > "$ROOT/modules/modules.dep"
+    for meta in modules.softdep modules.blocklist; do
+        if [ -r "$modules/$meta" ]; then cp "$modules/$meta" "$ROOT/modules/$meta"; fi
+    done
+    for file in "$modules"/*.ko; do
+        base="${file##*/}"
+        [ -e "$ROOT/modules/$base" ] || ln -s "$file" "$ROOT/modules/$base"
+    done
+    timeout 20 modprobe -b -d "$ROOT/modules" msm_kgsl >"$ROOT/module.log" 2>&1 || fail kgsl-load-failed
+fi
+[ -c /dev/kgsl-3d0 ] || fail kgsl-node-missing
+# Qualify the driver in a separate, time-limited process before loading it into
+# the GUI. This environment is scoped to the diagnostic process, not recovery.
+timeout 20 env LD_LIBRARY_PATH="/system/lib64:$VENDOR/lib64/egl:$VENDOR/lib64/hw:$VENDOR/lib64:$SYSTEM/system/lib64" \
+    /system/bin/twrp-gpu-probe --egl "$VENDOR/lib64/egl/libEGL_adreno.so" \
+    --gles "$VENDOR/lib64/egl/libGLESv2_adreno.so" >"$ROOT/probe.log" 2>&1 || fail shader-probe-failed
+grep -q '"hardware":true,"shader_readback":true' "$ROOT/probe.log" || fail shader-probe-unverified
+setprop twrp.gpu.status ready
+setprop twrp.gpu.ready 1
+log "Adreno ready using active slot $slot, $count firmware files ($total bytes in RAM)"

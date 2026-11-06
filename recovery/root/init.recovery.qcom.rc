@@ -47,6 +47,13 @@ service twrp-touch-start /system/bin/twrp-touch-start
     oneshot
     seclabel u:r:recovery:s0
 
+service twrp-gpu-start /system/bin/twrp-gpu-start
+    user root
+    group root graphics
+    disabled
+    oneshot
+    seclabel u:r:recovery:s0
+
 service twrp-thermal-guard /system/bin/twrp-thermal-guard
     class core
     user root
@@ -93,6 +100,7 @@ on fs
 
 on property:twrp.fstab.ready=1
     start twrp-touch-start
+    start twrp-gpu-start
     start twrp-charging
     # Mount firmware
     mkdir /firmware

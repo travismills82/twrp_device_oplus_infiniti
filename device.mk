@@ -72,7 +72,7 @@ PRODUCT_PACKAGES += \
 	twrp-service-check
 
 # Probe actual shader execution before attempting a recovery GPU renderer.
-PRODUCT_PACKAGES += twrp-gpu-probe
+PRODUCT_PACKAGES += twrp-gpu-probe twrp-gpu-start
 
 # Recovery init and FBE/decryption userspace
 PRODUCT_PACKAGES += \

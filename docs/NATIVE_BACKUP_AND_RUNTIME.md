@@ -76,24 +76,17 @@ An unmounted/read-write mapping may need a deliberate recovery preparation
 step before logical image restoration. The tool does not forcibly stop crypto
 services, tear down snapshots, resize mappings or bypass a failed guard.
 
-## GPU findings — acceleration is not enabled yet
+## GPU compositor — experimental implementation
 
-The locally built Android `twrp-gpu-probe` creates a 32×32 off-screen EGL
-context, compiles/runs a GLES shader and verifies both drawn and clear pixels.
-It does not take DRM master, alter scanout, load modules or start services.
+Patch `0029` now integrates GLES composition of fills, textures and text masks,
+with the existing DRM scanout and a CPU fallback/replay journal. The initial
+missing KGSL node was resolved with the active firmware's normal module load;
+no module was force-loaded. Actual recovery shader/readback, pixel conformance
+and live RAM-only GUI tests passed on the connected Adreno 840 phone.
 
-On the connected phone in Android, hardware shader/readback testing passed on
-Qualcomm Adreno 840 with OpenGL ES 3.2 and EGL 1.5. On the already-installed
-recovery, `/dev/kgsl-3d0` was absent, the normal EGL library was absent, and a
-direct active-vendor EGL probe did not create a display. This is not a passed
-recovery GPU test. No GPU kernel module was forcibly loaded.
-
-The helper is a diagnostic, **not a GPU GUI renderer**. TWRP still draws with
-CPU Pixelflinger and uses DRM for display scanout. Making acceleration available
-in recovery needs qualified KGSL/module/firmware initialization, an isolated
-compatible EGL/GLES loader, and a real renderer integration with a CPU fallback.
-`TARGET_USES_VULKAN` alone does not perform that integration. No large GPU blobs
-are bundled and no hardware-acceleration claim is made for this image.
+This remains experimental and readback-based, not zero-copy display acceleration
+or a blanket performance gain. See [RECOVERY_GPU.md](RECOVERY_GPU.md) for startup,
+dependencies, measured limitations, diagnostics and the restoration safety boundary.
 
 ## Can radio, IMS and audio files be linked from Android?
 
@@ -133,9 +126,9 @@ C++ fixtures cover exact image lengths, capacity underflow, interrupted/short
 I/O, mounted/read-only devices and mapper holders using disposable directories.
 Existing OTA, sideload, Wi-Fi and decrypt-readiness source checks are retained.
 
-The new image is built locally and remains experimental. The phone was booted
-only into its already-installed recovery for read-only diagnostics, then
-returned to Android slot A with `sys.boot_completed=1`. Both recovery partition
+The new image is built locally and remains experimental. Phone testing used
+the already-installed recovery with temporary RAM-only code/firmware and normal
+module loading; no new recovery image was installed. Both recovery partition
 hashes remained `401ef2ccba7bcdb4a707ba3ccfb20aca02bb3e3861d9c69ea49f022a2de5985f`.
 No new image was flashed; no destructive restore was tested. New engine behavior
 and added native GUI selections still require physical qualification before a
