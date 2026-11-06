@@ -1,0 +1,5 @@
+--- a/twrp-functions.cpp
++++ b/twrp-functions.cpp
+@@ -1478 +1478 @@
+-			if (SDCard->Mount(true)) {
++			if (SDCard && SDCard->Mount(true)) {

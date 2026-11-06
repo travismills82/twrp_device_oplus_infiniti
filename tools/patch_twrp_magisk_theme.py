@@ -29,6 +29,10 @@ class AdvancedListItemRemoval:
 
 REMOVED_ADVANCED_ITEMS = (
     AdvancedListItemRemoval(
+        name="UFS Manager",
+        markers=("ufs_manager", "twrp-ufs-manager"),
+    ),
+    AdvancedListItemRemoval(
         name="Disable AVB2.0",
         markers=("tw_action=disableAVB2", "disable_avb2=Disable AVB2.0"),
     ),
@@ -193,7 +197,12 @@ def patch_theme(theme_path: Path) -> int:
         return 0
 
     original_text = theme_path.read_text(encoding="utf-8")
-    text = original_text
+    # Also clean an incrementally staged theme from the retired feature branch.
+    # Its source and utilities remain archived there, not in this recovery.
+    text = re.sub(
+        r"\n[ \t]*<!-- OP15 UFS Manager pages START -->.*?<!-- OP15 UFS Manager pages END -->\n",
+        "\n", original_text, flags=re.DOTALL,
+    )
 
     page_start = text.find('<page name="advanced">')
     if page_start == -1:

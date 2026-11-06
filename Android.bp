@@ -7,6 +7,18 @@
 soong_namespace {
 }
 
+// Off-screen diagnostic only; this does NOT claim the GUI uses GPU rendering.
+cc_binary {
+    name: "twrp-gpu-probe",
+    recovery: true,
+    srcs: ["tools/gpu_probe.cpp"],
+    include_dirs: ["frameworks/native/opengl/include"],
+    shared_libs: ["libdl"],
+    stl: "libc++_static",
+    cppflags: ["-fexceptions"],
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+}
+
 // Nonblocking service registration check for ordered recovery HAL startup.
 cc_binary {
     name: "twrp-service-check",

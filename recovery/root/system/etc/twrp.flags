@@ -56,6 +56,17 @@
 /efsc                  emmc    /dev/block/bootdevice/by-name/fsc                                                           flags=display="FSC";backup=1;flashimg=1
 /efsg                  emmc    /dev/block/bootdevice/by-name/fsg                                                           flags=display="FSG";backup=1;flashimg=1
 
+# Additional same-handset OEM/NV and splash images. These remain ordinary
+# TWRP .win backups/restores; no GPT, LUN or bootloader manager is involved.
+# Restore only with matching firmware and with the target unmounted/quiescent.
+/efs_oem_backup        emmc    /dev/block/by-name/fs_bkup                                                                flags=display="EFS OEM Backup (same device)";backup=1
+/efs_oem_temp          emmc    /dev/block/by-name/mdm1oemnvbktmp                                                          flags=display="EFS OEM NV Temp (same device)";backup=1
+/oplusreserve1_image   emmc    /dev/block/by-name/oplusreserve1                                                          flags=display="Oplus Reserve1 Image";backup=1
+/oplusreserve3_image   emmc    /dev/block/by-name/oplusreserve3                                                          flags=display="Oplus Reserve3 Image";backup=1
+/oplusreserve5_image   emmc    /dev/block/by-name/oplusreserve5                                                          flags=display="Oplus Reserve5 Image";backup=1
+/splash_image          emmc    /dev/block/by-name/splash                                                                 flags=slotselect;display="Splash Image";backup=1
+/splash_odm_image      emmc    /dev/block/by-name/splash_odm                                                             flags=display="Splash ODM Image";backup=1
+
 # Removable storage
 /storage               auto    /data/media/0                                                                               flags=display="Internal Storage";backup=1;usermrf;fsflags="bind,utf8";removable
 /usb_otg               vfat    /dev/block/sdg1                                                /dev/block/sdg               flags=display="USB-Storage";fsflags=utf8;storage;wipeingui;removable

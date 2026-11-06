@@ -1,0 +1,351 @@
+diff --git a/partition.cpp b/partition.cpp
+index 162ed60..b3b3344 100755
+--- a/partition.cpp
++++ b/partition.cpp
+@@ -52,0 +53,2 @@
++#include "backup_safety.hpp"
++#include <linux/fs.h>
+@@ -2773,0 +2776,7 @@ bool TWPartition::Backup_Tar(PartitionSettings *part_settings, pid_t *tar_fork_p
++	if (!part_settings->adbbackup && !Has_Data_Media) {
++		string error;
++		if (!twrp_backup_safety::SafeFileBackup(Backup_Path, part_settings->Backup_Folder, &error)) {
++			gui_print("File backup preflight refused: %s\n", error.c_str());
++			return false;
++		}
++	}
+@@ -2878,0 +2888,6 @@ bool TWPartition::Raw_Read_Write(PartitionSettings *part_settings) {
++	uint64_t device_bytes = 0;
++	int block_read_only = 1;
++	struct stat block_stat {};
++	string safety_error;
++	int probe_fd;
++	const bool restoring = part_settings->PM_Method != PM_BACKUP;
+@@ -2890 +2905 @@ bool TWPartition::Raw_Read_Write(PartitionSettings *part_settings) {
+-		BlkDiscard();
++		// Never discard a target before validating a complete raw image.
+@@ -2900,0 +2916,19 @@ bool TWPartition::Raw_Read_Write(PartitionSettings *part_settings) {
++	// Read-only geometry/mount preflight must precede every write-open, including
++	// ADB restore. Resolve the actual device, not only an image-alias mount name.
++	probe_fd = open(Actual_Block_Device.c_str(), O_RDONLY | O_LARGEFILE | O_CLOEXEC);
++	if (probe_fd < 0) return false;
++	const bool geometry_ok = fstat(probe_fd, &block_stat) == 0 && S_ISBLK(block_stat.st_mode) &&
++		ioctl(probe_fd, BLKGETSIZE64, &device_bytes) == 0;
++	const bool writable = !restoring || (ioctl(probe_fd, BLKROGET, &block_read_only) == 0 && !block_read_only);
++	if (!writable) safety_error = "Target reports block-level read-only";
++	close(probe_fd);
++	if (restoring && part_settings->adbbackup) Remain = part_settings->total_restore_size;
++	if (!geometry_ok || !writable || !twrp_backup_safety::ImageLengthValid(Remain, device_bytes) ||
++		!twrp_backup_safety::BlockIsSafe(twrp_backup_safety::DeviceId(block_stat.st_rdev), restoring, &safety_error) ||
++		(!part_settings->adbbackup && !twrp_backup_safety::SeparateStorage(
++			twrp_backup_safety::DeviceId(block_stat.st_rdev), restoring ? srcfn : destfn, &safety_error))) {
++		gui_print("Raw image preflight refused %s: %s (image=%llu, device=%llu)\n",
++			Actual_Block_Device.c_str(), safety_error.c_str(), Remain, (unsigned long long)device_bytes);
++		return false;
++	}
++
+@@ -2907 +2941,2 @@ bool TWPartition::Raw_Read_Write(PartitionSettings *part_settings) {
+-	dest_fd = open(destfn.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_LARGEFILE, S_IRUSR | S_IWUSR);
++	dest_fd = open(destfn.c_str(), O_WRONLY | O_LARGEFILE | O_CLOEXEC |
++		(restoring ? O_EXCL : (part_settings->adbbackup ? 0 : (O_CREAT | O_EXCL))), S_IRUSR | S_IWUSR);
+@@ -2936 +2971,3 @@ bool TWPartition::Raw_Read_Write(PartitionSettings *part_settings) {
+-		if (read(src_fd, buffer, bs) != bs) {
++		if (!twrp_backup_safety::ExactIo(buffer, bs, [src_fd](void* data, size_t bytes) {
++			return read(src_fd, data, bytes);
++		})) {
+@@ -2940 +2977,3 @@ bool TWPartition::Raw_Read_Write(PartitionSettings *part_settings) {
+-		if (write(dest_fd, buffer, bs) != bs) {
++		if (!twrp_backup_safety::ExactIo(buffer, bs, [dest_fd](void* data, size_t bytes) {
++			return write(dest_fd, data, bytes);
++		})) {
+@@ -2953 +2992,5 @@ bool TWPartition::Raw_Read_Write(PartitionSettings *part_settings) {
+-	fsync(dest_fd);
++	// ADB backup writes a FIFO, not durable storage. The host owns its sync.
++	if ((restoring || !part_settings->adbbackup) && fsync(dest_fd) != 0) {
++		gui_print("Failed to sync raw image destination: %s\n", strerror(errno));
++		goto exit;
++	}
+@@ -3103,0 +3147,19 @@ bool TWPartition::Restore_Tar(PartitionSettings *part_settings) {
++bool TWPartition::Validate_Raw_Restore(const string& filename) {
++	Find_Actual_Block_Device();
++	const int fd = open(Actual_Block_Device.c_str(), O_RDONLY | O_LARGEFILE | O_CLOEXEC);
++	if (fd < 0) return false;
++	struct stat block {}, image {};
++	uint64_t bytes = 0;
++	int read_only = 1;
++	string error;
++	const bool ok = fstat(fd, &block) == 0 && S_ISBLK(block.st_mode) &&
++		ioctl(fd, BLKGETSIZE64, &bytes) == 0 && ioctl(fd, BLKROGET, &read_only) == 0 && !read_only &&
++		stat(filename.c_str(), &image) == 0 &&
++		S_ISREG(image.st_mode) && twrp_backup_safety::ImageLengthValid(image.st_size, bytes) &&
++		twrp_backup_safety::BlockIsSafe(twrp_backup_safety::DeviceId(block.st_rdev), true, &error) &&
++		twrp_backup_safety::SeparateStorage(twrp_backup_safety::DeviceId(block.st_rdev), filename, &error);
++	close(fd);
++	if (!ok) gui_print("Raw restore preflight refused %s: %s\n", Backup_Display_Name.c_str(), error.c_str());
++	return ok;
++}
++
+diff --git a/partitionmanager.cpp b/partitionmanager.cpp
+index d6160c1..6dc377f 100755
+--- a/partitionmanager.cpp
++++ b/partitionmanager.cpp
+@@ -75,0 +76 @@
++#include "backup_safety.hpp"
+@@ -1247 +1248 @@ int TWPartitionManager::Run_Backup(bool adbbackup) {
+-		if (free_space - (32 * 1024 * 1024) < total_bytes) {
++		if (!twrp_backup_safety::HasCapacity(free_space, total_bytes)) {
+@@ -1272,0 +1274,9 @@ int TWPartitionManager::Run_Backup(bool adbbackup) {
++	if (!adbbackup) {
++		const string marker = part_settings.Backup_Folder + twrp_backup_safety::kIncomplete;
++		const int fd = open(marker.c_str(), O_CREAT | O_EXCL | O_WRONLY | O_CLOEXEC, 0600);
++		if (fd < 0) { gui_print("Cannot mark backup session incomplete: %s\n", strerror(errno)); return false; }
++		const bool synced = fsync(fd) == 0;
++		close(fd);
++		if (!synced) { gui_print("Cannot sync backup session marker\n"); return false; }
++	}
++
+@@ -1337 +1346,0 @@ int TWPartitionManager::Run_Backup(bool adbbackup) {
+-	gui_msg(Msg(msg::kHighlight, "backup_completed=[BACKUP COMPLETED IN {1} SECONDS]")(total_time)); // the end
+@@ -1348,0 +1358,5 @@ int TWPartitionManager::Run_Backup(bool adbbackup) {
++	if (!adbbackup && unlink((part_settings.Backup_Folder + twrp_backup_safety::kIncomplete).c_str()) != 0) {
++		gui_print("Cannot finalize backup session: %s\n", strerror(errno));
++		return false;
++	}
++	gui_msg(Msg(msg::kHighlight, "backup_completed=[BACKUP COMPLETED IN {1} SECONDS]")(total_time));
+@@ -1414,0 +1429,5 @@ int TWPartitionManager::Run_Restore(const string& Restore_Name) {
++	// Mount the selected storage before inspecting its incomplete marker.
++	if (TWFunc::Path_Exists(Restore_Name + twrp_backup_safety::kIncomplete)) {
++		gui_print("Refusing an incomplete backup session. No partition was restored.\n");
++		return false;
++	}
+@@ -1437,0 +1457,19 @@ int TWPartitionManager::Run_Restore(const string& Restore_Name) {
++				// A non-data filesystem must not wipe the storage containing its
++				// own archive. Data/media has its existing preserve-media workflow.
++				if (!part_settings.Part->Has_Data_Media && !part_settings.Part->Has_Android_Secure &&
++					part_settings.Part->Get_Restore_File_System(&part_settings) != "emmc") {
++					part_settings.Part->Find_Actual_Block_Device();
++					struct stat target {}, archive {};
++					string error;
++					if (stat(part_settings.Part->Actual_Block_Device.c_str(), &target) != 0 ||
++						stat(part_settings.Backup_Folder.c_str(), &archive) != 0 ||
++						(S_ISBLK(target.st_mode) && !twrp_backup_safety::SeparateStorage(
++							twrp_backup_safety::DeviceId(target.st_rdev), part_settings.Backup_Folder, &error)) ||
++						(S_ISDIR(target.st_mode) && !twrp_backup_safety::SafeFileBackup(
++							part_settings.Part->Actual_Block_Device, part_settings.Backup_Folder, &error))) {
++						gui_print("Restore archive is unavailable or stored on its own target: %s\n", error.c_str());
++						return false;
++					}
++				}
++				if (part_settings.Part->Get_Restore_File_System(&part_settings) == "emmc" &&
++					!part_settings.Part->Validate_Raw_Restore(Full_Filename)) return false;
+@@ -1454 +1492,4 @@ int TWPartitionManager::Run_Restore(const string& Restore_Name) {
+-							if (check_digest > 0 && !twrpDigestDriver::Check_Digest(Full_Filename))
++							const string child_file = part_settings.Backup_Folder + "/" + (*subpart)->Backup_FileName;
++							if ((*subpart)->Get_Restore_File_System(&part_settings) == "emmc" &&
++								!(*subpart)->Validate_Raw_Restore(child_file)) return false;
++							if (check_digest > 0 && !twrpDigestDriver::Check_Digest(child_file))
+@@ -1461,0 +1503 @@ int TWPartitionManager::Run_Restore(const string& Restore_Name) {
++				return false;
+diff --git a/partitions.hpp b/partitions.hpp
+index 8cc49d4..38752bd 100755
+--- a/partitions.hpp
++++ b/partitions.hpp
+@@ -143,0 +144 @@ public:
++	bool Validate_Raw_Restore(const string& filename);                        // Read-only preflight before any selected restore is written
+diff --git a/backup_safety.hpp b/backup_safety.hpp
+new file mode 100644
+index 0000000..3c51f0b
+--- /dev/null
++++ b/backup_safety.hpp
+@@ -0,0 +1,192 @@
++/* SPDX-License-Identifier: GPL-3.0-or-later */
++#ifndef TWRP_BACKUP_SAFETY_HPP
++#define TWRP_BACKUP_SAFETY_HPP
++
++#include <cerrno>
++#include <cstdint>
++#include <cstdlib>
++#include <dirent.h>
++#include <fstream>
++#include <set>
++#include <sstream>
++#include <string>
++#include <sys/stat.h>
++#include <sys/sysmacros.h>
++#include <unistd.h>
++#include <limits.h>
++
++// Shared by the native Nandroid path and disposable host fixtures. No code in
++// this header opens a block device for writing or changes a mount/mapping.
++namespace twrp_backup_safety {
++constexpr const char* kIncomplete = "/.twrp-incomplete";
++
++inline bool HasCapacity(uint64_t free, uint64_t wanted) {
++    constexpr uint64_t reserve = 32ULL * 1024 * 1024;
++    return free >= reserve && wanted <= free - reserve;
++}
++
++inline bool ImageLengthValid(uint64_t image, uint64_t device) {
++    // A native emmc .win is a complete partition, not a sparse/flashable image.
++    return image != 0 && device != 0 && image == device;
++}
++
++template <typename Operation>
++bool ExactIo(void* data, size_t bytes, Operation operation) {
++    auto* cursor = static_cast<uint8_t*>(data);
++    while (bytes) {
++        const ssize_t done = operation(cursor, bytes);
++        if (done < 0 && errno == EINTR) continue;
++        if (done <= 0 || static_cast<size_t>(done) > bytes) {
++            if (done == 0) errno = EIO;
++            return false;
++        }
++        cursor += done;
++        bytes -= static_cast<size_t>(done);
++    }
++    return true;
++}
++
++inline std::string DeviceId(dev_t device) {
++    return std::to_string(major(device)) + ":" + std::to_string(minor(device));
++}
++
++inline bool ContainsPath(const std::string& directory, const std::string& path) {
++    return directory == "/" || path == directory ||
++        (path.size() > directory.size() && path.compare(0, directory.size(), directory) == 0 &&
++         path[directory.size()] == '/');
++}
++
++inline std::string MountUnescape(const std::string& value) {
++    std::string result;
++    for (size_t pos = 0; pos < value.size(); ++pos) {
++        if (value[pos] == '\\' && pos + 3 < value.size() &&
++            value[pos+1] >= '0' && value[pos+1] <= '7' && value[pos+2] >= '0' && value[pos+2] <= '7' &&
++            value[pos+3] >= '0' && value[pos+3] <= '7') {
++            result += static_cast<char>((value[pos+1]-'0')*64 + (value[pos+2]-'0')*8 + value[pos+3]-'0');
++            pos += 3;
++        } else result += value[pos];
++    }
++    return result;
++}
++
++inline bool FilesystemPath(const std::string& path, const std::string& device, std::string* result,
++                           const std::string& mountinfo) {
++    char resolved[PATH_MAX];
++    if (!realpath(path.c_str(), resolved)) return false;
++    const std::string canonical(resolved);
++    std::ifstream mounts(mountinfo);
++    if (!mounts) return false;
++    std::string line;
++    size_t best = 0;
++    while (std::getline(mounts, line)) {
++        std::istringstream fields(line);
++        std::string id, parent, source, root, target, options;
++        if (!(fields >> id >> parent >> source >> root >> target >> options)) return false;
++        target = MountUnescape(target);
++        root = MountUnescape(root);
++        if (source != device || target.size() < best || !ContainsPath(target, canonical)) continue;
++        best = target.size();
++        const std::string relative = canonical.substr(target == "/" ? 0 : target.size());
++        *result = root == "/" ? (relative.empty() ? "/" : relative) : root + relative;
++    }
++    return best != 0 && !mounts.bad();
++}
++
++inline bool SafeFileBackup(const std::string& source, const std::string& destination,
++                           std::string* error, const std::string& mountinfo = "/proc/self/mountinfo") {
++    struct stat input {}, output {};
++    if (stat(source.c_str(), &input) != 0 || stat(destination.c_str(), &output) != 0) {
++        *error = "Cannot identify file backup storage"; return false;
++    }
++    if (input.st_dev != output.st_dev) return true;
++    // stat alone cannot distinguish a safe sibling directory from recursion,
++    // and realpath alone cannot resolve bind-mount aliases such as /storage.
++    std::string input_path, output_path;
++    const auto device = DeviceId(input.st_dev);
++    if (!FilesystemPath(source, device, &input_path, mountinfo) ||
++        !FilesystemPath(destination, device, &output_path, mountinfo)) {
++        *error = "Cannot resolve file backup mount roots"; return false;
++    }
++    if (ContainsPath(input_path, output_path)) {
++        *error = "Backup/restore archive is inside its own source/target tree"; return false;
++    }
++    return true;
++}
++
++inline bool CollectUsers(const std::string& device, std::set<std::string>* users,
++                         std::string* error, const std::string& sys = "/sys") {
++    if (users->count(device)) return true;
++    if (users->size() >= 128) { *error = "Block-device dependency graph is too large"; return false; }
++    users->insert(device);
++    const std::string path = sys + "/dev/block/" + device + "/holders";
++    DIR* directory = opendir(path.c_str());
++    if (!directory) { *error = "Cannot inspect block users for " + device; return false; }
++    std::set<std::string> children;
++    errno = 0;
++    while (auto* entry = readdir(directory)) {
++        if (entry->d_name[0] == '.') continue;
++        std::ifstream value(path + "/" + entry->d_name + "/dev");
++        std::string child;
++        if (!(value >> child) || child.find_first_not_of("0123456789:") != std::string::npos) {
++            closedir(directory); *error = "Cannot identify a block-device holder"; return false;
++        }
++        children.insert(child);
++        errno = 0;
++    }
++    const int saved = errno;
++    closedir(directory);
++    if (saved) { *error = "Cannot enumerate block-device holders"; return false; }
++    for (const auto& child : children)
++        if (!CollectUsers(child, users, error, sys)) return false;
++    return true;
++}
++
++inline bool BlockIsSafe(const std::string& device, bool restore, std::string* error,
++                        const std::string& sys = "/sys",
++                        const std::string& mountinfo = "/proc/self/mountinfo") {
++    std::set<std::string> users;
++    if (!CollectUsers(device, &users, error, sys)) return false;
++    if (restore && users.size() != 1) {
++        *error = "Restore target has active device-mapper/block holders"; return false;
++    }
++    std::ifstream mounts(mountinfo);
++    if (!mounts) { *error = "Cannot inspect mounted block devices"; return false; }
++    std::string line;
++    bool saw_mount = false;
++    while (std::getline(mounts, line)) {
++        std::istringstream fields(line);
++        std::string id, parent, source, root, target, options;
++        if (!(fields >> id >> parent >> source >> root >> target >> options)) {
++            *error = "Malformed mount information"; return false;
++        }
++        saw_mount = true;
++        if (users.count(source) && (restore || ("," + options + ",").find(",rw,") != std::string::npos)) {
++            *error = (restore ? "Restore target is mounted: " : "Raw backup source is writable/mounted: ") + target;
++            return false;
++        }
++    }
++    if (mounts.bad()) { *error = "Cannot finish reading mount information"; return false; }
++    if (!saw_mount) { *error = "Mount information is empty"; return false; }
++    return true;
++}
++
++inline bool SeparateStorage(const std::string& source, const std::string& destination,
++                            std::string* error) {
++    struct stat location {};
++    std::string parent = destination;
++    while (stat(parent.c_str(), &location) != 0) {
++        const auto slash = parent.find_last_of('/');
++        if (slash == std::string::npos || parent == "/") {
++            *error = "Cannot identify backup/restore image storage"; return false;
++        }
++        parent = slash == 0 ? "/" : parent.substr(0, slash);
++    }
++    std::set<std::string> users;
++    if (!CollectUsers(source, &users, error)) return false;
++    if (users.count(DeviceId(location.st_dev))) {
++        *error = "Image storage is backed by the source/target partition"; return false;
++    }
++    return true;
++}
++}  // namespace twrp_backup_safety
++#endif

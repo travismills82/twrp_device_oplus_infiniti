@@ -136,6 +136,9 @@ jobs:
         python3 device/${{ github.event.inputs.DEVICE_PATH }}/scripts/test-sideload-usb.py
         python3 device/${{ github.event.inputs.DEVICE_PATH }}/scripts/test-decrypt-readiness.py
         python3 device/${{ github.event.inputs.DEVICE_PATH }}/scripts/test-wifi-runtime-firmware.py
+        python3 device/${{ github.event.inputs.DEVICE_PATH }}/scripts/test-native-backup.py .
+        g++ -std=c++17 -Wall -Wextra -Werror -I bootable/recovery device/${{ github.event.inputs.DEVICE_PATH }}/scripts/test-native-backup-safety.cpp -o /tmp/test-native-backup-safety
+        /tmp/test-native-backup-safety "$(mktemp -d /tmp/twrp-native-backup-safety.XXXXXX)"
         git -C bootable/recovery diff --check
         git -C bootable/recovery status --short
         grep -n "Supplicant network ID" bootable/recovery/gui/action.cpp
