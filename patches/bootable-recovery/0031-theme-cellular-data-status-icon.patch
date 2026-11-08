@@ -1,0 +1,73 @@
+diff --git a/gui/theme/portrait_hdpi/ui.xml b/gui/theme/portrait_hdpi/ui.xml
+--- a/gui/theme/portrait_hdpi/ui.xml
++++ b/gui/theme/portrait_hdpi/ui.xml
+@@ -240,0 +241 @@
++		<variable name="tw_cellular_connected" value="0"/>
+@@ -290,0 +292,36 @@
++
++			<!-- OP15 cellular data status icon START -->
++			<!-- Static data arrows, not signal-strength or traffic measurements. -->
++			<fill color="%accent_color%">
++				<condition var1="tw_cellular_connected" var2="1"/>
++				<placement x="613" y="28" w="4" h="3"/>
++			</fill>
++			<fill color="%accent_color%">
++				<condition var1="tw_cellular_connected" var2="1"/>
++				<placement x="610" y="31" w="10" h="3"/>
++			</fill>
++			<fill color="%accent_color%">
++				<condition var1="tw_cellular_connected" var2="1"/>
++				<placement x="607" y="34" w="16" h="3"/>
++			</fill>
++			<fill color="%accent_color%">
++				<condition var1="tw_cellular_connected" var2="1"/>
++				<placement x="613" y="37" w="4" h="23"/>
++			</fill>
++			<fill color="%accent_color%">
++				<condition var1="tw_cellular_connected" var2="1"/>
++				<placement x="633" y="28" w="4" h="23"/>
++			</fill>
++			<fill color="%accent_color%">
++				<condition var1="tw_cellular_connected" var2="1"/>
++				<placement x="627" y="51" w="16" h="3"/>
++			</fill>
++			<fill color="%accent_color%">
++				<condition var1="tw_cellular_connected" var2="1"/>
++				<placement x="630" y="54" w="10" h="3"/>
++			</fill>
++			<fill color="%accent_color%">
++				<condition var1="tw_cellular_connected" var2="1"/>
++				<placement x="633" y="57" w="4" h="3"/>
++			</fill>
++			<!-- OP15 cellular data status icon END -->
+diff --git a/gui/fill.cpp b/gui/fill.cpp
+index f813bf3..64a5e42 100644
+--- a/gui/fill.cpp
++++ b/gui/fill.cpp
+@@ -46 +46 @@
+-GUIFill::GUIFill(xml_node<>* node) : GUIObject(node)
++GUIFill::GUIFill(xml_node<>* node) : GUIObject(node), mLastVisible(false)
+@@ -63 +63,2 @@
+-	if (!isConditionTrue())
++	mLastVisible = isConditionTrue();
++	if (!mLastVisible)
+@@ -70,0 +72,9 @@
++int GUIFill::Update(void)
++{
++	const bool visible = isConditionTrue();
++	if (visible == mLastVisible)
++		return 0;
++	mLastVisible = visible;
++	return 2; // Repaint on both show and hide, clearing stale pixels.
++}
++
+diff --git a/gui/objects.hpp b/gui/objects.hpp
+index f3c4bdc..c3bcd79 100644
+--- a/gui/objects.hpp
++++ b/gui/objects.hpp
+@@ -256,0 +257,3 @@
++	// Conditional fills must redraw immediately when their visibility changes.
++	virtual int Update(void);
++
+@@ -258,0 +262 @@
++	bool mLastVisible;

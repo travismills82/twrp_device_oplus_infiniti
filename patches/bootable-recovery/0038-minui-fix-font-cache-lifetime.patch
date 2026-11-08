@@ -1,0 +1,32 @@
+diff --git a/minuitwrp/truetype.cpp b/minuitwrp/truetype.cpp
+--- a/minuitwrp/truetype.cpp
++++ b/minuitwrp/truetype.cpp
+@@ -137,7 +137,7 @@ void* twrpTruetype::gr_ttf_loadFont(const char *filename, int size, int dpi) {
+ 	pthread_mutex_init(&res->mutex, 0);
+ 
+ 	key = new TrueTypeFontKey;
+-	key->path = strdup(filename);
++	key->path = filename;
+ 	key->size = size;
+ 	key->dpi = dpi;
+ 
+@@ -186,6 +186,9 @@ void twrpTruetype::gr_ttf_freeFont(void *font) {
+ 	TrueTypeFont *d = (TrueTypeFont *)font;
+ 	if(--d->refcount == 0)
+ 	{
++		// Remove the cache entry while its lookup key is still alive. Looking
++		// up a freed key can leave a dangling font in the cache after reload.
++		font_data.fonts.erase(*(d->key));
+ 		delete d->key;
+ 
+ 		FT_Done_Face(d->face);
+@@ -204,9 +207,7 @@ void twrpTruetype::gr_ttf_freeFont(void *font) {
+ 
+ 		pthread_mutex_destroy(&d->mutex);
+ 
+-		TrueTypeFontMap::iterator trueTypeFontIt = font_data.fonts.find(*(d->key));
+ 		delete d;
+-		font_data.fonts.erase(trueTypeFontIt);
+ 
+ 	}
+ 

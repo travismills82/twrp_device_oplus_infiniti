@@ -1,0 +1,58 @@
+diff --git a/minuitwrp/graphics_gles.cpp b/minuitwrp/graphics_gles.cpp
+--- a/minuitwrp/graphics_gles.cpp
++++ b/minuitwrp/graphics_gles.cpp
+@@ -47,7 +47,7 @@ struct Renderer {
+     EGLDisplay display = EGL_NO_DISPLAY;
+     EGLSurface surface = EGL_NO_SURFACE;
+     EGLContext context = EGL_NO_CONTEXT;
+-    GLuint program = 0, texture = 0;
++    GLuint program = 0, texture = 0, vertices_buffer = 0;
+     GLint size_uniform = -1, color_uniform = -1, mode_uniform = -1;
+ 
+ #define EGL_FN(name) decltype(&name) name##Fn = nullptr
+@@ -67,5 +67,6 @@ struct Renderer {
+     GL_FN(glPixelStorei); GL_FN(glVertexAttribPointer); GL_FN(glEnableVertexAttribArray);
+     GL_FN(glDrawArrays); GL_FN(glReadPixels); GL_FN(glDeleteTextures);
++    GL_FN(glGenBuffers); GL_FN(glBindBuffer); GL_FN(glBufferData); GL_FN(glDeleteBuffers);
+ #undef EGL_FN
+ #undef GL_FN
+ 
+@@ -127,5 +128,6 @@ struct Renderer {
+             LOAD_GL(glPixelStorei); LOAD_GL(glVertexAttribPointer); LOAD_GL(glEnableVertexAttribArray);
+             LOAD_GL(glDrawArrays); LOAD_GL(glReadPixels); LOAD_GL(glDeleteTextures);
++            LOAD_GL(glGenBuffers); LOAD_GL(glBindBuffer); LOAD_GL(glBufferData); LOAD_GL(glDeleteBuffers);
+ #undef LOAD_EGL
+ #undef LOAD_GL
+             display = eglGetDisplayFn(EGL_DEFAULT_DISPLAY);
+@@ -180,5 +182,6 @@ struct Renderer {
+             glBlendFuncFn(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+             glEnableVertexAttribArrayFn(0); glEnableVertexAttribArrayFn(1);
++            glGenBuffersFn(1, &vertices_buffer);
+             Check(glGetErrorFn() == GL_NO_ERROR, "GPU setup error");
+             readback.resize(static_cast<size_t>(target->width) * target->height * 4);
+             active = true; upload = true; Property("gles-pending");
+@@ -224,7 +227,7 @@ struct Renderer {
+             eglTerminateFn(display);
+         }
+         display = EGL_NO_DISPLAY; surface = EGL_NO_SURFACE; context = EGL_NO_CONTEXT;
+-        program = texture = 0;
++        program = texture = vertices_buffer = 0;
+         // Keep the namespace's DSO handles until process exit. Unloading a
+         // vendor DSO with live driver TLS is unsafe; they are bounded to one set.
+     }
+@@ -254,7 +257,13 @@ struct Renderer {
+         const GLfloat vertices[] = {float(c.x),float(c.y),u0,v0, float(c.x+c.w),float(c.y),u1,v0,
+             float(c.x),float(c.y+c.h),u0,v1, float(c.x+c.w),float(c.y+c.h),u1,v1};
+-        glVertexAttribPointerFn(0, 2, GL_FLOAT, GL_FALSE, 4*sizeof(GLfloat), vertices);
+-        glVertexAttribPointerFn(1, 2, GL_FLOAT, GL_FALSE, 4*sizeof(GLfloat), vertices+2);
++        // Use GPU-owned storage, not transient stack-backed client arrays.
++        // Orphaning the tiny buffer preserves earlier queued draws while the
++        // Adreno driver consumes the next rectangle's vertices asynchronously.
++        glBindBufferFn(GL_ARRAY_BUFFER, vertices_buffer);
++        glBufferDataFn(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STREAM_DRAW);
++        glVertexAttribPointerFn(0, 2, GL_FLOAT, GL_FALSE, 4*sizeof(GLfloat), nullptr);
++        glVertexAttribPointerFn(1, 2, GL_FLOAT, GL_FALSE, 4*sizeof(GLfloat),
++                              reinterpret_cast<const void*>(2*sizeof(GLfloat)));
+         glDrawArraysFn(GL_TRIANGLE_STRIP, 0, 4);
+         Check(glGetErrorFn() == GL_NO_ERROR, "GLES draw error");
+     }

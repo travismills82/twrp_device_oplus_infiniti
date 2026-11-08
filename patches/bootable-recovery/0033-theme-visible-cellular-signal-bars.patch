@@ -1,0 +1,144 @@
+diff --git a/gui/theme/portrait_hdpi/ui.xml b/gui/theme/portrait_hdpi/ui.xml
+index 55f4013..9cdb75a 100755
+--- a/gui/theme/portrait_hdpi/ui.xml
++++ b/gui/theme/portrait_hdpi/ui.xml
+@@ -241,0 +242,2 @@
++		<variable name="tw_cellular_signal_valid" value="0"/>
++		<variable name="tw_cellular_signal_level" value="-1"/>
+@@ -327,0 +330,136 @@
++
++			<!-- OP15 cellular signal bars START -->
++			<!-- Gray when offline; blue outlines mean data connected, not measured strength. -->
++			<fill color="#9E9E9E">
++				<placement x="656" y="51" w="8" h="9"/>
++			</fill>
++			<fill color="%accent_color%">
++				<condition var1="tw_cellular_connected" var2="1"/>
++				<placement x="656" y="51" w="8" h="9"/>
++			</fill>
++			<fill color="%status_color%">
++				<placement x="658" y="53" w="4" h="5"/>
++			</fill>
++			<fill color="#9E9E9E">
++				<condition var1="tw_cellular_signal_valid" var2="1"/>
++				<condition var1="tw_cellular_signal_level" op="&gt;=" var2="1"/>
++				<condition var1="tw_cellular_signal_level" op="&lt;=" var2="4"/>
++				<placement x="656" y="51" w="8" h="9"/>
++			</fill>
++			<fill color="%accent_color%">
++				<condition var1="tw_cellular_connected" var2="1"/>
++				<condition var1="tw_cellular_signal_valid" var2="1"/>
++				<condition var1="tw_cellular_signal_level" op="&gt;=" var2="1"/>
++				<condition var1="tw_cellular_signal_level" op="&lt;=" var2="4"/>
++				<placement x="656" y="51" w="8" h="9"/>
++			</fill>
++			<fill color="#9E9E9E">
++				<placement x="667" y="44" w="8" h="16"/>
++			</fill>
++			<fill color="%accent_color%">
++				<condition var1="tw_cellular_connected" var2="1"/>
++				<placement x="667" y="44" w="8" h="16"/>
++			</fill>
++			<fill color="%status_color%">
++				<placement x="669" y="46" w="4" h="12"/>
++			</fill>
++			<fill color="#9E9E9E">
++				<condition var1="tw_cellular_signal_valid" var2="1"/>
++				<condition var1="tw_cellular_signal_level" op="&gt;=" var2="2"/>
++				<condition var1="tw_cellular_signal_level" op="&lt;=" var2="4"/>
++				<placement x="667" y="44" w="8" h="16"/>
++			</fill>
++			<fill color="%accent_color%">
++				<condition var1="tw_cellular_connected" var2="1"/>
++				<condition var1="tw_cellular_signal_valid" var2="1"/>
++				<condition var1="tw_cellular_signal_level" op="&gt;=" var2="2"/>
++				<condition var1="tw_cellular_signal_level" op="&lt;=" var2="4"/>
++				<placement x="667" y="44" w="8" h="16"/>
++			</fill>
++			<fill color="#9E9E9E">
++				<placement x="678" y="37" w="8" h="23"/>
++			</fill>
++			<fill color="%accent_color%">
++				<condition var1="tw_cellular_connected" var2="1"/>
++				<placement x="678" y="37" w="8" h="23"/>
++			</fill>
++			<fill color="%status_color%">
++				<placement x="680" y="39" w="4" h="19"/>
++			</fill>
++			<fill color="#9E9E9E">
++				<condition var1="tw_cellular_signal_valid" var2="1"/>
++				<condition var1="tw_cellular_signal_level" op="&gt;=" var2="3"/>
++				<condition var1="tw_cellular_signal_level" op="&lt;=" var2="4"/>
++				<placement x="678" y="37" w="8" h="23"/>
++			</fill>
++			<fill color="%accent_color%">
++				<condition var1="tw_cellular_connected" var2="1"/>
++				<condition var1="tw_cellular_signal_valid" var2="1"/>
++				<condition var1="tw_cellular_signal_level" op="&gt;=" var2="3"/>
++				<condition var1="tw_cellular_signal_level" op="&lt;=" var2="4"/>
++				<placement x="678" y="37" w="8" h="23"/>
++			</fill>
++			<fill color="#9E9E9E">
++				<placement x="689" y="30" w="8" h="30"/>
++			</fill>
++			<fill color="%accent_color%">
++				<condition var1="tw_cellular_connected" var2="1"/>
++				<placement x="689" y="30" w="8" h="30"/>
++			</fill>
++			<fill color="%status_color%">
++				<placement x="691" y="32" w="4" h="26"/>
++			</fill>
++			<fill color="#9E9E9E">
++				<condition var1="tw_cellular_signal_valid" var2="1"/>
++				<condition var1="tw_cellular_signal_level" op="&gt;=" var2="4"/>
++				<condition var1="tw_cellular_signal_level" op="&lt;=" var2="4"/>
++				<placement x="689" y="30" w="8" h="30"/>
++			</fill>
++			<fill color="%accent_color%">
++				<condition var1="tw_cellular_connected" var2="1"/>
++				<condition var1="tw_cellular_signal_valid" var2="1"/>
++				<condition var1="tw_cellular_signal_level" op="&gt;=" var2="4"/>
++				<condition var1="tw_cellular_signal_level" op="&lt;=" var2="4"/>
++				<placement x="689" y="30" w="8" h="30"/>
++			</fill>
++			<fill color="#9E9E9E">
++				<condition var1="tw_cellular_signal_valid" op="!=" var2="1"/>
++				<condition var1="tw_cellular_connected" op="!=" var2="1"/>
++				<placement x="700" y="46" w="3" h="3"/>
++			</fill>
++			<fill color="#9E9E9E">
++				<condition var1="tw_cellular_signal_valid" op="!=" var2="1"/>
++				<condition var1="tw_cellular_connected" op="!=" var2="1"/>
++				<placement x="703" y="49" w="3" h="3"/>
++			</fill>
++			<fill color="#9E9E9E">
++				<condition var1="tw_cellular_signal_valid" op="!=" var2="1"/>
++				<condition var1="tw_cellular_connected" op="!=" var2="1"/>
++				<placement x="706" y="52" w="3" h="3"/>
++			</fill>
++			<fill color="#9E9E9E">
++				<condition var1="tw_cellular_signal_valid" op="!=" var2="1"/>
++				<condition var1="tw_cellular_connected" op="!=" var2="1"/>
++				<placement x="709" y="55" w="3" h="3"/>
++			</fill>
++			<fill color="#9E9E9E">
++				<condition var1="tw_cellular_signal_valid" op="!=" var2="1"/>
++				<condition var1="tw_cellular_connected" op="!=" var2="1"/>
++				<placement x="709" y="46" w="3" h="3"/>
++			</fill>
++			<fill color="#9E9E9E">
++				<condition var1="tw_cellular_signal_valid" op="!=" var2="1"/>
++				<condition var1="tw_cellular_connected" op="!=" var2="1"/>
++				<placement x="706" y="49" w="3" h="3"/>
++			</fill>
++			<fill color="#9E9E9E">
++				<condition var1="tw_cellular_signal_valid" op="!=" var2="1"/>
++				<condition var1="tw_cellular_connected" op="!=" var2="1"/>
++				<placement x="703" y="52" w="3" h="3"/>
++			</fill>
++			<fill color="#9E9E9E">
++				<condition var1="tw_cellular_signal_valid" op="!=" var2="1"/>
++				<condition var1="tw_cellular_connected" op="!=" var2="1"/>
++				<placement x="700" y="55" w="3" h="3"/>
++			</fill>
++			<!-- OP15 cellular signal bars END -->

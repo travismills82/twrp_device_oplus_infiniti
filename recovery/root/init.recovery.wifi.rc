@@ -1,5 +1,12 @@
 on early-init
     write /proc/sys/net/ipv4/ping_group_range "0 2147483647"
+    setprop twrp.wifi.connected 0
+    setprop twrp.wifi.manual 0
+
+on property:twrp.wifi.enable=0
+    stop twrp-wifi-autoconnect
+    stop wpa_supplicant
+    setprop twrp.wifi.connected 0
 
 on property:twrp.wifi.enable=1
     setprop wifi.driver.ready false
@@ -39,7 +46,13 @@ service twrp-wifi-start /system/bin/twrp-wifi-start
     oneshot
     seclabel u:r:recovery:s0
 
-service wpa_supplicant /system/bin/wpa_supplicant -Dnl80211 -iwlan0 -dd -O/tmp/recovery/sockets -c/vendor/etc/wifi/wpa_supplicant.conf
+service twrp-wifi-autoconnect /system/bin/twrp-wifi-manager daemon
+    user root
+    group root wifi inet
+    disabled
+    seclabel u:r:recovery:s0
+
+service wpa_supplicant /system/bin/wpa_supplicant -Dnl80211 -iwlan0 -O/tmp/recovery/sockets -c/tmp/recovery/wifi/wpa_supplicant.conf
     user root
     group root wifi inet
     setenv LD_LIBRARY_PATH /vendor/lib64:/system/lib64:/system_ext/lib64

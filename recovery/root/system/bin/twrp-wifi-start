@@ -494,14 +494,22 @@ fi
 ifconfig "$IFACE" up 2>/dev/null || true
 
 set_status starting-supplicant
+stop twrp-wifi-autoconnect 2>/dev/null || true
 stop wpa_supplicant 2>/dev/null || true
 sleep 1
+if ! /system/bin/twrp-wifi-manager prepare; then
+    set_status profile-prepare-failed
+    set_ready false
+    log_msg "cannot prepare private supplicant configuration"
+    exit 0
+fi
 start wpa_supplicant
 
 if wait_for_supplicant; then
     set_ready true
     set_status ready
     log_msg "wpa_supplicant is ready"
+    start twrp-wifi-autoconnect
 else
     set_ready false
     set_status supplicant-timeout

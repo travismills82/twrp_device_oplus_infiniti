@@ -1,0 +1,18 @@
+From: OnePlus 15 recovery maintainers
+Subject: [PATCH] libsnapshot: export public update-engine header dependency
+
+Public cow_reader.h includes payload_consumer/file_descriptor.h. Export the
+already declared header dependency to consumers such as recovery libinstall.
+Keep snapshot implementation and OTA safeguards unchanged.
+
+diff --git a/fs_mgr/libsnapshot/Android.bp b/fs_mgr/libsnapshot/Android.bp
+--- a/fs_mgr/libsnapshot/Android.bp
++++ b/fs_mgr/libsnapshot/Android.bp
+@@ -60,6 +60,7 @@ cc_defaults {
+     ],
+     export_header_lib_headers: [
+         "libfiemap_headers",
++        "libupdate_engine_headers",
+     ],
+     export_include_dirs: ["include"],
+     proto: {

@@ -51,6 +51,7 @@ PRODUCT_PACKAGES += \
 	twrp-avb-tool \
 	avbctl \
 	twrp-wifi-start \
+	twrp-wifi-manager \
 	twrp-dns-publish \
 	twrp-dhcpcd-run-hooks \
 	twrp-resolv-conf \

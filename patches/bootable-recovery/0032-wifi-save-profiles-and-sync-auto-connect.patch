@@ -1,0 +1,86 @@
+diff --git a/gui/action.cpp b/gui/action.cpp
+index 65aa185..644cd2a 100644
+--- a/gui/action.cpp
++++ b/gui/action.cpp
+@@ -2429,0 +2430,2 @@ int GUIAction::wlanstart(string arg __unused) {
++	android::base::SetProperty("twrp.wifi.enable", "1");
++	android::base::SetProperty("ctl.start", "twrp-wifi-start");
+@@ -2434,3 +2436 @@ int GUIAction::wlanstart(string arg __unused) {
+-		logBox->AddLogLine("[INFO] WLAN service started successfully", "normal");
+-		logBox->AddLogLine("[INFO] Interface: wlan0", "normal");
+-		logBox->AddLogLine("[INFO] Status: UP", "normal");
++		logBox->AddLogLine("[INFO] Saved networks will reconnect automatically", "normal");
+@@ -2444,0 +2445,2 @@ int GUIAction::wlanstop(string arg __unused) {
++	android::base::SetProperty("twrp.wifi.enable", "0");
++	TWFunc::Exec_Cmd("/system/bin/dhcpcd -x wlan0 >/dev/null 2>&1");
+@@ -2714,0 +2717,12 @@ int GUIAction::wlanconnect(std::string arg __unused) {
++    // OP15 saved Wi-Fi profiles START
++    struct ManualConnection {
++        std::string network;
++        bool keep = false;
++        ManualConnection() { android::base::SetProperty("twrp.wifi.manual", "1"); }
++        ~ManualConnection() {
++            if (!keep && !network.empty())
++                TWFunc::Exec_Cmd("wpa_cli -iwlan0 -p/tmp/recovery/sockets remove_network " + network + " >/dev/null 2>&1");
++            android::base::SetProperty("twrp.wifi.manual", "0");
++        }
++    } manual;
++    // OP15 saved Wi-Fi profiles END
+@@ -2799,6 +2813 @@ int GUIAction::wlanconnect(std::string arg __unused) {
+-    // Start from a clean supplicant network list, but still use the ID that
+-    // ADD_NETWORK actually returns instead of assuming it will be zero.
+-    const std::string remove_reply = trim_output(run_command_get_output(wpa_prefix + "remove_network all"));
+-    if (remove_reply != "OK")
+-        logBox->AddLogLine("[WARNING] Could not clear stale network entries: " + remove_reply, "warning");
+-
++    // Keep saved networks. The scoped guard removes only a failed new entry.
+@@ -2813,0 +2823 @@ int GUIAction::wlanconnect(std::string arg __unused) {
++    manual.network = network_id;
+@@ -2864 +2874,8 @@ int GUIAction::wlanconnect(std::string arg __unused) {
+-        if (status.find("wpa_state=COMPLETED") != std::string::npos) {
++        std::istringstream state(status);
++        std::string line;
++        bool authenticated = false, selected = false;
++        while (std::getline(state, line)) {
++            if (line == "wpa_state=COMPLETED") authenticated = true;
++            if (line == "id=" + network_id) selected = true;
++        }
++        if (authenticated && selected) {
+@@ -2876,3 +2894,11 @@ int GUIAction::wlanconnect(std::string arg __unused) {
++    manual.keep = true;
++    // Remember authentication even when DHCP/DNS needs a later retry.
++    if (TWFunc::Exec_Cmd("/system/bin/twrp-wifi-manager save >/dev/null 2>&1") == 0) {
++        logBox->AddLogLine("[INFO] Wi-Fi profile remembered in /data/twrp/wifi", "normal");
++    } else {
++        logBox->AddLogLine("[WARNING] Profile is RAM-only until /data is available", "warning");
++    }
++
+     // 请求 IP
+     logBox->AddLogLine("[INFO] Wi-Fi link established, requesting IP with dhcpcd...", "normal");
+     gui_forceRender();
+diff --git a/gui/gui.cpp b/gui/gui.cpp
+index 6bb9829..0cfe98a 100755
+--- a/gui/gui.cpp
++++ b/gui/gui.cpp
+@@ -35,0 +36 @@
++#include <cutils/properties.h>
+@@ -583,0 +585,3 @@ static int runPages(const char *page_name, const int stop_on_page_done)
++#ifndef TW_NO_NETWORK
++	time_t wifi_status_second = -1;
++#endif
+@@ -587,0 +592,15 @@ static int runPages(const char *page_name, const int stop_on_page_done)
++#ifndef TW_NO_NETWORK
++		// Network I/O stays in the controller; only mirror verified status here.
++		timespec wifi_now{};
++		clock_gettime(CLOCK_MONOTONIC, &wifi_now);
++		if (wifi_now.tv_sec != wifi_status_second) {
++			wifi_status_second = wifi_now.tv_sec;
++			char wifi_state[PROP_VALUE_MAX];
++			property_get("twrp.wifi.connected", wifi_state, "0");
++			const int connected = strcmp(wifi_state, "1") == 0 ? 1 : 0;
++			if (DataManager::GetIntValue("tw_wifi_connected") != connected) {
++				DataManager::SetValue("tw_wifi_connected", connected);
++				gForceRender.set_value(1);
++			}
++		}
++#endif

@@ -1,0 +1,24 @@
+From: OnePlus 15 recovery maintainers
+Subject: [PATCH] gui: track staged theme inputs in the Soong load hook
+
+The load hook copies the theme outside normal Ninja copy rules. Register
+recursive glob dependencies and individual files so normal incremental builds
+cannot silently package an earlier UI after XML or PNG source changes.
+
+--- a/gui/libguitwrp_defaults.go
++++ b/gui/libguitwrp_defaults.go
+@@ -43,0 +44,14 @@
++	// Theme staging occurs during this load hook. Track both existing files
++	// and directory globs so edits/additions rerun it on incremental builds.
++	recoveryRoot := path.Dir(ctx.ModuleDir())
++	for _, dir := range dirs {
++		matches, err := ctx.GlobWithDeps(path.Join(recoveryRoot, dir, "**/*"), nil)
++		if err != nil {
++			ctx.ModuleErrorf("theme dependency glob failed: %s", err)
++			return
++		}
++		ctx.AddNinjaFileDeps(matches...)
++	}
++	for _, file := range append(files, "variables.h") {
++		ctx.AddNinjaFileDeps(path.Join(recoveryRoot, file))
++	}

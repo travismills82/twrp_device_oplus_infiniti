@@ -77,6 +77,68 @@ Run it from RAM against the matching libminuitwrp; `--benchmark` adds a native
 
 ## Qualification boundary
 
+### Font-cache lifetime repair (2026-11-07)
+
+Patch `0038-minui-fix-font-cache-lifetime.patch` fixes a native font-cache
+use-after-free during theme/font unloading. The old code deleted the font's
+lookup key before searching for its map entry. That could leave the cache
+pointing to a freed font, or invoke undefined behavior by erasing an invalid
+iterator. Remove the cache entry before freeing the key/font instead. Also
+remove an unnecessary `strdup` whose allocation was lost when copied into a
+`std::string`. This is a shared minui memory-safety fix, not a switch to software
+rendering and not evidence of a broken Adreno kernel/driver.
+
+`scripts/test-truetype-lifetime.py ROOT --negative-control` compiles the actual
+production `truetype.cpp` with host AddressSanitizer/UndefinedBehaviorSanitizer.
+It exercises shared references, 24 unload/reload cycles, glyph bounds and string
+cache eviction. The pinned unpatched implementation must reproduce the
+heap-use-after-free; the fixed implementation must pass, including leak checks.
+Host clang comes from the normal Android tree. The host test uses Linux's
+`libfreetype.so.6` with the repository's compatible FreeType API headers; this
+host diagnostic library is never copied into recovery. The Android recovery
+library is still built with its normal Android dependencies/toolchain.
+
+The off-screen Android fixture now has `--stress`: 180 native-resolution
+text/alpha/clip redraws, fork/exec with pending GPU draws, and a 20,000-command
+long batch that exercises bounded flushes. Report the result separately from
+physical GUI/theme-reload and suspend/wake testing. Overlapping translucent
+stress primitives allow eight RGB levels of accumulated software/GLES rounding;
+simple conformance cases retain their tighter two-level tolerance. This cannot
+hide entire missing glyphs or fills.
+
+The earlier report that GPU re-enabling failed was a capture-harness error:
+page changes and screenshots can run while the display remains blank, producing
+a stale frame without starting a new GPU draw. Physical tests must wake the
+screen, confirm new GLES frames, and never count a `cpu-disabled` capture as
+GPU evidence. Screen timeout remains enabled.
+
+The font-only image (`a17b6fc...`) passed an approved `recovery_a` cold boot,
+user-0 decryption and twelve consecutive theme-reload comparisons. However,
+a longer WLAN run subsequently reproduced missing status prefixes. These short
+passes are not a complete redraw fix; the font memory-safety repair is valid
+independently of the remaining symptom.
+
+Patch `0039-gpu-own-queued-quad-vertices.patch` replaces transient client vertex
+arrays with orphaned GPU-owned vertex buffers. The exact production library
+(`53c1886c019a3da96785d65253cbe26ad0bc529ea87c7d31e817187f9c9b7686`)
+passed the Android full-resolution off-screen fixture, including fork/exec,
+180 redraws and the 20,000-command batch. It also passed twelve live theme
+reload comparisons, within 2/255 in the completed static regions. Nevertheless,
+live Wi-Fi testing still captured missing fills/status characters. The VBO
+hardening is not presented as the remaining artifact's proven cause or cure.
+
+Patch `0040` keeps Wi-Fi list replacement/scroll changes on the GUI thread and
+synchronizes its diagnostic log. It removes an idle redraw loop, but is not a
+claim that every renderer issue was caused by WLAN. GPU availability and zero
+fault counters are separate from visual correctness; the intermittent redraw
+gate remains open. No debug shadow renderer, per-frame CPU comparison overhead,
+driver workaround, kernel, fstab, crypto or SELinux change is in the image.
+
+Physical testing is scoped to explicitly approved `recovery_a`, with exact
+readbacks and preserved `recovery_b`, `boot_a`, `vendor_boot_a` and slot selection.
+Current test-image identity, screenshots and results are recorded in
+`/home/travis/Android/twrp-gpu-redraw-20261107.RnPrkS/RESULT.md`.
+
 The connected COS17 phone passed actual Adreno 840 shader/readback testing in
 recovery, not only Android. The normal-toolchain 64x64 compositor fixture passed
 with maximum RGB difference 1 against software. A full-resolution diagnostic run

@@ -4,6 +4,25 @@
 
 - OnePlus 15 all variants
 
+## Modern recovery UI preview
+
+The OxygenOS-style OLED-black/red dashboard uses native TWRP actions. The Wi-Fi
+page shows signal strength and scan status; tapping a secured network opens the
+password keyboard. Saved Wi-Fi profiles, the existing network tools, charging
+controls and normal Backup/Restore menus are retained. Magisk 31.1 is bundled.
+
+**Preview / known issue:** Adreno GPU composition is available, but intermittent
+missing status characters or panel fills still occur. This is **not** a stable
+GPU fix. The new build is a pre-release; the previous stable release remains
+Latest. See the [test scope and release notes](docs/releases/2026-11-07-modern-ui-wifi.md).
+
+<p align="center">
+  <img src="docs/screenshots/oxygenos-dashboard.png" width="360" alt="Live OnePlus 15 TWRP OxygenOS-style red and black recovery dashboard" />
+</p>
+
+Live recovery screenshot from local testing. It illustrates the theme, not a
+guarantee of artifact-free GPU rendering. No screenshot is bundled in the ramdisk.
+
 ## Build it yourself
 
 ```shell
@@ -14,18 +33,16 @@ git clone --depth=1 https://github.com/travismills82/twrp_device_oplus_infiniti 
 ```
 
 ```shell
+bash device/oplus/infiniti/scripts/select-recovery-source.sh
+bash device/oplus/infiniti/scripts/apply-recovery-patches.sh
 source build/envsetup.sh
 lunch twrp_infiniti
-make recoveryimage
+m recoveryimage
 ```
 
 If there is no error, `recovery.img` will be found in `out/target/product/infiniti/recovery.img`.
 
 ## Flash recovery
-
-```shell
-fastboot flash recovery recovery.img
-```
 
 ```shell
 fastboot flash recovery_a recovery.img

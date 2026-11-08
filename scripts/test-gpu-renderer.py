@@ -81,6 +81,22 @@ class GpuTests(unittest.TestCase):
         self.assertIn('twrp-gpu-start',product)
         self.assertIn('installable: false', (DEVICE / 'Android.bp').read_text())
 
+    def test_font_cache_key_outlives_removal(self):
+        source=(MINUI/'truetype.cpp').read_text()
+        release=source[source.index('void twrpTruetype::gr_ttf_freeFont('):source.index('TrueTypeCacheEntry* twrpTruetype::gr_ttf_glyph_cache_peek')]
+        self.assertLess(release.index('font_data.fonts.erase(*(d->key))'),release.index('delete d->key'))
+        self.assertNotIn('find(*(d->key))',release)
+        self.assertIn('key->path = filename;',source)
+        self.assertNotIn('strdup(filename)',source)
+
+    def test_quad_vertices_are_gpu_owned(self):
+        source=(MINUI/'graphics_gles.cpp').read_text()
+        quad=source[source.index('    void Quad('):source.index('    void Upload(')]
+        self.assertIn('glBindBufferFn(GL_ARRAY_BUFFER, vertices_buffer)',quad)
+        self.assertIn('glBufferDataFn(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STREAM_DRAW)',quad)
+        self.assertIn('4*sizeof(GLfloat), nullptr)',quad)
+        self.assertNotIn('4*sizeof(GLfloat), vertices)',quad)
+
     def test_incremental_library_staging_depends_on_renderer(self):
         source=(ROOT / 'bootable/recovery/prebuilt/Android.mk').read_text()
         relink=source[source.index('LOCAL_MODULE := relink_libraries'):source.index('LOCAL_MODULE := relink_binaries')]

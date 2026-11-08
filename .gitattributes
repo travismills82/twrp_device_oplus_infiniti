@@ -1,0 +1,3 @@
+# Unified patches contain required space-prefixed context (including blank
+# lines and tabs). Validate their applied source with the patch runner instead.
+patches/**/*.patch -whitespace

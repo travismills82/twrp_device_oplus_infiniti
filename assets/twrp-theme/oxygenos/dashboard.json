@@ -1,0 +1,36 @@
+{
+  "resolution": [1080, 1920],
+  "background": "#09090D",
+  "accent": "#E31B36",
+  "cards": [
+    {"id":"flash", "label":"Flash & Data", "box":[28,368,1024,408]},
+    {"id":"device", "label":"Device & System", "box":[28,816,1024,264]},
+    {"id":"network", "label":"Network & Tools", "box":[28,1120,1024,344]},
+    {"id":"quick", "label":"Quick actions", "box":[28,1512,1024,196]}
+  ],
+  "buttons": [
+    {"id":"install", "label":"Install", "icon":"install", "box":[64,464,466,132], "kind":"large", "red":true, "source":"main:install"},
+    {"id":"wipe", "label":"Wipe", "icon":"wipe", "box":[550,464,466,132], "kind":"large", "source":"main:wipe"},
+    {"id":"backup", "label":"Backup", "icon":"backup", "box":[64,614,466,132], "kind":"large", "source":"main:backup"},
+    {"id":"restore", "label":"Restore", "icon":"restore", "box":[550,614,466,132], "kind":"large", "source":"main:restore"},
+    {"id":"mount", "label":"Mount", "icon":"mount", "box":[64,904,230,146], "kind":"device", "source":"main:mount"},
+    {"id":"settings", "label":"Settings", "icon":"settings", "box":[310,904,230,146], "kind":"device", "source":"main:settings"},
+    {"id":"advanced", "label":"Advanced", "icon":"advanced", "box":[556,904,230,146], "kind":"device", "source":"main:advanced"},
+    {"id":"reboot", "label":"Reboot", "icon":"reboot", "box":[802,904,230,146], "kind":"device", "source":"main:reboot"},
+    {"id":"wifi", "label":"Wi-Fi", "icon":"wifi", "box":[64,1204,310,106], "kind":"network", "source":"advanced:wlan"},
+    {"id":"files", "label":"File Manager", "icon":"files", "box":[392,1204,310,106], "kind":"network", "source":"advanced:filemanagerlist"},
+    {"id":"terminal", "label":"Terminal", "icon":"terminal", "box":[720,1204,300,106], "kind":"network", "source":"advanced:terminalcommand"},
+    {"id":"ftp", "label":"FTP", "icon":"ftp", "box":[64,1328,310,106], "kind":"network", "source":"ftp"},
+    {"id":"sideload", "label":"ADB|Sideload", "icon":"sideload", "box":[392,1328,310,106], "kind":"network", "source":"advanced:sideload"},
+    {"id":"charging", "label":"Charging", "icon":"charging", "box":[720,1328,300,106], "kind":"network", "source":"advanced:op15_charging"},
+    {"id":"system", "label":"Reboot to|System", "icon":"android", "box":[54,1592,250,88], "kind":"quick", "red":true, "source":"reboot:system", "capability":"tw_reboot_system"},
+    {"id":"recovery", "label":"Recovery", "icon":"recovery", "box":[320,1592,224,88], "kind":"quick", "source":"reboot:recovery", "capability":"tw_reboot_recovery"},
+    {"id":"bootloader", "label":"Bootloader", "icon":"lock", "box":[560,1592,230,88], "kind":"quick", "source":"reboot:bootloader", "capability":"tw_reboot_bootloader"},
+    {"id":"fastbootd", "label":"Fastbootd", "icon":"fastbootd", "box":[806,1592,230,88], "kind":"quick", "source":"reboot:fastboot", "capability":"tw_fastboot_mode"}
+  ],
+  "pills": [
+    {"id":"slot", "box":[60,244,188,60]},
+    {"id":"crypto", "box":[276,244,230,60]},
+    {"id":"storage", "box":[534,244,484,60]}
+  ]
+}

@@ -61,6 +61,14 @@ fail() {
     exit 1
 }
 
+red_shared_theme_applied() {
+    local ui="$RECOVERY_DIR/gui/theme/portrait_hdpi/ui.xml"
+    grep -Fq '<!-- OP15 shared red chrome -->' "$ui" &&
+        grep -Fq '<variable name="accent_color" value="#E31B36"/>' "$ui" &&
+        grep -Fq 'name="slider_touch" filename="oxy_shared_slider_touch"' "$ui" &&
+        grep -Fq '<placement x="800" y="2"' "$ui"
+}
+
 [ -f "$HELPER_VALIDATOR" ] || fail "Helper module validator was not found: $HELPER_VALIDATOR"
 bash "$HELPER_VALIDATOR"
 
@@ -79,6 +87,16 @@ mapfile -t PATCHES < <(find "$PATCH_DIR" -maxdepth 1 -type f -name '*.patch' | s
 REMOTE_URL="$(git -C "$RECOVERY_DIR" remote get-url origin 2>/dev/null || true)"
 CURRENT_HEAD="$(git -C "$RECOVERY_DIR" rev-parse HEAD)"
 
+[ "$CURRENT_HEAD" = "$EXPECTED_BASE" ] ||
+    fail "This device preserves the XML GUI at $EXPECTED_BASE. Run scripts/select-recovery-source.sh on a clean checkout first."
+
+# Patch 0035 removes a retired startup API, not database preparation. Refuse
+# that source pairing unless the unchanged backend owns the replacement sync.
+grep -Fq 'bool syncKeystoreDb();' "$SYSTEM_VOLD_DIR/Decrypt.h" &&
+    grep -Fq 'bool Decrypt_User_Synth_Pass(' "$SYSTEM_VOLD_DIR/Decrypt.cpp" &&
+    grep -Fq 'if (!android::keystore::syncKeystoreDb()) {' "$SYSTEM_VOLD_DIR/Decrypt.cpp" ||
+    fail "vold must own keystore database synchronization before applying startup compatibility patch 0035"
+
 echo "Recovery source: $RECOVERY_DIR"
 echo "Remote:          ${REMOTE_URL:-unknown}"
 echo "Current HEAD:    $CURRENT_HEAD"
@@ -94,8 +112,16 @@ for patch in "${PATCHES[@]}"; do
     # the script verifies the expected source state before and after applying
     # every patch.
     case "$name" in
-        0007-ors-fix-restore-resource-and-cli-help.patch|0008-init-drop-legacy-recovery-service-import.patch|0009-theme-raise-wlan-log-window.patch|0010-theme-remove-advanced-avb-and-app-actions.patch|0024-data-discover-cpu-thermal-zones.patch|0027-storage-guard-missing-partition.patch|0028-native-backup-restore-safety.patch|0029-gui-adreno-gles-compositor.patch)
+        0007-ors-fix-restore-resource-and-cli-help.patch|0008-init-drop-legacy-recovery-service-import.patch|0009-theme-raise-wlan-log-window.patch|0010-theme-remove-advanced-avb-and-app-actions.patch|0024-data-discover-cpu-thermal-zones.patch|0027-storage-guard-missing-partition.patch|0028-native-backup-restore-safety.patch|0029-gui-adreno-gles-compositor.patch|0031-theme-cellular-data-status-icon.patch|0032-wifi-save-profiles-and-sync-auto-connect.patch|0033-theme-visible-cellular-signal-bars.patch|0036-build-track-theme-resource-dependencies.patch)
             apply_opts+=(--unidiff-zero)
+            ;;
+        0040-wifi-native-tap-password-and-safe-updates.patch)
+            # This upstream file uses CRLF/trailing tabs. Normalize formatting
+            # before the semantic patch so both patch and result stay clean.
+            log_source="$RECOVERY_DIR/gui/borderedlogbox.cpp"
+            if LC_ALL=C grep -q $'\r\\|[[:blank:]]$' "$log_source"; then
+                sed -i -e 's/\r$//' -e 's/[[:blank:]]*$//' "$log_source"
+            fi
             ;;
     esac
 
@@ -127,11 +153,60 @@ for patch in "${PATCHES[@]}"; do
         0006-wifi-show-connected-status-icon.patch)
             if grep -F -q '<image name="wifi_status" filename="wifi_status" retainaspect="1"/>' \
                     "$RECOVERY_DIR/gui/theme/portrait_hdpi/ui.xml" &&
-                grep -F -q '<image resource="wifi_status"/>' \
+                grep -E -q '<image resource="wifi_status"[[:space:]]*/>' \
                     "$RECOVERY_DIR/gui/theme/portrait_hdpi/ui.xml" &&
-                grep -F -q "$WIFI_STATUS_PLACEMENT" \
-                    "$RECOVERY_DIR/gui/theme/portrait_hdpi/ui.xml"; then
+                { grep -F -q "$WIFI_STATUS_PLACEMENT" \
+                    "$RECOVERY_DIR/gui/theme/portrait_hdpi/ui.xml" || red_shared_theme_applied; }; then
                 echo "[already applied] $name"
+                continue
+            fi
+            ;;
+        0010-theme-remove-advanced-avb-and-app-actions.patch)
+            if red_shared_theme_applied; then
+                python3 -B "$DEVICE_DIR/tools/patch_oxygenos_dashboard.py" "$RECOVERY_DIR" --verify-advanced-cleanup ||
+                    fail "Sorted Advanced list must retain every other native item's actions and conditions"
+                echo "[cleanup verified; native items reordered alphabetically] $name"
+                continue
+            fi
+            ;;
+        0009-theme-raise-wlan-log-window.patch)
+            if grep -Fq 'name="tw_op15_wifi_tools"' "$RECOVERY_DIR/gui/theme/portrait_hdpi/ui.xml" &&
+                    grep -Fq '<wlanlist>' "$RECOVERY_DIR/gui/theme/common/portrait.xml" &&
+                    grep -Fq "$WLAN_LOGBOX_PLACEMENT" "$RECOVERY_DIR/gui/theme/common/portrait.xml"; then
+                echo "[WLAN log geometry preserved in modern Tools mode] $name"
+                continue
+            fi
+            ;;
+        0017-theme-oled-black-background.patch)
+            if red_shared_theme_applied &&
+                    grep -Fq "$OLED_BACKGROUND_VARIABLE" "$RECOVERY_DIR/gui/theme/portrait_hdpi/splash.xml"; then
+                for variable in "$OLED_BACKGROUND_VARIABLE" "$OLED_HEADER_VARIABLE" "$OLED_STATUS_VARIABLE" "$OLED_NAVBAR_VARIABLE"; do
+                    grep -Fq "$variable" "$RECOVERY_DIR/gui/theme/portrait_hdpi/ui.xml" || fail "OLED palette changed unexpectedly"
+                done
+                echo "[OLED preserved; red accents replace original presentation] $name"
+                continue
+            fi
+            ;;
+        0031-theme-cellular-data-status-icon.patch)
+            if red_shared_theme_applied && git -C "$RECOVERY_DIR" apply "${apply_opts[@]}" --exclude=gui/theme/portrait_hdpi/ui.xml --reverse --check "$patch" >/dev/null 2>&1; then
+                echo "[backend applied; cellular presentation retired by user request] $name"
+                continue
+            fi
+            ;;
+        0029-gui-adreno-gles-compositor.patch)
+            # 0039 updates a file originally created in full by 0029. Accept
+            # exactly the owned post-0039 source, while reverse-checking every
+            # other 0029 hunk. Unknown edits still fail closed.
+            if [ -f "$RECOVERY_DIR/minuitwrp/graphics_gles.cpp" ] &&
+                    [ "$(sha256sum "$RECOVERY_DIR/minuitwrp/graphics_gles.cpp" | cut -d' ' -f1)" = dabee8173e6f90318a80a1c017c3e276eb6b409add6be89ebbe5f045821a2af2 ] &&
+                    git -C "$RECOVERY_DIR" apply "${apply_opts[@]}" --exclude=minuitwrp/graphics_gles.cpp --reverse --check "$patch" >/dev/null 2>&1; then
+                echo "[GPU baseline verified; owned vertices supplied by 0039] $name"
+                continue
+            fi
+            ;;
+        0033-theme-visible-cellular-signal-bars.patch)
+            if red_shared_theme_applied; then
+                echo "[cellular presentation retired by user request] $name"
                 continue
             fi
             ;;
@@ -159,7 +234,7 @@ if grep -Fq 'import /init.recovery.service.rc' "$RECOVERY_DIR/etc/init.rc"; then
     fail "legacy init.recovery.service.rc import leaves a duplicate recovery service"
 fi
 
-grep -Fq "$WIFI_STATUS_PLACEMENT" "$RECOVERY_DIR/gui/theme/portrait_hdpi/ui.xml" ||
+{ grep -Fq "$WIFI_STATUS_PLACEMENT" "$RECOVERY_DIR/gui/theme/portrait_hdpi/ui.xml" || red_shared_theme_applied; } ||
     fail "Wi-Fi status icon placement was not updated"
 
 OLED_UI="$RECOVERY_DIR/gui/theme/portrait_hdpi/ui.xml"
@@ -196,6 +271,18 @@ if grep -Fq "$ADVANCED_INSTALL_APP_ENTRY" "$RECOVERY_DIR/gui/theme/common/portra
     fail "Advanced menu still exposes the Install TWRP App action"
 fi
 
+# Newer upstream vold removed the temporary-directory path completely. Keep
+# its decryption implementation untouched; this narrowly recognizes that the
+# old EEXIST-only compatibility fix has no remaining operation to patch.
+vold_temp_directory_fix_superseded() {
+    local file="$SYSTEM_VOLD_DIR/KeyStorage.cpp"
+    ! grep -Fq 'mkdir(temp_dir.c_str(), 0700)' "$file" &&
+        ! grep -Fq 'std::string temp_dir =' "$file" &&
+        grep -Fq 'Never persist an upgraded blob:' "$file" &&
+        grep -Fq 'std::lock_guard<std::mutex> lock(key_upgrade_lock);' "$file" &&
+        grep -Fq 'for this operation only; the on-disk blob is left unchanged' "$file"
+}
+
 apply_external_patch_series() {
     local source_dir="$1"
     local patch_dir="$2"
@@ -231,6 +318,12 @@ apply_external_patch_series() {
             fail "Patch syntax validation failed for ${label}: $name"
         fi
 
+        if [ "$label:$name" = "system/vold:0001-key-storage-ignore-existing-temp-dir.patch" ] &&
+                vold_temp_directory_fix_superseded; then
+            echo "[superseded upstream; no crypto edit] ${label}: $name"
+            continue
+        fi
+
         if git -C "$source_dir" apply "${apply_opts[@]}" --reverse --check "$patch" >/dev/null 2>&1; then
             echo "[already applied] ${label}: $name"
             continue
@@ -252,7 +345,8 @@ grep -Fq 'Accept vendor modules.softdep entries that omit whitespace after pre/p
     "$SYSTEM_CORE_DIR/libmodprobe/libmodprobe.cpp" ||
     fail "libmodprobe does not accept compact vendor softdep metadata"
 
-grep -Fq 'errno != EEXIST' "$SYSTEM_VOLD_DIR/KeyStorage.cpp" ||
+{ grep -Fq 'errno != EEXIST' "$SYSTEM_VOLD_DIR/KeyStorage.cpp" ||
+    vold_temp_directory_fix_superseded; } ||
     fail "vold still logs an existing temporary key directory as an error"
 
 grep -Fq "$FAILED_VAB_SIDELOAD_MARKER" \
@@ -466,15 +560,32 @@ done
 
 if ! grep -F -q '<image name="wifi_status" filename="wifi_status" retainaspect="1"/>' \
         "$RECOVERY_DIR/gui/theme/portrait_hdpi/ui.xml" ||
-    ! grep -F -q '<image resource="wifi_status"/>' \
+    ! grep -E -q '<image resource="wifi_status"[[:space:]]*/>' \
         "$RECOVERY_DIR/gui/theme/portrait_hdpi/ui.xml"; then
     fail "portrait_hdpi theme does not declare and draw the Wi-Fi status icon"
 fi
 
 [ -s "$WIFI_STATUS_ICON" ] || fail "Wi-Fi status icon asset was not installed"
 
+python3 -B "$DEVICE_DIR/tools/patch_twrp_magisk_theme.py" \
+    "$RECOVERY_DIR/gui/theme/common/portrait.xml" || fail "Advanced helper theme patch failed"
+python3 -B "$DEVICE_DIR/tools/patch_oxygenos_dashboard.py" "$RECOVERY_DIR" ||
+    fail "OxygenOS native dashboard patch failed"
+
+python3 -B "$SCRIPT_DIR/test-oxygenos-dashboard.py" "$SOURCE_ROOT" ||
+    fail "OxygenOS dashboard source/action/resource contracts failed"
+
+python3 -B "$SCRIPT_DIR/test-modern-wifi.py" "$SOURCE_ROOT" ||
+    fail "Modern Wi-Fi list/password/thread ownership contracts failed"
+
 python3 -B "$SCRIPT_DIR/test-gpu-renderer.py" "$SOURCE_ROOT" ||
     fail "GPU compositor source/build safety contracts failed"
+
+python3 -B "$SCRIPT_DIR/test-cellular-status.py" "$SOURCE_ROOT" ||
+    fail "Cellular status icon visibility/layout contracts failed"
+
+python3 -B "$SCRIPT_DIR/test-wifi-profiles.py" "$SOURCE_ROOT" ||
+    fail "Saved Wi-Fi profile and automatic reconnect contracts failed"
 
 echo "[verified] helper module identities and runtime paths are unversioned"
 echo "[verified] backup compression offers parallel pigz -9 and multithreaded zstd -11"
@@ -483,6 +594,8 @@ echo "[verified] OrangeFox filename compatibility is removed from the file selec
 echo "[verified] Wi-Fi connection and test paths publish DNS from the root recovery process"
 echo "[verified] FBE backups exclude regeneratable /data/nandswap data"
 echo "[verified] Wi-Fi status icon image resource is wired into the portrait_hdpi status bar"
+echo "[verified] dormant cellular status contracts retained; final dashboard hides cellular indicators"
+echo "[verified] no unverified cellular connection or signal strength is presented"
 echo "[verified] OpenRecoveryScript restore uses an available translated string and correct CLI argument order"
 echo "[verified] recovery sideload clears a failed Virtual A/B update before a replacement OTA"
 

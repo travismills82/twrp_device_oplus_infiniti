@@ -1,0 +1,21 @@
+{
+  "main_button": {"asset":"oxy_shared_button", "size":[468,160], "kind":"button"},
+  "main_button_half_height": {"asset":"oxy_shared_button_half", "size":[468,112], "kind":"button"},
+  "main_button_half_height_full_width": {"asset":"oxy_shared_button_full", "size":[1008,112], "kind":"button"},
+  "tab_3": {"asset":"oxy_shared_tab3", "size":[312,128], "kind":"button"},
+  "tab_4": {"asset":"oxy_shared_tab4", "size":[225,128], "kind":"button"},
+  "slider": {"asset":"oxy_shared_slider", "size":[936,192], "kind":"button"},
+  "slider_used": {"asset":"oxy_shared_slider_used", "size":[936,192], "kind":"red"},
+  "slider_touch": {"asset":"oxy_shared_slider_touch", "size":[288,192], "kind":"arrow"},
+  "progress_empty": {"asset":"oxy_shared_progress_empty", "size":[1008,64], "kind":"progress_track"},
+  "progress_full": {"asset":"oxy_shared_progress_full", "size":[1008,64], "kind":"progress_fill"},
+  "checkbox_false": {"asset":"oxy_shared_checkbox_false", "size":[72,96], "kind":"checkbox"},
+  "checkbox_true": {"asset":"oxy_shared_checkbox_true", "size":[72,96], "kind":"checkbox"},
+  "radio_false": {"asset":"oxy_shared_radio_false", "size":[72,96], "kind":"radio"},
+  "radio_true": {"asset":"oxy_shared_radio_true", "size":[72,96], "kind":"radio"},
+  "handle": {"asset":"oxy_shared_handle", "size":[72,108], "kind":"handle"},
+  "logo": {"asset":"oxy_logo", "size":[96,96], "kind":"logo"},
+  "fab_selectfolder": {"asset":"oxy_shared_folder_fab", "size":[216,192], "kind":"folder_fab"},
+  "file": {"asset":"oxy_shared_file", "size":[72,96], "kind":"file_icon"},
+  "enter": {"asset":"oxy_shared_enter", "size":[162,161], "kind":"enter_key"}
+}

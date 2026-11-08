@@ -7,6 +7,14 @@
 soong_namespace {
 }
 
+cc_binary {
+    name: "twrp-wifi-manager",
+    recovery: true,
+    srcs: ["tools/wifi_manager.cpp"],
+    shared_libs: ["libbase"],
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+}
+
 // Developer-only, off-screen conformance test; not installed in normal recovery.
 cc_binary {
     name: "twrp-gpu-render-test",

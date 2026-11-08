@@ -1,0 +1,263 @@
+diff --git a/data.cpp b/data.cpp
+index cd72eb8..19361f3 100644
+--- a/data.cpp
++++ b/data.cpp
+@@ -38,6 +38,7 @@
+ #include "set_metadata.h"
+ #include "gui/gui.hpp"
+ #include "infomanager.hpp"
++#include "oxygenos_dashboard.hpp"
+ 
+ #define DEVID_MAX 64
+ #define HWID_MAX 32
+@@ -1076,6 +1077,48 @@ void DataManager::SetDefaultValues()
+ // Magic Values
+ int DataManager::GetMagicValue(const string& varName, string& value)
+ {
++	// Read-only status values, not GUI actions or a second decrypt worker.
++	// Existing DataManager crypto/user flags remain authoritative. Only bounded
++	// kernel metadata is read (once/second), never encrypted /data paths.
++	if (varName.compare(0, 18, "tw_op15_dashboard_") == 0) {
++		if (varName == "tw_op15_dashboard_slot") {
++			value = op15_dashboard::Slot(GetStrValue("tw_active_slot"));
++			return 0;
++		}
++		if (varName == "tw_op15_dashboard_cpu") {
++			value = op15_dashboard::Cpu(GetStrValue("tw_cpu_temp"));
++			return 0;
++		}
++		if (varName == "tw_op15_dashboard_progress") {
++			value = op15_dashboard::Progress(GetStrValue("ui_progress"));
++			return 0;
++		}
++		if (varName == "tw_op15_dashboard_charging") {
++			value = op15_dashboard::CachedCharging() ? "1" : "0";
++			return 0;
++		}
++		if (varName == "tw_op15_dashboard_battery" || varName == "tw_op15_dashboard_battery_valid") {
++			const string raw = GetStrValue("tw_battery");
++			value = varName == "tw_op15_dashboard_battery" ? op15_dashboard::Battery(raw) :
++				(op15_dashboard::BatteryPercent(raw) >= 0 ? "1" : "0");
++			return 0;
++		}
++		char ready[PROPERTY_VALUE_MAX], user0[PROPERTY_VALUE_MAX];
++		property_get("twrp.fstab.ready", ready, "0");
++		property_get("twrp.user.0.decrypt", user0, "0");
++		op15_dashboard::Inputs status;
++		status.ready = string(ready) == "1" && GetIntValue("tw_busy") == 0;
++		status.mounted = status.ready && op15_dashboard::CachedDataMount();
++		GetValue("tw_is_encrypted", status.encrypted);
++		GetValue("tw_is_decrypted", status.decrypted);
++		GetValue("tw_is_fbe", status.fbe);
++		status.user0 = string(user0) == "1";
++		if (varName == "tw_op15_dashboard_crypto") value = op15_dashboard::Crypto(status);
++		else if (varName == "tw_op15_dashboard_storage") value = op15_dashboard::Storage(status);
++		else if (varName == "tw_op15_dashboard_storage_ready") value = op15_dashboard::Unlocked(status) ? "1" : "0";
++		else return -1;
++		return 0;
++	}
+ 	// Handle special dynamic cases
+ 	if (varName == "tw_time")
+ 	{
+diff --git a/gui/gui.cpp b/gui/gui.cpp
+index 0cfe98a..0832e7c 100755
+--- a/gui/gui.cpp
++++ b/gui/gui.cpp
+@@ -582,6 +582,8 @@ static int runPages(const char *page_name, const int stop_on_page_done)
+ 
+ 	int input_timeout_ms = 0;
+ 	int idle_frames = 0;
++	time_t dashboard_status_second = -1;
++	std::string dashboard_storage_ready, dashboard_battery_valid, dashboard_charging;
+ #ifndef TW_NO_NETWORK
+ 	time_t wifi_status_second = -1;
+ #endif
+@@ -604,6 +606,32 @@ static int runPages(const char *page_name, const int stop_on_page_done)
+ 			}
+ 		}
+ #endif
++		// OP15 dashboard condition refresh: GUIObject caches visibility until a
++		// variable notification. Read-only magic values never call SetValue, so
++		// publish only changed condition snapshots here, not a threaded action.
++		timespec dashboard_now{};
++		clock_gettime(CLOCK_MONOTONIC, &dashboard_now);
++		if (dashboard_now.tv_sec != dashboard_status_second) {
++			dashboard_status_second = dashboard_now.tv_sec;
++			const std::string storage = DataManager::GetStrValue("tw_op15_dashboard_storage_ready");
++			const std::string battery = DataManager::GetStrValue("tw_op15_dashboard_battery_valid");
++			const std::string charging = DataManager::GetStrValue("tw_op15_dashboard_charging");
++			if (storage != dashboard_storage_ready) {
++				dashboard_storage_ready = storage;
++				PageManager::NotifyVarChange("tw_op15_dashboard_storage_ready", storage);
++				gForceRender.set_value(1);
++			}
++			if (battery != dashboard_battery_valid) {
++				dashboard_battery_valid = battery;
++				PageManager::NotifyVarChange("tw_op15_dashboard_battery_valid", battery);
++				gForceRender.set_value(1);
++			}
++			if (charging != dashboard_charging) {
++				dashboard_charging = charging;
++				PageManager::NotifyVarChange("tw_op15_dashboard_charging", charging);
++				gForceRender.set_value(1);
++			}
++		}
+ 		FD_ZERO(&fdset);
+ 		timeout.tv_sec = 0;
+ 		timeout.tv_usec = 1;
+diff --git a/oxygenos_dashboard.hpp b/oxygenos_dashboard.hpp
+new file mode 100644
+--- /dev/null
++++ b/oxygenos_dashboard.hpp
+@@ -0,0 +1,151 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++// Read-only dashboard policy. No mount, shell, credential or block-device I/O.
++#pragma once
++#include <chrono>
++#include <cstdlib>
++#include <fcntl.h>
++#include <sstream>
++#include <string>
++#include <unistd.h>
++
++namespace op15_dashboard {
++struct Inputs {
++    bool ready = false;
++    bool mounted = false;
++    int encrypted = -1;
++    int decrypted = -1;
++    int fbe = -1;
++    bool user0 = false;
++};
++
++inline bool Unlocked(const Inputs& s) {
++    if (!s.ready || !s.mounted || s.encrypted < 0 || s.fbe < 0) return false;
++    if (s.fbe == 1) return s.user0 && s.decrypted == 1;
++    return s.encrypted == 0 || s.decrypted == 1;
++}
++
++inline std::string Crypto(const Inputs& s) {
++    if (!s.ready) return "Unknown";
++    if (!s.mounted) return "Unavailable";
++    if (s.encrypted < 0 || s.fbe < 0) return "Unknown";
++    if (s.fbe == 1 || s.encrypted == 1) return Unlocked(s) ? "Decrypted" : "Encrypted";
++    return "Unencrypted";
++}
++
++inline std::string Storage(const Inputs& s) {
++    if (!s.ready || !s.mounted) return "Storage unavailable";
++    if (Unlocked(s)) return "Internal storage mounted";
++    if (s.encrypted == 1 || s.fbe == 1) return "Internal storage locked";
++    return "Storage unavailable";
++}
++
++inline std::string Slot(const std::string& s) {
++    if (s == "A" || s == "_a") return "Slot A";
++    if (s == "B" || s == "_b") return "Slot B";
++    return "Unknown";
++}
++
++inline int BatteryPercent(const std::string& s) {
++    if (s.empty() || s[0] < '0' || s[0] > '9') return -1;
++    char* end = nullptr;
++    long n = std::strtol(s.c_str(), &end, 10);
++    if (*end != '%' || n < 0 || n > 100) return -1;
++    ++end;
++    if (*end == '+' || *end == ' ') ++end;
++    if (*end != '\0') return -1;
++    return static_cast<int>(n);
++}
++
++inline std::string Battery(const std::string& s) {
++    int n = BatteryPercent(s);
++    return n < 0 ? "Unavailable" : std::to_string(n) + "%";
++}
++
++inline std::string Cpu(const std::string& s) {
++    if (s.empty()) return "Unavailable";
++    char* end = nullptr;
++    long n = std::strtol(s.c_str(), &end, 10);
++    if (end == s.c_str() || *end != '\0' || n <= 0 || n >= 150) return "Unavailable";
++    return std::to_string(n) + " °C";
++}
++
++inline std::string Progress(const std::string& s) {
++    if (s.empty()) return "";
++    char* end = nullptr;
++    const double n = std::strtod(s.c_str(), &end);
++    if (end == s.c_str() || *end != '\0' || !(n >= 0 && n <= 100)) return "";
++    return std::to_string(static_cast<int>(n)) + "%";
++}
++
++inline bool Charging(const std::string& text) {
++    return text == "Charging" || text == "Charging\n" || text == "Charging\r\n";
++}
++
++inline bool ReadCharging(const char* path = "/sys/class/power_supply/battery/status") {
++    int fd = open(path, O_RDONLY | O_CLOEXEC | O_NONBLOCK);
++    if (fd < 0) return false;
++    char buffer[32];
++    const ssize_t n = read(fd, buffer, sizeof(buffer));
++    close(fd);
++    return n > 0 && n < static_cast<ssize_t>(sizeof(buffer)) &&
++        Charging(std::string(buffer, static_cast<size_t>(n)));
++}
++
++inline bool CachedCharging() {
++    using Clock = std::chrono::steady_clock;
++    struct Snapshot { bool value = false; Clock::time_point next{}; };
++    static thread_local Snapshot snapshot;
++    const auto now = Clock::now();
++    if (now >= snapshot.next) {
++        snapshot.value = ReadCharging();
++        snapshot.next = std::chrono::time_point_cast<std::chrono::seconds>(now) + std::chrono::seconds(1);
++    }
++    return snapshot.value;
++}
++
++inline bool HasDataMount(const std::string& text) {
++    // mountinfo is kernel metadata. Do not stat/open encrypted /data or scan
++    // media in the GUI, and do not treat a tmpfs placeholder as mounted data.
++    std::istringstream lines(text);
++    std::string line;
++    while (std::getline(lines, line)) {
++        std::istringstream row(line);
++        std::string id, parent, device, root, target, options, token, fs, source;
++        if (!(row >> id >> parent >> device >> root >> target >> options)) continue;
++        if (target != "/data") continue;
++        bool separator = false;
++        while (row >> token) if (token == "-") { separator = true; break; }
++        if (!separator || !(row >> fs >> source)) continue;
++        if ((fs == "f2fs" || fs == "ext4") && source.compare(0, 11, "/dev/block/") == 0) return true;
++    }
++    return false;
++}
++
++inline bool ReadDataMount(const char* path = "/proc/self/mountinfo") {
++    int fd = open(path, O_RDONLY | O_CLOEXEC | O_NONBLOCK);
++    if (fd < 0) return false;
++    std::string data;
++    char buffer[4096];
++    bool complete = false;
++    while (data.size() < 262144) {
++        ssize_t n = read(fd, buffer, sizeof(buffer));
++        if (n == 0) { complete = true; break; }
++        if (n < 0) break;
++        data.append(buffer, static_cast<size_t>(n));
++    }
++    close(fd);
++    return complete && HasDataMount(data);
++}
++
++inline bool CachedDataMount() {
++    using Clock = std::chrono::steady_clock;
++    struct Snapshot { bool value = false; Clock::time_point next{}; };
++    static thread_local Snapshot snapshot;
++    const auto now = Clock::now();
++    if (now >= snapshot.next) {
++        snapshot.value = ReadDataMount();
++        snapshot.next = std::chrono::time_point_cast<std::chrono::seconds>(now) + std::chrono::seconds(1);
++    }
++    return snapshot.value;
++}
++}  // namespace op15_dashboard

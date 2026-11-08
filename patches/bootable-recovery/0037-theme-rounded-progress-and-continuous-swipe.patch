@@ -1,0 +1,123 @@
+diff --git a/gui/objects.hpp b/gui/objects.hpp
+--- a/gui/objects.hpp
++++ b/gui/objects.hpp
+@@ -979,6 +979,7 @@
+ protected:
+ 	ImageResource* mEmptyBar;
+ 	ImageResource* mFullBar;
++	bool mRounded;
+ 	std::string mMinValVar;
+ 	std::string mMaxValVar;
+ 	std::string mCurValVar;
+diff --git a/gui/progressbar.cpp b/gui/progressbar.cpp
+--- a/gui/progressbar.cpp
++++ b/gui/progressbar.cpp
+@@ -42,6 +42,7 @@
+ 
+ #include "rapidxml.hpp"
+ #include "objects.hpp"
++#include "op15_progress_style.hpp"
+ 
+ GUIProgressBar::GUIProgressBar(xml_node<>* node) : GUIObject(node)
+ {
+@@ -49,6 +50,7 @@
+ 
+ 	mEmptyBar = NULL;
+ 	mFullBar = NULL;
++	mRounded = false;
+ 	mLastPos = 0;
+ 	mSlide = 0.0;
+ 	mSlideInc = 0.0;
+@@ -64,6 +66,7 @@
+ 	{
+ 		mEmptyBar = LoadAttrImage(child, "empty");
+ 		mFullBar = LoadAttrImage(child, "full");
++		mRounded = LoadAttrInt(child, "rounded", 0) == 1;
+ 	}
+ 
+ 	// Load the placement
+@@ -105,7 +108,16 @@
+ 		return -1;
+ 
+ 	gr_blit(mEmptyBar->GetResource(), 0, 0, mRenderW, mRenderH, mRenderX, mRenderY);
+-	gr_blit(mFullBar->GetResource(), 0, 0, mLastPos, mRenderH, mRenderX, mRenderY);
++	// Optional rounded trailing cap. Existing bars (including battery) retain
++	// their original rendering unless the theme explicitly opts in.
++	if (mRounded && mFullBar->GetWidth() == mRenderW && mFullBar->GetHeight() == mRenderH) {
++		const auto pieces = op15_theme::RoundedProgress(mRenderW, mRenderH, mLastPos);
++		gr_blit(mFullBar->GetResource(), 0, 0, pieces.body, mRenderH, mRenderX, mRenderY);
++		gr_blit(mFullBar->GetResource(), pieces.cap_source, 0, pieces.cap_width, mRenderH,
++			mRenderX + pieces.cap_dest, mRenderY);
++	} else {
++		gr_blit(mFullBar->GetResource(), 0, 0, mLastPos, mRenderH, mRenderX, mRenderY);
++	}
+ 	return 0;
+ }
+ 
+diff --git a/gui/slider.cpp b/gui/slider.cpp
+--- a/gui/slider.cpp
++++ b/gui/slider.cpp
+@@ -44,6 +44,7 @@
+ 
+ #include "rapidxml.hpp"
+ #include "objects.hpp"
++#include "op15_progress_style.hpp"
+ 
+ GUISlider::GUISlider(xml_node<>* node) : GUIObject(node)
+ {
+@@ -100,6 +101,12 @@
+ 		int w, h;
+ 		sSliderLabel->GetCurrentBounds(w, h);
+ 		int sTextY = mRenderY + ((mRenderH - h) / 2);
++		auto placement = FindNode(node, "placement");
++		if (LoadAttrInt(placement, "labelcenter", 0) == 1)
++			sSliderLabel->SetPlacement(CENTER_X_ONLY);
++		const int offset = LoadAttrIntScaleY(placement, "labeloffsety", 0);
++		if (offset != 0 && h <= mRenderH)
++			sTextY = std::max(mRenderY, std::min(mRenderY + mRenderH - h, sTextY + offset));
+ 		sSliderLabel->SetRenderPos(sTextX, sTextY);
+ 		sSliderLabel->SetMaxWidth(mRenderW);
+ 	}
+@@ -139,8 +146,14 @@
+ 	gr_blit(sSlider->GetResource(), 0, 0, mRenderW, mRenderH, mRenderX, mRenderY);
+ 
+ 	// Draw the used
+-	if (sSliderUsed && sSliderUsed->GetResource() && sCurTouchX > mRenderX)
+-		gr_blit(sSliderUsed->GetResource(), 0, 0, sCurTouchX - mRenderX, mRenderH, mRenderX, mRenderY);
++	if (sSliderUsed && sSliderUsed->GetResource() && sCurTouchX > mRenderX) {
++		// Paint underneath the rounded thumb's leading corner to avoid a gap.
++		// This changes no touch position, action threshold or swipe state.
++		const int used = op15_theme::SliderFillWidth(std::min(mRenderW, sSliderUsed->GetWidth()),
++			sCurTouchX - mRenderX, sTouchW, sTouchH);
++		gr_blit(sSliderUsed->GetResource(), 0, 0, used,
++			std::min(mRenderH, sSliderUsed->GetHeight()), mRenderX, mRenderY);
++	}
+ 
+ 	// Draw the touch icon
+ 	if (sTouch && sTouch->GetResource())
+diff --git a/gui/op15_progress_style.hpp b/gui/op15_progress_style.hpp
+new file mode 100644
+--- /dev/null
++++ b/gui/op15_progress_style.hpp
+@@ -0,0 +1,20 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++// Paint geometry only; never changes operation progress or swipe activation.
++#pragma once
++#include <algorithm>
++
++namespace op15_theme {
++struct ProgressPieces { int body = 0, cap_source = 0, cap_dest = 0, cap_width = 0; };
++inline ProgressPieces RoundedProgress(int width, int height, int position) {
++    if (width <= 0 || height <= 0 || height > width || position <= 0) return {};
++    const int visible = std::min(width, std::max(height, std::min(position, width)));
++    const int cap = std::max(1, height / 2);
++    return {visible - cap, width - cap, visible - cap, cap};
++}
++inline int SliderFillWidth(int width, int offset, int thumb_width, int thumb_height) {
++    if (width <= 0 || offset <= 0) return 0;
++    offset = std::min(offset, width);
++    const int overlap = std::max(0, std::min(thumb_width, thumb_height) / 2);
++    return offset + std::min(overlap, width - offset);
++}
++}
+

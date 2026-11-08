@@ -46,6 +46,8 @@ def main():
             raise RuntimeError('Stale/mismatched minuitwrp in ramdisk: packed '+digest(packed)+' != built '+digest(library.read_bytes()))
         if b'GLES compositor initialized:' not in packed or b'libdl_android.so' not in packed:
             raise RuntimeError('Packed minuitwrp has no GLES renderer/namespace dependency')
+        if b'glBufferData' not in packed or b'glGenBuffers' not in packed:
+            raise RuntimeError('Packed minuitwrp lacks GPU-owned vertex buffers')
         for path in ('system/bin/twrp-gpu-start','init.recovery.qcom.rc'):
             content=archive(ramdisk,'-i','--to-stdout',path)
             if content != (DEVICE/'recovery/root'/path).read_bytes():

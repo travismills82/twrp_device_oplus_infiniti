@@ -6,6 +6,14 @@
 
 LOCAL_PATH := $(call my-dir)
 
+# The GUI Soong load hook stages these files outside module install rules.
+# Its tracked inputs regenerate XML and matching PNGs; make the ramdisk pack
+# depend on the regenerated output instead of reusing an earlier theme image.
+$(call intermediates-dir-for,PACKAGING,recovery)/ramdisk_files-timestamp: \
+    $(TARGET_RECOVERY_ROOT_OUT)/twres/ui.xml \
+    $(TARGET_RECOVERY_ROOT_OUT)/twres/portrait.xml \
+    $(TARGET_RECOVERY_ROOT_OUT)/twres/splash.xml
+
 include $(CLEAR_VARS)
 LOCAL_MODULE := twrp-gpu-start
 LOCAL_MODULE_TAGS := optional
