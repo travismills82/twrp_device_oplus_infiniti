@@ -355,7 +355,24 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(progress.find('progressbar/resource').get('rounded'),'1')
         self.assertEqual(progress.find('progressbar/data').get('name'),'ui_progress')
         self.assertEqual(progress.find('animation/condition').attrib,{'var1':'ui_progress','var2':'0'})
-        self.assertEqual(progress.find('text/text').text,'%tw_op15_dashboard_progress%')
+        self.assertEqual([widget.tag for widget in progress],['progressbar','animation','text'])
+        label=progress.find('text')
+        self.assertEqual(label.find('text').text,'%tw_op15_dashboard_progress%')
+        self.assertEqual(label.get('color'),'#FFFFFF')
+        self.assertEqual(label.find('placement').attrib,{'x':'%center_x%','y':'1344','placement':'4'})
+        for name in ('backup_run','action_page'):
+            page=self.portrait.find(f"pages/page[@name='{name}']")
+            self.assertIsNotNone(page.find("template[@name='progress_bar']"))
+            texts={node.text for node in page.findall('text/text')}
+            self.assertFalse({'%tw_file_progress%','%tw_size_progress%'} & texts)
+            if name=='backup_run':
+                self.assertTrue({'%tw_op15_backup_file_count%','%tw_op15_backup_size_count%'} <= texts)
+        lang=ET.parse(RECOVERY/'gui/theme/common/languages/en.xml').getroot()
+        for key in ('op15_file_count','op15_size_count'):
+            resource=lang.find(f".//string[@name='{key}']")
+            self.assertIsNotNone(resource,key)
+            self.assertEqual(resource.text.count('%llu'),2)
+            self.assertNotIn('%%',resource.text)
         placement=self.portrait.find("pages/page[@name='lock']/slider/placement")
         self.assertEqual(placement.get('labelcenter'),'1')
         self.assertEqual(placement.get('labeloffsety'),'56')

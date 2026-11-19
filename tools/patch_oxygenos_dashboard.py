@@ -88,13 +88,14 @@ def shared_theme(text):
     text=text.replace('<animation name="progress" filename="indeterminate"/>',
                       '<animation name="progress" filename="oxy_indeterminate"/>')
     progress=node('template',name='progress_bar')
-    value=label(progress,'%tw_op15_dashboard_progress%','%center_x%','%row16a_y%','oxy_body','#E31B36',5)
-    cond(value,'ui_progress','0','>');cond(value,'ui_progress','100','<=')
     bar=add(progress,'progressbar');place(bar,'%indent%','%row17a_y%')
     add(bar,'resource',empty='progress_empty',full='progress_full',rounded='1');add(bar,'data',name='ui_progress')
     animation=add(progress,'animation');cond(animation,'ui_progress','0')
     place(animation,'%indent%','%row17a_y%');add(animation,'resource',name='progress')
     add(animation,'speed',fps='24',render='2');add(animation,'loop',frame='1')
+    # Draw above the track, including its unfilled portion, and its red fill.
+    value=label(progress,'%tw_op15_dashboard_progress%','%center_x%','1344','oxy_status','#FFFFFF',4)
+    cond(value,'ui_progress','0','>');cond(value,'ui_progress','100','<=')
     text,count=re.subn(r'<template name="progress_bar">.*?</template>',lambda _:serialize([progress]).strip(),text,count=1,flags=re.S)
     if count!=1:raise ValueError('Native progress template missing')
     controls=json.loads((ASSETS/'shared-controls.json').read_text())
@@ -306,6 +307,18 @@ def position_unlock_label(text):
     return text[:match.start()]+serialize([page]).strip()+text[match.end():]
 
 
+def backup_progress_counts(text):
+    match=re.search(r'<page name="backup_run">.*?</page>',text,re.S)
+    if not match:raise ValueError('Native backup progress page missing')
+    page=match[0]
+    for original,replacement in (('tw_file_progress','tw_op15_backup_file_count'),
+                                 ('tw_size_progress','tw_op15_backup_size_count')):
+        old,new=f'%{original}%',f'%{replacement}%'
+        if page.count(old)+page.count(new)!=1:raise ValueError('Ambiguous backup progress detail: '+original)
+        page=page.replace(old,new)
+    return text[:match.start()]+page+text[match.end():]
+
+
 def list_caption(item):
     caption=item.get('name','')
     if caption.startswith('{@') and caption.endswith('}') and '=' in caption:
@@ -455,6 +468,7 @@ def patch(recovery):
     ut=insert(ut,'wifi-variables',serialize(defaults),'</variables>')
     ct=alphabetize_advanced(ct)
     ct=position_unlock_label(ct)
+    ct=backup_progress_counts(ct)
     ut=shared_theme(ut)
     patch_splash(recovery)
     ET.fromstring(ct);ET.fromstring(ut)

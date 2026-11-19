@@ -1,0 +1,53 @@
+diff --git a/progresstracking.cpp b/progresstracking.cpp
+index 64115b9..b1520a7 100644
+--- a/progresstracking.cpp
++++ b/progresstracking.cpp
+@@ -39,6 +39,10 @@ ProgressTracking::ProgressTracking(const unsigned long long backup_size) {
+ 	previous_partitions_size = 0;
+ 	display_file_count = false;
+ 	clock_gettime(CLOCK_MONOTONIC, &last_update);
++#ifndef BUILD_TWRPTAR_MAIN
++	DataManager::SetValue("tw_op15_backup_size_count", "");
++	DataManager::SetValue("tw_op15_backup_file_count", "");
++#endif
+ }
+ 
+ void ProgressTracking::SetPartitionSize(const unsigned long long part_size) {
+@@ -91,11 +95,17 @@ void ProgressTracking::UpdateDisplayDetails(const bool force) {
+ 		display_percent = (double)(current_size + previous_partitions_size) / (double)(total_backup_size) * 100;
+ 	sprintf(size_progress, size_prog.c_str(), (current_size + previous_partitions_size) / 1048576, total_backup_size / 1048576, (int)(display_percent));
+ 	DataManager::SetValue("tw_size_progress", size_progress);
++	// The portrait Backup bar is the only place that displays percentages.
++	auto count_only = gui_lookup("op15_size_count", "%llu MB of %llu MB");
++	snprintf(size_progress, sizeof(size_progress), count_only.c_str(),
++		 (current_size + previous_partitions_size) / 1048576, total_backup_size / 1048576);
++	DataManager::SetValue("tw_op15_backup_size_count", size_progress);
+ 	progress_percent = (display_percent / 100);
+ 	DataManager::SetProgress((float)(progress_percent));
+ 
+ 	if (!display_file_count || file_count == 0) {
+ 		DataManager::SetValue("tw_file_progress", "");
++		DataManager::SetValue("tw_op15_backup_file_count", "");
+ 	} else {
+ 		string file_prog = gui_lookup("file_progress", "%llu of %llu files, %i%%");
+ 		char file_progress[1024];
+@@ -103,6 +113,9 @@ void ProgressTracking::UpdateDisplayDetails(const bool force) {
+ 		display_percent = (double)(current_count) / (double)(file_count) * 100;
+ 		sprintf(file_progress, file_prog.c_str(), current_count, file_count, (int)(display_percent));
+ 		DataManager::SetValue("tw_file_progress", file_progress);
++		count_only = gui_lookup("op15_file_count", "%llu of %llu files");
++		snprintf(file_progress, sizeof(file_progress), count_only.c_str(), current_count, file_count);
++		DataManager::SetValue("tw_op15_backup_file_count", file_progress);
+ 	}
+ #endif
+ }
+diff --git a/gui/theme/common/languages/en.xml b/gui/theme/common/languages/en.xml
+--- a/gui/theme/common/languages/en.xml
++++ b/gui/theme/common/languages/en.xml
+@@ -695,4 +695,6 @@
+ 		<string name="file_progress">%llu of %llu files, %i%%</string>
+ 		<string name="size_progress">%lluMB of %lluMB, %i%%</string>
++		<string name="op15_file_count">%llu of %llu files</string>
++		<string name="op15_size_count">%llu MB of %llu MB</string>
+ 		<string name="decrypt_cmd" version="2">Attempting to decrypt data partition or user data via command line.</string>
+ 		<string name="base_pkg_err">Failed to load base packages.</string>

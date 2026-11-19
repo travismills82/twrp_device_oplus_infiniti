@@ -19,25 +19,35 @@ class NativeBackupTests(unittest.TestCase):
     def test_native_targets_and_safe_scope(self):
         rows = audit.targets(TREE / "recovery/root/system/etc/twrp.flags")
         names = {row["target"] for row in rows}
-        self.assertGreaterEqual(len(rows), 50)
-        self.assertTrue({"/data", "/boot", "/init_boot", "/vendor_boot", "/system_image", "/vendor_image",
-                         "/efs1", "/efs2", "/efs_oem_backup", "/splash_image"} <= names)
-        self.assertFalse({"/userdata_image", "/super", "/sda", "/xbl", "/abl", "/keystore"} & names)
+        self.assertEqual(names, {"/metadata", "/init_boot", "/vendor_boot", "/recovery", "/dtbo",
+                                 "/vbmeta", "/vbmeta_system", "/modem", "/bluetooth", "/dsp",
+                                 "/efs1", "/efs2", "/efsc", "/efsg", "/storage"})
+        self.assertEqual(len(rows), len(names), "duplicate explicit backup flag")
+        config = (TREE / "recovery.fstab").read_text()
+        self.assertRegex(config, r"(?m)^/dev/block/bootdevice/by-name/userdata\s+/data\s+f2fs\s+")
+        flags = (TREE / "recovery/root/system/etc/twrp.flags").read_text()
+        self.assertRegex(flags, r"(?m)^/boot\s+emmc\s+/dev/block/bootdevice/by-name/boot\s+flags=slotselect$")
+        self.assertRegex(flags, r"(?m)^/persist\s+ext4\s+/dev/block/bootdevice/by-name/persist\s+")
 
-    def test_active_slot_and_logical_alias_resolution(self):
+    def test_active_slot_and_shared_partition_resolution(self):
         inventory = {"slot": "a", "partitions": [
-            {"name": "boot_a", "bytes": 100, "kind": "gpt"},
-            {"name": "boot_b", "bytes": 100, "kind": "gpt"},
-            {"name": "system_a", "bytes": 200, "kind": "logical"},
-            {"name": "xbl_a", "bytes": 300, "kind": "gpt"}]}
-        result = audit.audit(inventory, TREE / "recovery/root/system/etc/twrp.flags")
-        targets = {row["target"]: row for row in result["targets"]}
-        self.assertEqual(targets["/boot"]["resolved"], "boot_a")
-        self.assertEqual(targets["/system_image"]["resolved"], "system_a")
-        self.assertTrue(targets["/system_image"]["present"])
-        excluded = {row["name"]: row["reason"] for row in result["excluded"]}
-        self.assertIn("Inactive slot", excluded["boot_b"])
-        self.assertIn("Boot-chain/security", excluded["xbl_a"])
+            {"name": "vendor_boot_a", "bytes": 100, "kind": "gpt"},
+            {"name": "vendor_boot_b", "bytes": 100, "kind": "gpt"},
+            {"name": "metadata", "bytes": 200, "kind": "gpt"},
+            {"name": "xbl_a", "bytes": 300, "kind": "gpt"},
+            {"name": "xbl_b", "bytes": 300, "kind": "gpt"}]}
+        for slot, inactive in (("a", "b"), ("b", "a")):
+            inventory["slot"] = slot
+            result = audit.audit(inventory, TREE / "recovery/root/system/etc/twrp.flags")
+            targets = {row["target"]: row for row in result["targets"]}
+            self.assertEqual(targets["/vendor_boot"]["resolved"], f"vendor_boot_{slot}")
+            self.assertTrue(targets["/vendor_boot"]["present"])
+            self.assertEqual(targets["/metadata"]["resolved"], "metadata")
+            self.assertEqual(targets["/metadata"]["method"], "files")
+            self.assertTrue(targets["/metadata"]["present"])
+            excluded = {row["name"]: row["reason"] for row in result["excluded"]}
+            self.assertIn("Inactive slot", excluded[f"vendor_boot_{inactive}"])
+            self.assertIn("Boot-chain/security", excluded[f"xbl_{slot}"])
 
     def test_invalid_inventory_is_rejected(self):
         for inventory in ({"slot": "c", "partitions": []}, {"slot": "a", "partitions": [

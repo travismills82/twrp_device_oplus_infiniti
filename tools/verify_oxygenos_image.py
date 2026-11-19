@@ -67,6 +67,13 @@ def main():
         if packed_common.find("pages/page[@name='op15_classic_home']") is not None:raise RuntimeError('Removed Classic page remains packaged')
         if packed_common.find("pages/page[@name='main2']/button[@name='oxy_classic']") is not None:raise RuntimeError('Removed Classic shortcut remains packaged')
         if canonical(packed_ui.find("templates/template[@name='page']"))!=canonical(expected_ui.find("templates/template[@name='page']")):raise RuntimeError('Stale shared red page template')
+        progress_path="templates/template[@name='progress_bar']"
+        if canonical(packed_ui.find(progress_path))!=canonical(expected_ui.find(progress_path)):
+            raise RuntimeError('Stale packaged progress bar or percentage placement')
+        language=ET.fromstring(get("twres/languages/en.xml"))
+        for key in ("op15_file_count","op15_size_count"):
+            if language.find(f".//string[@name='{key}']") is None:
+                raise RuntimeError("Packaged backup counter string missing: "+key)
         packed_splash=ET.fromstring(get('twres/splash.xml'))
         expected_splash=ET.parse(source/'portrait_hdpi/splash.xml').getroot()
         if canonical(packed_splash.find("pages/page[@name='splash']"))!=canonical(expected_splash.find("pages/page[@name='splash']")):raise RuntimeError('Stale red splash page')
@@ -91,6 +98,12 @@ def main():
         native=get("system/bin/recovery")
         if b'tw_op15_dashboard_charging' not in native:raise RuntimeError('Native charging-state refresh is missing from the recovery executable')
         if b'tw_op15_dashboard_progress' not in native:raise RuntimeError('Native real-progress formatter is missing from the recovery executable')
+        for marker in (b"tw_op15_backup_file_count",b"tw_op15_backup_size_count"):
+            if marker not in native:raise RuntimeError("Native backup counter missing: "+marker.decode())
+        for config in ("recovery.fstab","twrp.flags"):
+            name="system/etc/"+config
+            if get(name)!=(DEVICE/"recovery/root"/name).read_bytes():
+                raise RuntimeError("Stale packaged device configuration: "+name)
         built=root/"out/target/product/infiniti/obj/EXECUTABLES/recovery_intermediates/recovery"
         if native!=built.read_bytes():raise RuntimeError("Stale packaged recovery executable/GUI")
         for marker in (b"tw_op15_dashboard_storage",b"tw_op15_dashboard_crypto",b"tw_op15_dashboard_storage_ready",b"tw_op15_dashboard_battery_valid"):

@@ -336,8 +336,8 @@ if grep -Eq '^[[:space:]]*/userdata_image([[:space:]]|$)' "$TWRP_FLAGS" ||
     fail "raw userdata image target must not be exposed in twrp.flags"
 fi
 
-grep -Eq '^[[:space:]]*/data[[:space:]]+f2fs[[:space:]].*display="Data";backup=1' "$TWRP_FLAGS" ||
-    fail "file-level Data backup is missing from twrp.flags"
+grep -Eq '^[^#[:space:]]+[[:space:]]+/data[[:space:]]+f2fs[[:space:]].*keydirectory=/metadata/vold/metadata_encryption' "$RECOVERY_FSTAB" ||
+    fail "TWRP's native file-level Data target is missing its FBE-enabled fstab entry"
 
 if grep -Eq '^[[:space:]]*setenforce[[:space:]]' "$QCOM_INIT_RC"; then
     fail "init.recovery.qcom.rc uses the unsupported Android init setenforce command"
@@ -362,13 +362,17 @@ if grep -Fq 'import /vendor/etc/ueventd.qcom.userdebug.rc' "$VENDOR_UEVENTD_RC";
     fail "recovery vendor ueventd.rc imports unavailable userdebug rules"
 fi
 
+cmp -s "$RECOVERY_FSTAB" "$RECOVERY_ROOT_FSTAB" ||
+    fail "build and packaged recovery fstab disagree"
 for fstab in "$RECOVERY_FSTAB" "$RECOVERY_ROOT_FSTAB"; do
     if grep -Eq '(^|,)(backup=1|flashimg=1|display=|resize)' "$fstab"; then
         fail "Android fstab still contains TWRP-only backup or display flags: ${fstab#"$TREE/"}"
     fi
 done
 
-for target in boot init_boot vendor_boot dtbo recovery; do
+grep -Eq '^[[:space:]]*/boot[[:space:]]+emmc[[:space:]].*flags=slotselect([;[:space:]]|$)' "$TWRP_FLAGS" ||
+    fail "TWRP's native Boot target is missing its slotselect mapping"
+for target in init_boot vendor_boot dtbo recovery; do
     grep -Eq "^[[:space:]]*/${target}[[:space:]]+emmc[[:space:]].*flags=.*backup=1;flashimg=1" "$TWRP_FLAGS" ||
         fail "TWRP backup flags are missing for /${target}"
 done
