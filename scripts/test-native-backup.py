@@ -101,6 +101,29 @@ class NativeBackupTests(unittest.TestCase):
         self.assertIn("part_settings->adbbackup ? 0 : (O_CREAT | O_EXCL)", raw)
         self.assertLess(raw.index("BlockIsSafe"), raw.index("dest_fd = open"))
 
+    def test_internal_storage_destination_is_blocked_before_any_backup_output(self):
+        recovery = ROOT / "bootable/recovery"
+        manager = (recovery / "partitionmanager.cpp").read_text()
+        policy = manager[manager.index("bool TWPartitionManager::Check_Directory_Backup_Destination"):
+                         manager.index("int TWPartitionManager::Run_Backup(")]
+        self.assertIn("part->Has_Data_Media", policy)
+        self.assertIn("part->Mount_Flags & MS_BIND", policy)
+        self.assertIn("SafeNewBackupDirectory(part->Primary_Block_Device, destination", policy)
+        run = manager[manager.index("int TWPartitionManager::Run_Backup("):
+                      manager.index("bool TWPartitionManager::Restore_Partition(")]
+        for check in ("check_destination(part_settings.Part)", "check_destination(*subpart)"):
+            for write in ("Write_ADB_Stream_Header", "Recursive_Mkdir", "kIncomplete", "Backup_Partition(&part_settings)"):
+                self.assertLess(run.index(check), run.index(write))
+        self.assertIn("if (adbbackup || Check_Directory_Backup_Destination", run)
+        self.assertIn("part.Selectable = adbbackup || Check_Directory_Backup_Destination", manager)
+        gui = (recovery / "gui/partitionlist.cpp").read_text()
+        self.assertIn("RemoveBackupSelection(&allowed, part.Mount_Point)", gui)
+        self.assertIn('varName == "tw_storage_path"', gui)
+        self.assertIn("if (item_selected < mList.size() && !mList.at(item_selected).Selectable)", gui)
+        lang = ET.parse(recovery / "gui/theme/common/languages/en.xml")
+        for key in ("op15_backup_separate_storage", "op15_backup_destination_refused"):
+            self.assertIsNotNone(lang.find(f".//string[@name='{key}']"))
+
     def test_terminal_helper_uses_native_workflow(self):
         helper = (TREE / "recovery/root/system/bin/twrp-partition-backup").read_text()
         self.assertIn("exec /system/bin/twrp changepage=backup", helper)

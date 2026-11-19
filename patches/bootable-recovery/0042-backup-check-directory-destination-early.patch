@@ -1,0 +1,222 @@
+diff --git a/backup_destination.hpp b/backup_destination.hpp
+new file mode 100644
+--- /dev/null
++++ b/backup_destination.hpp
+@@ -0,0 +1,39 @@
++/* SPDX-License-Identifier: GPL-3.0-or-later */
++#ifndef TWRP_BACKUP_DESTINATION_HPP
++#define TWRP_BACKUP_DESTINATION_HPP
++
++#include "backup_safety.hpp"
++
++namespace twrp_backup_safety {
++// Before creating a backup folder, identify the filesystem of its closest
++// existing directory. Do not walk past an inaccessible or dangling symlink.
++inline bool SafeNewBackupDirectory(const std::string& source, std::string destination,
++                                   std::string* error, const std::string& mountinfo = "/proc/self/mountinfo") {
++    if (!destination.empty() && destination.front() == '/') {
++        struct stat entry {};
++        while (lstat(destination.c_str(), &entry) != 0) {
++            if (errno != ENOENT || destination == "/") break;
++            auto slash = destination.rfind('/');
++            destination.resize(slash == 0 ? 1 : slash);
++        }
++        if (stat(destination.c_str(), &entry) == 0 && S_ISDIR(entry.st_mode))
++            return SafeFileBackup(source, destination, error, mountinfo);
++    }
++    *error = "Cannot identify the backup directory";
++    return false;
++}
++
++inline void RemoveBackupSelection(std::string* list, const std::string& path) {
++    for (size_t start = 0; start < list->size();) {
++        const size_t end = list->find(';', start);
++        const size_t length = (end == std::string::npos ? list->size() : end) - start;
++        if (list->compare(start, length, path) == 0)
++            list->erase(start, length + (end != std::string::npos));
++        else if (end == std::string::npos)
++            break;
++        else
++            start = end + 1;
++    }
++}
++}
++#endif
+diff --git a/partitions.hpp b/partitions.hpp
+--- a/partitions.hpp
++++ b/partitions.hpp
+@@ -61,6 +61,7 @@
+ 	std::string Display_Name;
+ 	std::string Mount_Point;
+ 	unsigned int selected;
++	bool Selectable = true;
+ };
+
+ struct Uevent_Block_Data {
+@@ -418,6 +419,7 @@
+ 	void Setup_Settings_Storage_Partition(TWPartition* Part);                 // Sets up settings storage
+ 	void Setup_Android_Secure_Location(TWPartition* Part);                    // Sets up .android_secure if needed
+ 	bool Backup_Partition(struct PartitionSettings *part_settings);           // Backup the partitions based on type
++	bool Check_Directory_Backup_Destination(const TWPartition* part, const string& destination, string* error) const;
+ 	TWPartition* Find_Partition_By_MTP_Storage_ID(unsigned int Storage_ID);   // Returns a pointer to a partition based on MTP Storage ID
+ 	bool Add_Remove_MTP_Storage(TWPartition* Part, int message_type);         // Adds or removes an MTP Storage partition
+ 	TWPartition* Find_Next_Storage(string Path, bool Exclude_Data_Media);
+diff --git a/partitionmanager.cpp b/partitionmanager.cpp
+--- a/partitionmanager.cpp
++++ b/partitionmanager.cpp
+@@ -74,6 +74,7 @@
+ #include "progresstracking.hpp"
+ #include "twrpDigestDriver.hpp"
+ #include "backup_safety.hpp"
++#include "backup_destination.hpp"
+ #include "twrpRepacker.hpp"
+ #include "adbbu/libtwadbbu.hpp"
+
+@@ -1130,6 +1131,15 @@
+ 	return 0;
+ }
+
++bool TWPartitionManager::Check_Directory_Backup_Destination(const TWPartition* part,
++		const string& destination, string* error) const {
++	// /storage is a bind of /data/media/0, not the standard Data backup.
++	// Data excludes media from its archive and may still use it as a destination.
++	if (part->Backup_Method != BM_FILES || part->Has_Data_Media || !(part->Mount_Flags & MS_BIND))
++		return true;
++	return twrp_backup_safety::SafeNewBackupDirectory(part->Primary_Block_Device, destination, error);
++}
++
+ int TWPartitionManager::Run_Backup(bool adbbackup) {
+ 	PartitionSettings part_settings;
+ 	int partition_count = 0, disable_free_space_check = 0, skip_digest = 0;
+@@ -1179,6 +1189,14 @@
+
+ 	LOGINFO("Backup_Folder is: '%s'\n", part_settings.Backup_Folder.c_str());
+
++	const auto check_destination = [&](const TWPartition* part) {
++		string error;
++		if (adbbackup || Check_Directory_Backup_Destination(part, part_settings.Backup_Folder, &error))
++			return true;
++		gui_msg(Msg(msg::kError, "op15_backup_destination_refused=Cannot back up {1} to the selected storage: {2}. Select a different destination.")(part->Backup_Display_Name)(error));
++		return false;
++	};
++
+ 	LOGINFO("Calculating backup details...\n");
+ 	DataManager::GetValue("tw_backup_list", Backup_List);
+ 	LOGINFO("Backup_List: %s\n", Backup_List.c_str());
+@@ -1189,6 +1207,8 @@
+ 			LOGINFO("backup_path: %s\n", backup_path.c_str());
+ 			part_settings.Part = Find_Partition_By_Path(backup_path);
+ 			if (part_settings.Part != NULL) {
++				if (!check_destination(part_settings.Part))
++					return false;
+ 				partition_count++;
+ 				if (part_settings.Part->Backup_Method == BM_FILES)
+ 					part_settings.file_bytes += part_settings.Part->Backup_Size;
+@@ -1199,6 +1219,8 @@
+
+ 					for (subpart = Partitions.begin(); subpart != Partitions.end(); subpart++) {
+ 						if ((*subpart)->Can_Be_Backed_Up && (*subpart)->Is_Present && (*subpart)->Is_SubPartition && (*subpart)->SubPartition_Of == part_settings.Part->Mount_Point) {
++							if (!check_destination(*subpart))
++								return false;
+ 							partition_count++;
+ 							if ((*subpart)->Backup_Method == BM_FILES)
+ 								part_settings.file_bytes += (*subpart)->Backup_Size;
+@@ -2699,6 +2721,8 @@
+ 	} else if (ListType == "backup") {
+ 		char backup_size[255];
+ 		unsigned long long Backup_Size;
++		const string destination = DataManager::GetCurrentStoragePath();
++		const bool adbbackup = DataManager::GetIntValue("tw_enable_adb_backup") == 1;
+ 		for (iter = Partitions.begin(); iter != Partitions.end(); iter++) {
+ 			if ((*iter)->Can_Be_Backed_Up && !(*iter)->Is_SubPartition && (*iter)->Is_Present) {
+ 				struct PartitionList part;
+@@ -2717,6 +2741,11 @@
+ 				part.Display_Name += "MB)";
+ 				part.Mount_Point = (*iter)->Backup_Path;
+ 				part.selected = 0;
++				string error;
++				part.Selectable = adbbackup || Check_Directory_Backup_Destination(*iter, destination, &error);
++				if (!part.Selectable)
++					part.Display_Name = (*iter)->Backup_Display_Name +
++						gui_lookup("op15_backup_separate_storage", " (choose different storage)");
+ 				Partition_List->push_back(part);
+ 			}
+ 		}
+diff --git a/gui/partitionlist.cpp b/gui/partitionlist.cpp
+--- a/gui/partitionlist.cpp
++++ b/gui/partitionlist.cpp
+@@ -29,6 +29,7 @@
+ #include "objects.hpp"
+ #include "../data.hpp"
+ #include "../partitions.hpp"
++#include "../backup_destination.hpp"
+
+ GUIPartitionList::GUIPartitionList(xml_node<>* node) : GUIScrollList(node)
+ {
+@@ -116,6 +117,15 @@
+ 		SetVisibleListLocation(0);
+ 		updateList = false;
+ 		mUpdate = 1;
++		if (ListType == "backup") {
++			const string requested = DataManager::GetStrValue(mVariable);
++			string allowed = requested;
++			for (const auto& part : mList)
++				if (!part.Selectable)
++					twrp_backup_safety::RemoveBackupSelection(&allowed, part.Mount_Point);
++			if (allowed != requested)
++				DataManager::SetValue(mVariable, allowed);
++		}
+ 		if (ListType == "backup" || ListType == "flashimg")
+ 			MatchList();
+ 	}
+@@ -136,6 +146,9 @@
+ 	if (!isConditionTrue())
+ 		return 0;
+
++	if (ListType == "backup" && (varName == "tw_storage_path" || varName == "tw_enable_adb_backup"))
++		updateList = true;
++
+ 	if (varName == mVariable && !mUpdate)
+ 	{
+ 		if (ListType == "storage") {
+@@ -176,6 +189,10 @@
+ 	DataManager::GetValue(mVariable, variablelist);
+
+ 	for (i = 0; i < listSize; i++) {
++		if (!mList.at(i).Selectable) {
++			mList.at(i).selected = 0;
++			continue;
++		}
+ 		searchvalue = mList.at(i).Mount_Point + ";";
+ 		pos = variablelist.find(searchvalue);
+ 		if (pos != string::npos) {
+@@ -212,6 +229,8 @@
+ 	// note: the "selected" parameter above is for the currently touched item
+ 	// don't confuse it with the more persistent "selected" flag per list item used below
+ 	ImageResource* icon = mList.at(itemindex).selected ? mIconSelected : mIconUnselected;
++	if (!mList.at(itemindex).Selectable)
++		icon = nullptr;
+ 	const std::string& text = mList.at(itemindex).Display_Name;
+
+ 	RenderStdItem(yPos, selected, icon, text.c_str());
+@@ -219,6 +238,8 @@
+
+ void GUIPartitionList::NotifySelect(size_t item_selected)
+ {
++	if (item_selected < mList.size() && !mList.at(item_selected).Selectable)
++		return;
+ 	if (item_selected < mList.size()) {
+ 		int listSize = mList.size();
+ 		if (ListType == "mount") {
+diff --git a/gui/theme/common/languages/en.xml b/gui/theme/common/languages/en.xml
+--- a/gui/theme/common/languages/en.xml
++++ b/gui/theme/common/languages/en.xml
+@@ -540,6 +540,8 @@
+ 		<string name="auto_generate">(Auto Generate)</string>
+ 		<string name="unable_to_locate_partition">Unable to locate '{1}' partition for backup calculations.</string>
+ 		<string name="no_partition_selected">No partitions selected for backup.</string>
++		<string name="op15_backup_separate_storage"> (choose different storage)</string>
++		<string name="op15_backup_destination_refused">Cannot back up {1} to the selected storage: {2}. Select a different destination.</string>
+ 		<string name="total_partitions_backup"> * Total number of partitions to back up: {1}</string>
+ 		<string name="total_backup_size"> * Total size of all data: {1}MB</string>
+ 		<string name="available_space"> * Available space: {1}MB</string>

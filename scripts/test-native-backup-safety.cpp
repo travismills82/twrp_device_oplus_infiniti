@@ -3,7 +3,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include "backup_safety.hpp"
+#include "backup_destination.hpp"
 
 int main(int argc, char** argv) {
     assert(argc == 2); // A disposable test directory, never /sys or /dev.
@@ -80,6 +80,22 @@ int main(int argc, char** argv) {
     assert(!SafeFileBackup((root / "media_alias").string(), (root / "data/media/0/TWRP").string(), &error, mounts.string()));
     assert(!SafeFileBackup((root / "data/app").string(), (root / "data/app/backups").string(), &error, mounts.string()));
     assert(SafeFileBackup((root / "data/app").string(), (root / "data/media/0/TWRP").string(), &error, mounts.string()));
+    const auto media = root / "data/media/0";
+    const auto pending = media / "TWRP/BACKUPS/device/new-session";
+    assert(!SafeNewBackupDirectory(media.string(), pending.string(), &error, mounts.string()));
+    assert(error.find("inside its own source/target tree") != std::string::npos);
+    assert(!std::filesystem::exists(pending));
+    assert(!SafeNewBackupDirectory(media.string(), (root / "media_alias").string(), &error, mounts.string()));
+    assert(SafeNewBackupDirectory(media.string(), (root / "data/app/backups/new-session").string(), &error, mounts.string()));
+    std::filesystem::create_directory_symlink(media, root / "data/alias");
+    assert(!SafeNewBackupDirectory(media.string(), (root / "data/alias/TWRP/new-session").string(), &error, mounts.string()));
+    std::filesystem::create_directory_symlink(root / "missing", root / "data/missing_alias");
+    assert(!SafeNewBackupDirectory(media.string(), (root / "data/missing_alias/new-session").string(), &error, mounts.string()));
+    std::string selections = "/boot;/storage;/data;/other/storage;/storage";
+    RemoveBackupSelection(&selections, "/storage");
+    assert(selections == "/boot;/data;/other/storage;");
+    RemoveBackupSelection(&selections, "/missing");
+    assert(selections == "/boot;/data;/other/storage;");
     assert(ContainsPath("/media/0", "/media/0/TWRP"));
     assert(!ContainsPath("/media/0", "/media/01/TWRP"));
     assert(MountUnescape("/USB\\040Disk") == "/USB Disk");
