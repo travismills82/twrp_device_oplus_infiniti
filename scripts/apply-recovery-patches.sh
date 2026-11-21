@@ -103,6 +103,21 @@ echo "Current HEAD:    $CURRENT_HEAD"
 echo "Reference HEAD:  $EXPECTED_BASE"
 echo
 
+# The final SMB patch deliberately extends the native 0028/0042 safety
+# hunks. Unapply only that exact generated diff before revalidating them.
+for generated in \
+    "$PATCH_DIR/0052-bound-touch-input-frame-time.patch" \
+    "$PATCH_DIR/0051-dashboard-network-connection-icons.patch" \
+    "$PATCH_DIR/0048-double-tap-wake-while-display-is-dark.patch" \
+    "$PATCH_DIR/0047-verify-smb-backups-from-streamed-digests.patch" \
+    "$PATCH_DIR/0046-status-bar-wifi-throughput.patch" \
+    "$PATCH_DIR/0044-refresh-dashboard-data-badges.patch" \
+    "$PATCH_DIR/0043-native-smb-storage-browser.patch"; do
+    if git -C "$RECOVERY_DIR" apply --reverse --check "$generated" >/dev/null 2>&1; then
+        git -C "$RECOVERY_DIR" apply --reverse "$generated"
+    fi
+done
+
 for patch in "${PATCHES[@]}"; do
     name="$(basename "$patch")"
     apply_opts=()
@@ -569,6 +584,16 @@ fi
 
 python3 -B "$DEVICE_DIR/tools/patch_twrp_magisk_theme.py" \
     "$RECOVERY_DIR/gui/theme/common/portrait.xml" || fail "Advanced helper theme patch failed"
+install -m 0644 "$DEVICE_DIR/smb/protocol.hpp" "$RECOVERY_DIR/op15_smb_protocol.hpp"
+install -m 0644 "$DEVICE_DIR/tools/wifi_traffic.hpp" "$RECOVERY_DIR/op15_wifi_traffic.hpp"
+install -m 0644 "$DEVICE_DIR/tools/input_frame_pacer.hpp" "$RECOVERY_DIR/op15_input_frame_pacer.hpp"
+install -m 0644 "$DEVICE_DIR/tools/double_tap_wake.hpp" "$RECOVERY_DIR/op15_double_tap_wake.hpp"
+install -m 0644 "$DEVICE_DIR/smb/profiles.hpp" "$RECOVERY_DIR/op15_smb_profiles.hpp"
+install -m 0644 "$DEVICE_DIR/smb/storage.hpp" "$RECOVERY_DIR/op15_smb_storage.hpp"
+install -m 0644 "$DEVICE_DIR/smb/network_sessions.hpp" "$RECOVERY_DIR/op15_network_sessions.hpp"
+install -m 0644 "$DEVICE_DIR/smb/gui.hpp" "$RECOVERY_DIR/op15_smb_gui.hpp"
+install -m 0644 "$DEVICE_DIR/smb/archive.hpp" "$RECOVERY_DIR/op15_smb_archive.hpp"
+install -m 0644 "$DEVICE_DIR/smb/stream_digest.hpp" "$RECOVERY_DIR/op15_smb_stream_digest.hpp"
 python3 -B "$DEVICE_DIR/tools/patch_oxygenos_dashboard.py" "$RECOVERY_DIR" ||
     fail "OxygenOS native dashboard patch failed"
 

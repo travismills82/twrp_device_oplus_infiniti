@@ -124,6 +124,12 @@ thermal guard.
 9) Delete ftp.conf
 0) Exit
 ```
+
+On the home screen, the CIFS / SMB icon turns green when the native share is
+mounted and connected. The FTP icon turns green only during a live FTP/FTPS
+connection; choosing a saved server alone leaves it white. For a read-only
+SMB mount diagnostic in Terminal, use `twrp-smb-mount status`.
+
 ## Decryption startup
 
 Recovery releases its temporary stock vendor/ODM mounts before starting the

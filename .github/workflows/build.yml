@@ -131,6 +131,7 @@ jobs:
 
     - name: Apply device recovery patches
       run: |
+        bash device/${{ github.event.inputs.DEVICE_PATH }}/scripts/prepare-smb-deps.sh
         bash device/${{ github.event.inputs.DEVICE_PATH }}/scripts/select-recovery-source.sh
         bash device/${{ github.event.inputs.DEVICE_PATH }}/scripts/apply-recovery-patches.sh
         python3 device/${{ github.event.inputs.DEVICE_PATH }}/scripts/test-ab-ota-recovery-safety.py bootable/recovery
@@ -141,6 +142,9 @@ jobs:
         python3 device/${{ github.event.inputs.DEVICE_PATH }}/scripts/test-gpu-renderer.py .
         g++ -std=c++17 -Wall -Wextra -Werror -I bootable/recovery device/${{ github.event.inputs.DEVICE_PATH }}/scripts/test-native-backup-safety.cpp -o /tmp/test-native-backup-safety
         /tmp/test-native-backup-safety "$(mktemp -d /tmp/twrp-native-backup-safety.XXXXXX)"
+        python3 -B device/${{ github.event.inputs.DEVICE_PATH }}/scripts/test-smb-browser.py .
+        g++ -std=c++17 -Wall -Wextra -Werror -I bootable/recovery device/${{ github.event.inputs.DEVICE_PATH }}/scripts/test-smb-browser.cpp -o /tmp/test-smb-browser
+        /tmp/test-smb-browser
         git -C bootable/recovery diff --check
         git -C bootable/recovery status --short
         grep -n "Supplicant network ID" bootable/recovery/gui/action.cpp

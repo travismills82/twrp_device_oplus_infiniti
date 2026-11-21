@@ -1,0 +1,15 @@
+diff --git a/private/recovery.te b/private/recovery.te
+--- a/private/recovery.te
++++ b/private/recovery.te
+@@ -160,4 +160,11 @@
+   allow recovery fuse_device:chr_file rw_file_perms;
+   allow recovery fuse:dir r_dir_perms;
+   allow recovery fuse:file r_file_perms;
++  # The SMB FUSE mount uses nodev, nosuid and noexec. This policy is
++  # recovery-only; Android domains and existing read-only mounts are unaffected.
++  allow recovery fuse:dir create_dir_perms;
++  allow recovery fuse:file create_file_perms;
++  # Network tile indicators correlate local TCP state with registered
++  # recovery helpers. No socket operation or other domain is granted.
++  allow recovery proc_net_tcp_udp:file { getattr open read };
+ 

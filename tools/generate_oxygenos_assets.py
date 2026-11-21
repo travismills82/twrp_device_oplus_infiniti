@@ -166,9 +166,9 @@ def generate():
         d.rounded_rectangle((44*AA,8*AA,47*AA,20*AA),radius=AA,fill="#F8F8FA")
         if full:d.rounded_rectangle((5*AA,5*AA,39*AA,23*AA),radius=AA,fill="#F8F8FA")
         result["oxy_battery_"+("full" if full else "empty")]=im.resize((48,28),Image.Resampling.LANCZOS)
-    for ready in (False,True):
-        im=Image.new("RGBA",(14*AA,14*AA));ImageDraw.Draw(im).ellipse((0,0,14*AA-1,14*AA-1),fill="#39DD87" if ready else "#909099")
-        result["oxy_dot_"+("ready" if ready else "unknown")]=im.resize((14,14),Image.Resampling.LANCZOS)
+    for state,color in (("unknown","#909099"),("ready","#39DD87"),("locked","#EE1935")):
+        im=Image.new("RGBA",(14*AA,14*AA));ImageDraw.Draw(im).ellipse((0,0,14*AA-1,14*AA-1),fill=color)
+        result["oxy_dot_"+state]=im.resize((14,14),Image.Resampling.LANCZOS)
     for c in layout["cards"]:result["oxy_card_"+c["id"]]=rounded(*c["box"][2:],panel=True,radius=36)
     for p in layout["pills"]:result["oxy_pill_"+p["id"]]=rounded(*p["box"][2:],radius=30)
     for b in layout["buttons"]:
@@ -180,6 +180,7 @@ def generate():
     for size,names in groups.items():
         for name in names:result[f"oxy_icon_{name}_{size}"]=icon(name,size)
     result['oxy_icon_wifi_connected_56']=icon('wifi',56,'#39DD87')
+    result['oxy_icon_ftp_connected_56']=icon('ftp',56,'#39DD87')
     result['oxy_icon_charging_active_56']=icon('charging',56,'#39DD87')
     # Keep the native twelve-frame animation protocol and dimensions. These
     # tiny transparent frames replace only the old blue streaming artwork.

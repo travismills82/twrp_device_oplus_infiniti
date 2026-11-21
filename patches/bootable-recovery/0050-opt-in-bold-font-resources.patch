@@ -1,0 +1,116 @@
+diff --git a/gui/resources.cpp b/gui/resources.cpp
+--- a/gui/resources.cpp
++++ b/gui/resources.cpp
+@@ -164,17 +164,19 @@ void FontResource::LoadFont(xml_node<>* node, ZipArchiveHandle pZip)
+ 		attr = node->first_attribute("dpi");
+ 		if (attr)
+ 			dpi = atoi(attr->value());
++		attr = node->first_attribute("bold");
++		const bool bold = attr && atoi(attr->value()) == 1;
+ 
+ 		// we can't use TMP_RESOURCE_NAME here because the ttf subsystem is caching the name and scaling needs to reload the font
+ 		std::string tmpname = "/tmp/" + file;
+ 		if (ExtractResource(pZip, "fonts", file, "", tmpname) == 0)
+ 		{
+-			mFont = twrpTruetype::gr_ttf_loadFont(tmpname.c_str(), font_size, dpi);
++			mFont = twrpTruetype::gr_ttf_loadFont(tmpname.c_str(), font_size, dpi, bold);
+ 		}
+ 		else
+ 		{
+ 			file = std::string(TWRES "fonts/") + file;
+-			mFont = twrpTruetype::gr_ttf_loadFont(file.c_str(), font_size, dpi);
++			mFont = twrpTruetype::gr_ttf_loadFont(file.c_str(), font_size, dpi, bold);
+ 		}
+ 	}
+ 	else
+diff --git a/minuitwrp/include/minuitwrp/truetype.hpp b/minuitwrp/include/minuitwrp/truetype.hpp
+--- a/minuitwrp/include/minuitwrp/truetype.hpp
++++ b/minuitwrp/include/minuitwrp/truetype.hpp
+@@ -29,9 +29,11 @@
+ typedef struct TrueTypeFontKey {
+     int size;
+     int dpi;
+     std::string path;
++    bool bold = false;
+ } TrueTypeFontKey;
+ 
+ inline bool operator<(const TrueTypeFontKey &ttfkLeft, const TrueTypeFontKey &ttfkRight) {
+-    return std::tie(ttfkLeft.size, ttfkLeft.dpi, ttfkLeft.path) < std::tie(ttfkRight.size, ttfkRight.dpi, ttfkRight.path);
++    return std::tie(ttfkLeft.size, ttfkLeft.dpi, ttfkLeft.path, ttfkLeft.bold) <
++           std::tie(ttfkRight.size, ttfkRight.dpi, ttfkRight.path, ttfkRight.bold);
+ }
+@@ -96,5 +98,6 @@ public:
+     twrpTruetype();
+     static int utf8_to_unicode(const char* pIn, unsigned int *pOut);
+     static void* gr_ttf_loadFont(const char *filename, int size, int dpi);
++    static void* gr_ttf_loadFont(const char *filename, int size, int dpi, bool bold);
+     static void* gr_ttf_scaleFont(void *font, int max_width, int measured_width);
+     static void gr_ttf_freeStringCache(void *key, void *value, void *context __unused);
+diff --git a/minuitwrp/truetype.cpp b/minuitwrp/truetype.cpp
+--- a/minuitwrp/truetype.cpp
++++ b/minuitwrp/truetype.cpp
+@@ -27,6 +27,7 @@
+ #include <algorithm>
+ #include <string>
+ #include "minuitwrp/truetype.hpp"
++#include FT_OUTLINE_H
+ #include "graphics_gles.h"
+ 
+ extern unsigned int gr_rotation;
+@@ -77,16 +78,21 @@ int twrpTruetype::utf8_to_unicode(const char* pIn, unsigned int *pOut) {
+ }
+ 
+ void* twrpTruetype::gr_ttf_loadFont(const char *filename, int size, int dpi) {
++	return gr_ttf_loadFont(filename, size, dpi, false);
++}
++
++void* twrpTruetype::gr_ttf_loadFont(const char *filename, int size, int dpi, bool bold) {
+ 	int error;
+ 	TrueTypeFont* res = nullptr;
+ 	TrueTypeFontKey* key;
+ 	std::string fontFileName(filename);
+ 
+ 	pthread_mutex_lock(&font_data.mutex);
+ 
+ 	TrueTypeFontKey k = {
+ 		.size = size,
+ 		.dpi = dpi,
+-		.path = fontFileName
++		.path = fontFileName,
++		.bold = bold
+ 	};
+ 
+@@ -143,5 +149,6 @@ void* twrpTruetype::gr_ttf_loadFont(const char *filename, int size, int dpi) {
+ 
+ 	res->key = key;
++	key->bold = bold;
+ 	font_data.fonts[*key] = res;
+ 
+ exit:
+@@ -159,6 +166,6 @@ void* twrpTruetype::gr_ttf_scaleFont(void *font, int max_width, int measured_width
+ 		new_size = 1;
+ 	const char* file = f->key->path.c_str();
+ 	int dpi = f->dpi;
+-	return gr_ttf_loadFont(file, new_size, dpi);
++	return gr_ttf_loadFont(file, new_size, dpi, f->key->bold);
+ }
+ 
+@@ -229,6 +236,17 @@ TrueTypeCacheEntry* twrpTruetype::gr_ttf_glyph_cache_get(TrueTypeFont *font, int ch
+ 	if(glyphCacheItr == font->glyph_cache.end())
+ 	{
+-		int error = FT_Load_Glyph(font->face, char_index, FT_LOAD_RENDER);
++		const bool bold = font->key->bold;
++		int error = FT_Load_Glyph(font->face, char_index, bold ? FT_LOAD_DEFAULT : FT_LOAD_RENDER);
++		if (!error && bold) {
++			FT_GlyphSlot slot = font->face->glyph;
++			if (slot->format == FT_GLYPH_FORMAT_OUTLINE && slot->outline.n_points) {
++				// About 1/24 em, in the outline's 26.6 pixel units.
++				const FT_Pos strength = font->face->size->metrics.x_ppem * 64 / 24;
++				if (FT_Outline_Embolden(&slot->outline, strength) == 0 && slot->advance.x)
++					slot->advance.x += ((strength + 32) / 64) * 64;
++			}
++			error = FT_Render_Glyph(slot, FT_RENDER_MODE_NORMAL);
++		}
+ 		if(error)
+ 		{
+ 			fprintf(stderr, "Failed to load glyph idx %d: %d\n", char_index, error);

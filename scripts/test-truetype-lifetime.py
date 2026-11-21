@@ -27,6 +27,8 @@ with tempfile.TemporaryDirectory(prefix='twrp-font-sanitizer-') as temporary:
             'bootable/recovery/minuitwrp/include','bootable/recovery/gui/include',
             'bootable/recovery/libpixelflinger/include','external/freetype/include',
             'bootable/recovery/minuitwrp','bootable/recovery')]
+        if label == 'font-fixed':
+            command.append('-DTEST_BOLD_FONT')
         command += [str(DEVICE/'scripts/test-truetype-lifetime.cpp'),str(implementation),
                     '-l:libfreetype.so.6','-pthread','-Wl,--gc-sections','-o',str(binary)]
         subprocess.run(command,check=True,timeout=90)

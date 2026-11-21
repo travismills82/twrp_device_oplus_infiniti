@@ -36,8 +36,8 @@ class DashboardTests(unittest.TestCase):
         cls.home=cls.portrait.find("pages/page[@name='main2']")
         cls.classic=patcher.native_main(RECOVERY)
 
-    def test_all_18_routes_are_copied_from_existing_actions(self):
-        self.assertEqual(len(self.layout["buttons"]),18)
+    def test_all_dashboard_routes_are_copied_from_existing_actions(self):
+        self.assertEqual(len(self.layout["buttons"]),19)
         for b in self.layout["buttons"]:
             actual=self.home.find(f"button[@name='oxy_{b['id']}']")
             self.assertIsNotNone(actual,b["id"])
@@ -61,6 +61,8 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(wifi,[("page","wlan")])
         charging=flatten(patcher.actions(self.home.find("button[@name='oxy_charging']")))
         self.assertEqual(charging,[("page","op15_charging")])
+        smb=flatten(patcher.actions(self.home.find("button[@name='oxy_smb']")))
+        self.assertEqual(smb,[("page","smb_browser"),("op15smb","refresh")])
         self.assertTrue((DEVICE/"recovery/root/system/bin/twrp-ftp-menu").exists())
 
     def test_touch_targets_are_large_and_do_not_overlap(self):
@@ -79,6 +81,44 @@ class DashboardTests(unittest.TestCase):
             for px,py in ((x+w//2,y+h//2),(x+4,y+4),(x+w-4,y+h-4)):
                 hits=[n for n,a,b,c,d in boxes if a<=px<=a+c and b<=py<=b+d]
                 self.assertEqual(hits,[name])
+
+    def test_network_and_tools_buttons_have_equal_visual_and_touch_sizes(self):
+        buttons = [b for b in self.layout["buttons"] if b["kind"] == "network"]
+        self.assertEqual({b["id"] for b in buttons},
+                         {"wifi", "files", "terminal", "smb", "ftp", "sideload", "charging"})
+        self.assertEqual({tuple(b["box"][2:]) for b in buttons}, {(230, 88)})
+        locations = {b["id"]: tuple(b["box"][:2]) for b in buttons}
+        self.assertEqual(locations["sideload"], (790, 1214))
+        self.assertEqual(locations["smb"], (306, 1334))
+        x0, y0, width, height = next(c["box"] for c in self.layout["cards"] if c["id"] == "network")
+        for b in buttons:
+            x, y, w, h = b["box"]
+            self.assertTrue(x0 < x < x + w < x0 + width and y0 < y < y + h < y0 + height, b["id"])
+            self.assertEqual(self.home.find(f"button[@name='oxy_{b['id']}']/image").get("resource"),
+                             "oxy_button_230_88")
+
+    def test_data_badges_use_green_and_red_only_for_known_states(self):
+        dots = {(int(n.find("placement").get("x")), n.find("image").get("resource")): n
+                for n in self.home.findall("image") if n.find("image").get("resource").startswith("oxy_dot_")}
+        for x, icon, var, value in (
+                (334, "ready", "tw_op15_dashboard_crypto", "Decrypted"),
+                (334, "locked", "tw_op15_dashboard_crypto", "Encrypted"),
+                (616, "ready", "tw_op15_dashboard_storage_ready", "1"),
+                (616, "locked", "tw_op15_dashboard_storage", "Internal storage locked")):
+            self.assertIsNotNone(dots[x, "oxy_dot_" + icon].find(f"condition[@var1='{var}'][@var2='{value}']"))
+        self.assertEqual(self.manifest["oxy_dot_locked"]["size"], self.manifest["oxy_dot_ready"]["size"])
+
+    def test_double_tap_option_is_in_general_and_wake_leaves_overlay(self):
+        option = self.portrait.find("pages/page[@name='settings']/listbox/listitem[@name='Double tap to wake']")
+        self.assertIsNotNone(option.find("data[@variable='tw_op15_dt2w']"))
+        self.assertIsNotNone(option.find("conditions/condition[@var1='tw_has_brightnesss_file'][@var2='1']"))
+        data = (RECOVERY / "data.cpp").read_text()
+        self.assertIn('mPersist.SetValue("tw_op15_dt2w", "1")', data)
+        gui = (RECOVERY / "gui/gui.cpp").read_text()
+        wake = gui[gui.index("const bool touch_wake ="):gui.index("switch (ev.type)", gui.index("const bool touch_wake ="))]
+        self.assertIn("blankTimer.resetTimerAndUnblank()", wake)
+        self.assertIn("return true;", wake)
+        self.assertNotIn("ChangeOverlay", wake)
 
     def test_all_assets_are_small_authenticated_rgba_pngs(self):
         total=0;decoded=0
@@ -212,6 +252,8 @@ class DashboardTests(unittest.TestCase):
         tick=gui.split('// OP15 dashboard condition refresh:',1)[1].split('FD_ZERO(&fdset)',1)[0]
         self.assertIn('dashboard_now.tv_sec != dashboard_status_second',tick)
         self.assertIn('PageManager::NotifyVarChange("tw_op15_dashboard_storage_ready", storage)',tick)
+        self.assertIn('PageManager::NotifyVarChange("tw_op15_dashboard_crypto", crypto)',tick)
+        self.assertIn('PageManager::NotifyVarChange("tw_op15_dashboard_storage", storage_label)',tick)
         self.assertIn('PageManager::NotifyVarChange("tw_op15_dashboard_battery_valid", battery)',tick)
         self.assertIn('gForceRender.set_value(1)',tick)
         for forbidden in ('SetValue(', 'Exec_Cmd', 'DoActions', 'GUIAction', 'Decrypt_Device', 'Mount_By_Path', 'pthread_create'):
@@ -237,6 +279,22 @@ class DashboardTests(unittest.TestCase):
         wifi=next(n for n in status.findall("image") if n.find("image").get("resource")=="wifi_status")
         self.assertEqual(wifi.find("placement").attrib,{"x":"800","y":"2"})
         self.assertIsNotNone(wifi.find("condition[@var1='tw_wifi_connected'][@var2='1']"))
+        speed = next(v for v in status.findall("text") if v.findtext("text") == "%tw_op15_wlan_speed%")
+        traffic_font = speed.find("font").get("resource")
+        self.assertEqual(traffic_font, "oxy_traffic_bold")
+        self.assertIsNotNone(self.ui.find(f"resources/font[@name='{traffic_font}'][@bold='1']"))
+        speed_box = speed.find("placement")
+        right, width = (int(speed_box.get(k)) for k in ("x", "maxwidth"))
+        self.assertEqual(speed_box.get("placement"), "1")  # top right
+        self.assertGreater(right, 784)  # original anchor
+        self.assertGreaterEqual(int(wifi.find("placement").get("x")) - right, 6)
+        self.assertGreaterEqual(right - width, 576)  # camera keep-out and margin
+        self.assertIn('LoadAttrIntScaleX(FindNode(node, "placement"), "maxwidth")',
+                      (RECOVERY / "gui/text.cpp").read_text())
+        self.assertIsNotNone(speed.find("condition[@var1='tw_wifi_connected'][@var2='1']"))
+        self.assertIsNotNone(speed.find("condition[@var1='tw_op15_wlan_speed'][@var2='']"))
+        self.assertIn('wifi_traffic.Sample(connected != 0, now_ns)',
+                      (RECOVERY / "gui/gui.cpp").read_text())
         self.assertIsNotNone(self.home.find("button[@name='oxy_logs']/action[@function='overlay']"))
 
     def test_classic_is_removed_and_status_is_inset_and_shared(self):
@@ -261,6 +319,41 @@ class DashboardTests(unittest.TestCase):
         white=next(n for n in self.home.findall('image') if n.find('image').get('resource')=='oxy_icon_wifi_56')
         self.assertEqual(green.find('condition').attrib,{'var1':'tw_wifi_connected','var2':'1'})
         self.assertEqual(white.find('condition').attrib,{'var1':'tw_wifi_connected','var2':'1','op':'!='})
+
+    def test_smb_and_ftp_tiles_switch_only_for_live_connections(self):
+        self.assertEqual(self.manifest["oxy_icon_ftp_connected_56"]["size"], [56, 56])
+        for name in ("smb", "ftp"):
+            state = f"tw_op15_dashboard_{name}_connected"
+            self.assertIsNotNone(self.ui.find(f"variables/variable[@name='{state}'][@value='0']"))
+            images = [n for n in self.home.findall("image") if
+                      n.find(f"condition[@var1='{state}']") is not None]
+            self.assertEqual(len(images), 2)
+            off, on = images
+            self.assertEqual(off.find("image").get("resource"), "oxy_icon_ftp_56")
+            self.assertEqual(on.find("image").get("resource"), "oxy_icon_ftp_connected_56")
+            self.assertEqual(off.find("placement").attrib, on.find("placement").attrib)
+            self.assertEqual(off.find("condition").get("op"), "!=")
+            self.assertEqual(on.find("condition").attrib, dict(var1=state, var2="1"))
+        gui = (RECOVERY / "gui/gui.cpp").read_text()
+        sampler = gui.split("static void* SampleNetworkTileConnections(", 1)[1].split(
+            "static void UpdateNetworkTileConnections()", 1)[0]
+        self.assertIn('op15_network_sessions::Connected("smb") && !op15_smb::MountId().empty()', sampler)
+        self.assertIn('op15_network_sessions::Connected("ftp")', sampler)
+        self.assertIn("network_tile_bits.store(", sampler)
+        self.assertNotIn("DataManager::", sampler)
+        self.assertNotIn("Directory(", sampler)
+        refresh = gui.split("static void UpdateNetworkTileConnections()", 1)[1].split("static int runPages", 1)[0]
+        self.assertIn("network_tile_bits.load(", refresh)
+        self.assertNotIn("MountId(", refresh)
+        self.assertNotIn('op15_network_sessions::Connected(', refresh)
+
+    def test_touch_dispatch_budget_is_independent_of_queue_depth(self):
+        gui = (RECOVERY / "gui/gui.cpp").read_text()
+        loop = gui.split("static void loopTimer(", 1)[1].split("static void* SampleNetworkTileConnections(", 1)[0]
+        self.assertIn("op15_input::ServiceFrame(lastCall, 1000000000ULL / TW_FRAMERATE", loop)
+        self.assertIn("input_handler.hasHeldInput()", loop)
+        self.assertIn("input_handler.handleDrag()", loop)
+        self.assertNotIn("500000000", loop)
 
     def test_charging_icon_uses_fail_closed_kernel_status(self):
         images={n.find('image').get('resource'):n for n in self.home.findall('image')}

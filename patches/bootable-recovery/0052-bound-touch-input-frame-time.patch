@@ -1,0 +1,82 @@
+diff --git a/gui/gui.cpp b/gui/gui.cpp
+--- a/gui/gui.cpp
++++ b/gui/gui.cpp
+@@ -47,6 +47,7 @@
+ #include "objects.hpp"
+ #include "../op15_smb_gui.hpp"
+ #include "../op15_wifi_traffic.hpp"
++#include "../op15_input_frame_pacer.hpp"
+ #include "../op15_double_tap_wake.hpp"
+ #include "../data.hpp"
+ #include "../variables.h"
+@@ -139,6 +140,7 @@
+ 
+ 	// process input events. returns true if any event was received.
+ 	bool processInput(int timeout_ms);
++	bool hasHeldInput() const { return touch_status != TS_NONE || key_status != KS_NONE; }
+ 
+ 	void handleDrag();
+ 
+@@ -539,49 +541,24 @@
+ 	}
+ }
+ 
+-// Get and dispatch input events until it's time to draw the next frame
+-// This special function will return immediately the first time, but then
+-// always returns 1/30th of a second (or immediately if called later) from
+-// the last time it was called
++// Do not let a sustained input stream starve rendering or drag delivery.
+ static void loopTimer(int input_timeout_ms)
+ {
+-	static timespec lastCall;
+-	static int initialized = 0;
+-
+-	if (!initialized)
+-	{
+-		clock_gettime(CLOCK_MONOTONIC, &lastCall);
+-		initialized = 1;
++	static uint64_t lastCall = 0;
++	const auto now = [] {
++		timespec ts{};
++		clock_gettime(CLOCK_MONOTONIC, &ts);
++		return static_cast<uint64_t>(ts.tv_sec) * 1000000000ULL + ts.tv_nsec;
++	};
++	if (!lastCall) {
++		lastCall = now();
+ 		return;
+ 	}
+ 
+-	do
+-	{
+-		bool got_event = input_handler.processInput(input_timeout_ms); // get inputs but don't send drag notices
+-		timespec curTime;
+-		clock_gettime(CLOCK_MONOTONIC, &curTime);
+-
+-		timespec diff = TWFunc::timespec_diff(lastCall, curTime);
+-
+-		// This is really 2 or TW_FRAMERATE times per second
+-		// As long as we get events, increase the timeout so we can catch up with input
+-		long timeout = got_event ? 500000000 : (1.0 / TW_FRAMERATE * 1000000000);
+-
+-		if (diff.tv_sec || diff.tv_nsec > timeout)
+-		{
+-			// int32_t input_time = TWFunc::timespec_diff_ms(lastCall, curTime);
+-			// LOGINFO("loopTimer(): %u ms, count: %u\n", input_time, count);
+-
+-			lastCall = curTime;
+-			input_handler.handleDrag(); // send only drag notices if needed
+-			return;
+-		}
+-
+-		// We need to sleep some period time microseconds
+-		//unsigned int sleepTime = 33333 -(diff.tv_nsec / 1000);
+-		//usleep(sleepTime); // removed so we can scan for input
+-		input_timeout_ms = 0;
+-	} while (1);
++	lastCall = op15_input::ServiceFrame(lastCall, 1000000000ULL / TW_FRAMERATE,
++		input_timeout_ms, input_handler.hasHeldInput(), now,
++		[](int wait_ms) { return input_handler.processInput(wait_ms); });
++	input_handler.handleDrag(); // deliver one coalesced drag per frame
+ }
+ 
+ #ifndef TW_NO_NETWORK

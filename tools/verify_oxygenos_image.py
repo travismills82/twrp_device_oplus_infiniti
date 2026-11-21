@@ -60,7 +60,7 @@ def main():
         expected_ui=ET.parse(source/"portrait_hdpi/ui.xml").getroot();expected_common=ET.parse(source/"common/portrait.xml").getroot()
         for path in ("templates/template[@name='oxygenos_status']","templates/template[@name='progress_bar']"):
             if canonical(packed_ui.find(path))!=canonical(expected_ui.find(path)):raise RuntimeError("Stale packaged UI: "+path)
-        for page in ("main2","slideout","wlan","advanced","filemanagerlist"):
+        for page in ("main2","slideout","wlan","advanced","filemanagerlist","settings"):
             path=f"pages/page[@name='{page}']"
             if canonical(packed_common.find(path))!=canonical(expected_common.find(path)):raise RuntimeError("Stale packaged native page: "+page)
         if canonical(packed_common)!=canonical(expected_common):raise RuntimeError('Stale packaged common theme styles or pages')
@@ -89,6 +89,9 @@ def main():
             data=get("twres/images/"+name+".png")
             if len(data)!=m["bytes"] or hashlib.sha256(data).hexdigest()!=m["sha256"]:raise RuntimeError("Missing/stale PNG: "+name)
         if get("twres/fonts/RobotoCondensed-Regular.ttf")!=(source/"common/fonts/RobotoCondensed-Regular.ttf").read_bytes():raise RuntimeError("Dashboard font is absent or stale")
+        traffic_font="resources/font[@name='oxy_traffic_bold'][@bold='1']"
+        if canonical(packed_ui.find(traffic_font))!=canonical(expected_ui.find(traffic_font)):
+            raise RuntimeError("Stale bold status-bar traffic font")
         if get("twres/images/wifi_status.png")!=(source/"portrait_hdpi/images/wifi_status.png").read_bytes():raise RuntimeError("Existing Wi-Fi icon changed in packaging")
         magisk=get("system/etc/magisk/Magisk.apk")
         if magisk!=(DEVICE/"prebuilts/magisk/Magisk.apk").read_bytes():raise RuntimeError("Bundled Magisk APK is stale or differs from the source prebuilt")
@@ -96,6 +99,39 @@ def main():
         # notifier and DataManager provider both link into the recovery ELF,
         # not a fictional libguitwrp.so. Compare the final stripped executable.
         native=get("system/bin/recovery")
+        for counter in (b"/sys/class/net/wlan0/statistics/rx_bytes", b"/sys/class/net/wlan0/statistics/tx_bytes"):
+            if counter not in native:raise RuntimeError("Packaged Wi-Fi traffic counter reader is missing")
+        for marker in (b"tw_op15_dt2w", b"user.twrp.written-sha256"):
+            if marker not in native:raise RuntimeError("Packaged recovery feature missing: "+marker.decode())
+        for marker in (b"tw_op15_dashboard_smb_connected", b"tw_op15_dashboard_ftp_connected"):
+            if marker not in native:raise RuntimeError("Packaged connection indicator is missing: "+marker.decode())
+        curl_wrapper="system/bin/twrp-curl"
+        if get(curl_wrapper)!=(DEVICE/"recovery/root"/curl_wrapper).read_bytes():
+            raise RuntimeError("Packaged FTP connection registration is stale")
+        packaged_policy=Path(directory)/"packed-sepolicy"
+        packaged_policy.write_bytes(get("sepolicy"))
+        policy=subprocess.check_output([str(root/"out/host/linux-x86/bin/checkpolicy"),"-b","-C","-M",
+                                        "-o","-",str(packaged_policy)],text=True,timeout=30)
+        allowed=re.search(r"^\(allow recovery proc_net_tcp_udp \(file \(([^)]*)\)\)\)$",policy,re.M)
+        if not allowed or not {"open","read"} <= set(allowed[1].split()):
+            raise RuntimeError("Packaged recovery policy cannot observe TCP connection state")
+        smb_page=packed_common.find("pages/page[@name='smb_browser']")
+        smb_entry=packed_common.find("pages/page[@name='advanced']//action[@function='page'][.='smb_browser']")
+        if smb_page is None or smb_entry is None or b"tw_smb_status" not in native:
+            raise RuntimeError("Native SMB browser and Advanced entry are missing")
+        smb_payload={}
+        for name in ("system/bin/twrp-smb-client", "system/lib64/libtwrp_smb2.so", "system/lib64/libfuse.so"):
+            payload=get(name)
+            if payload[:6]!=b"\x7fELF\x02\x01" or struct.unpack_from("<H",payload,18)[0]!=183:
+                raise RuntimeError("Expected a 64-bit aarch64 SMB dependency: "+name)
+            if name.endswith("/twrp-smb-client") and not all(x in payload for x in (b"libtwrp_smb2.so\0", b"libfuse.so\0")):
+                raise RuntimeError("SMB client is missing its FUSE or SMB dependency")
+            if name.endswith("/twrp-smb-client") and not all(x in payload for x in (b"libcrypto.so\0", b"user.twrp.written-sha256")):
+                raise RuntimeError("SMB client is missing its write-time SHA-256 support")
+            if name.endswith("/twrp-smb-client") and b"/tmp/twrp-network-sessions" not in payload:
+                raise RuntimeError("SMB client is missing its live session registration")
+            smb_payload[name]={"bytes":len(payload),"standalone_lz4_bytes":len(
+                subprocess.check_output(["lz4","-l","-12","-c"],input=payload))}
         if b'tw_op15_dashboard_charging' not in native:raise RuntimeError('Native charging-state refresh is missing from the recovery executable')
         if b'tw_op15_dashboard_progress' not in native:raise RuntimeError('Native real-progress formatter is missing from the recovery executable')
         for marker in (b"tw_op15_backup_file_count",b"tw_op15_backup_size_count"):
@@ -113,6 +149,7 @@ def main():
             if not any(n.endswith("/"+tool) for n in names):raise RuntimeError("Existing recovery helper lost: "+tool)
         if any("oxygenos-dashboard-reference" in n or "generate_oxygenos" in n for n in names):raise RuntimeError("Reference/developer artifacts must not ship in recovery")
     report={"result":"PASS","image":str(image),"sha256":hashlib.sha256(image.read_bytes()).hexdigest(),"recovery_elf_sha256":hashlib.sha256(native).hexdigest(),"bundled_magisk_sha256":hashlib.sha256(magisk).hexdigest(),"image_bytes":size,"physical_partition_limit":limit,"final_file_headroom_bytes":limit-size,"avb_original_payload_bytes":original,"avb_max_payload_bytes":max_payload,"payload_growth_headroom_bytes":max_payload-original,"vbmeta_offset":offset,"vbmeta_bytes":vbmeta,"asset_count":len(manifest),"compressed_asset_bytes":sum(m["bytes"] for m in manifest.values()),"note":"AVB reserves/pads the full partition. Final-file slack and pre-footer payload growth capacity are different. GUI is statically linked into the verified recovery ELF. No device validation or flashing performed."}
+    report["smb_payload"]=smb_payload
     if a.json:a.json.write_text(json.dumps(report,indent=2)+"\n")
     print(result.stdout.strip());print(json.dumps(report,indent=2))
 

@@ -1,0 +1,75 @@
+diff --git a/partitionmanager.cpp b/partitionmanager.cpp
+--- a/partitionmanager.cpp
++++ b/partitionmanager.cpp
+@@ -1036,7 +1036,6 @@
+ 		string Full_Filename = part_settings->Backup_Folder + "/" + part_settings->Part->Backup_FileName;
+ 		if (!part_settings->adbbackup && part_settings->generate_digest) {
+-			if (!twrpDigestDriver::Make_Digest(Full_Filename))
+-				goto backup_error;
+-			if (network && !twrpDigestDriver::Check_Digest(Full_Filename, true))
++			if (!(network ? twrpDigestDriver::Verify_Streamed_SMB_Digest(Full_Filename) :
++			      twrpDigestDriver::Make_Digest(Full_Filename)))
+ 				goto backup_error;
+ 		}
+@@ -1056,8 +1055,6 @@
+ 					string Full_Filename = part_settings->Backup_Folder + "/" + part_settings->Part->Backup_FileName;
+ 					if (!part_settings->adbbackup && part_settings->generate_digest) {
+-						if (!twrpDigestDriver::Make_Digest(Full_Filename)) {
+-							goto backup_error;
+-						}
+-						if (network && !twrpDigestDriver::Check_Digest(Full_Filename, true))
++						if (!(network ? twrpDigestDriver::Verify_Streamed_SMB_Digest(Full_Filename) :
++						      twrpDigestDriver::Make_Digest(Full_Filename)))
+ 							goto backup_error;
+ 					}
+diff --git a/twrpDigestDriver.cpp b/twrpDigestDriver.cpp
+--- a/twrpDigestDriver.cpp
++++ b/twrpDigestDriver.cpp
+@@ -33,4 +33,5 @@
+ #include "twrpDigest/twrpSHA.hpp"
+ #include "op15_smb_archive.hpp"
++#include "op15_smb_stream_digest.hpp"
+ #include <sys/stat.h>
+
+@@ -196,6 +197,22 @@
+ }
+
++bool twrpDigestDriver::Verify_Streamed_SMB_Digest(const string& Full_Filename) {
++	if (!op15_smb::NetworkPath(Full_Filename)) return false;
++	TWFunc::GUI_Operation_Text(TW_GENERATE_DIGEST_TEXT, "Verifying SMB backup");
++	gui_print(" * Verifying SMB archive with one readback pass...\n");
++	std::vector<string> files;
++	if (!op15_smb::BackupDigestFiles(Full_Filename, &files)) return false;
++	for (const auto& file : files) {
++		if (!op15_smb::ReadbackAndSaveDigest(file)) {
++			gui_print(" * SMB verification failed: missing write digest, unreadable archive, mismatch, or checksum write error.\n");
++			return false;
++		}
++		gui_print(" * SMB archive verified; SHA-256 digest saved.\n");
++	}
++	return true;
++}
++
+ bool twrpDigestDriver::stream_file_to_digest(string filename, twrpDigest* digest) {
+-	char buf[4096];
++	std::vector<unsigned char> buf(op15_smb::DigestReadBytes);
+ 	int fd = open(filename.c_str(), O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+ 	if (fd < 0) {
+@@ -203,6 +220,6 @@
+ 	}
+ 	for (;;) {
+-		const ssize_t bytes = read(fd, &buf, sizeof(buf));
+-		if (bytes > 0) digest->update((unsigned char*)buf, bytes);
++		const ssize_t bytes = read(fd, buf.data(), buf.size());
++		if (bytes > 0) digest->update(buf.data(), bytes);
+ 		else if (!bytes) return close(fd) == 0;
+ 		else if (errno != EINTR) {
+diff --git a/twrpDigestDriver.hpp b/twrpDigestDriver.hpp
+--- a/twrpDigestDriver.hpp
++++ b/twrpDigestDriver.hpp
+@@ -29,4 +29,5 @@
+ 	static bool Write_Digest(string Full_Filename);				//Write the digest to a file
+ 	static bool Make_Digest(string Full_Filename);				//Create the digest for a partition backup
++	static bool Verify_Streamed_SMB_Digest(const string& Full_Filename);
+ 	static bool stream_file_to_digest(string filename, twrpDigest* digest); //Stream the file to twrpDigest
+ };

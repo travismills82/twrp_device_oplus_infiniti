@@ -58,6 +58,7 @@ PRODUCT_PACKAGES += \
 	twrp-ping \
 	twrp-parted-bin \
 	twrp-smb-mount \
+	twrp-smb-client \
 	twrp-curl-bin \
 	twrp-curl \
 	twrp-sftp \

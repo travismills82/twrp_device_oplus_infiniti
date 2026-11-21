@@ -1,0 +1,19 @@
+diff --git a/gui/text.cpp b/gui/text.cpp
+--- a/gui/text.cpp
++++ b/gui/text.cpp
+@@ -90,9 +90,15 @@ GUIText::GUIText(xml_node<>* node)
+ 			} else {
+ 				maxWidth = (gr_fb_width() - mRenderX) * 2;
+ 			}
+ 		}
++
++		// Narrow labels can opt into a bounded lane (e.g. beside a cutout).
++		// Keep the existing framebuffer bounds as an upper limit.
++		const int limit = LoadAttrIntScaleX(FindNode(node, "placement"), "maxwidth");
++		if (limit > 0 && (!maxWidth || static_cast<unsigned>(limit) < maxWidth))
++			maxWidth = static_cast<unsigned>(limit);
+ 	}
+ 
+ 	// Simple way to check for static state
+ 	mLastValue = gui_parse_text(mText);
+ 	if (mLastValue != mText)   mIsStatic = 0;

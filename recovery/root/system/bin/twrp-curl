@@ -14,4 +14,21 @@ export HOME="$TWRP_NET_HOME"
 export SSL_CERT_FILE="${SSL_CERT_FILE:-/system/etc/security/cacerts/cacert.pem}"
 export CURL_CA_BUNDLE="${CURL_CA_BUNDLE:-/system/etc/security/cacerts/cacert.pem}"
 
+# Register only outbound FTP/FTPS curl sessions. Don't record arguments,
+# destinations or credentials; the dashboard checks for an established socket
+# owned by this process. exec preserves the registered PID and start time.
+for argument in "$@"; do
+    case "$argument" in
+        ftp://*|ftps://*)
+            sessions=/tmp/twrp-network-sessions/ftp
+            start=$(awk '{ sub(/^.*\) /, ""); print $20 }' "/proc/$$/stat" 2>/dev/null)
+            case "$start" in
+                ''|*[!0-9]*) ;;
+                *) (umask 077; mkdir -p "$sessions" && : > "$sessions/$$.$start") 2>/dev/null || true ;;
+            esac
+            break
+            ;;
+    esac
+done
+
 exec "$CURL_BIN" "$@"

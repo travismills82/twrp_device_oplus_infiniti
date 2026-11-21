@@ -21,6 +21,23 @@ trap 'rm -rf -- "$FIXTURE"' EXIT
 g++ -std=c++17 -Wall -Wextra -Werror -I "$ROOT/bootable/recovery" \
     "$DEVICE/scripts/test-native-backup-safety.cpp" -o "$FIXTURE/test-native-backup"
 "$FIXTURE/test-native-backup" "$FIXTURE"
+python3 -B "$DEVICE/scripts/test-smb-browser.py" "$ROOT"
+g++ -std=c++17 -Wall -Wextra -Werror -I "$ROOT/bootable/recovery" \
+    "$DEVICE/scripts/test-smb-browser.cpp" -o "$FIXTURE/test-smb-browser"
+"$FIXTURE/test-smb-browser"
+g++ -std=c++17 -Wall -Wextra -Werror -I "$ROOT/bootable/recovery" \
+    "$DEVICE/scripts/test-network-tile-sessions.cpp" -o "$FIXTURE/test-network-tile-sessions"
+"$FIXTURE/test-network-tile-sessions" "$FIXTURE"
+sh -n "$DEVICE/recovery/root/system/bin/twrp-curl"
+g++ -std=c++17 -Wall -Wextra -Werror -I "$ROOT/bootable/recovery" \
+    "$DEVICE/scripts/test-input-frame-pacer.cpp" -o "$FIXTURE/test-input-frame-pacer"
+"$FIXTURE/test-input-frame-pacer"
+g++ -std=c++17 -Wall -Wextra -Werror -I "$ROOT/bootable/recovery" \
+    "$DEVICE/scripts/test-wifi-traffic.cpp" -o "$FIXTURE/test-wifi-traffic"
+"$FIXTURE/test-wifi-traffic"
+g++ -std=c++17 -Wall -Wextra -Werror -I "$ROOT/bootable/recovery" \
+    "$DEVICE/scripts/test-double-tap-wake.cpp" -o "$FIXTURE/test-double-tap-wake"
+"$FIXTURE/test-double-tap-wake"
 xmllint --noout "$ROOT/bootable/recovery/gui/theme/portrait_hdpi/ui.xml" \
     "$ROOT/bootable/recovery/gui/theme/common/portrait.xml"
 git -C "$ROOT/bootable/recovery" diff --check

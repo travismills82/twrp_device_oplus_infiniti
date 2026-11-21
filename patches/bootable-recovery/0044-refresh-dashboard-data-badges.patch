@@ -1,0 +1,28 @@
+diff --git a/gui/gui.cpp b/gui/gui.cpp
+--- a/gui/gui.cpp
++++ b/gui/gui.cpp
+@@ -587,2 +587,3 @@
+ 	std::string dashboard_storage_ready, dashboard_battery_valid, dashboard_charging;
++	std::string dashboard_crypto, dashboard_storage;
+ #ifndef TW_NO_NETWORK
+@@ -618,3 +619,5 @@
+ 			const std::string storage = DataManager::GetStrValue("tw_op15_dashboard_storage_ready");
++			const std::string crypto = DataManager::GetStrValue("tw_op15_dashboard_crypto");
++			const std::string storage_label = DataManager::GetStrValue("tw_op15_dashboard_storage");
+ 			const std::string battery = DataManager::GetStrValue("tw_op15_dashboard_battery_valid");
+ 			const std::string charging = DataManager::GetStrValue("tw_op15_dashboard_charging");
+@@ -623,4 +626,14 @@
+ 				PageManager::NotifyVarChange("tw_op15_dashboard_storage_ready", storage);
+ 				gForceRender.set_value(1);
+ 			}
++			if (crypto != dashboard_crypto) {
++				dashboard_crypto = crypto;
++				PageManager::NotifyVarChange("tw_op15_dashboard_crypto", crypto);
++				gForceRender.set_value(1);
++			}
++			if (storage_label != dashboard_storage) {
++				dashboard_storage = storage_label;
++				PageManager::NotifyVarChange("tw_op15_dashboard_storage", storage_label);
++				gForceRender.set_value(1);
++			}
+ 			if (battery != dashboard_battery_valid) {

@@ -209,7 +209,7 @@ grep -Fq 'Dependency-first ordering' "$controlled_stack" ||
 grep -Fq 'patch_twrp_magisk_theme.py' "$ANDROID_MK" ||
     fail "recovery build does not patch the Advanced helper menus"
 
-grep -Fq 'twrp-smb-mount mount' "$TREE/README.md" ||
+grep -Fq 'twrp-smb-mount status' "$TREE/README.md" ||
     fail "README no longer documents the twrp-smb-mount runtime command"
 
 wifi_helper="$TREE/recovery/root/system/bin/twrp-wifi-start"

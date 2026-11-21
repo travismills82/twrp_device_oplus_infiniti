@@ -1,0 +1,27 @@
+diff --git a/gui/gui.cpp b/gui/gui.cpp
+--- a/gui/gui.cpp
++++ b/gui/gui.cpp
+@@ -46,3 +46,4 @@
+ #include "objects.hpp"
+ #include "../op15_smb_gui.hpp"
++#include "../op15_wifi_traffic.hpp"
+ #include "../data.hpp"
+@@ -589,3 +590,5 @@
+ #ifndef TW_NO_NETWORK
+ 	time_t wifi_status_second = -1;
++	op15_wifi::TrafficSampler wifi_traffic;
++	std::string wifi_speed;
+ #endif
+@@ -607,5 +610,12 @@
+ 				DataManager::SetValue("tw_wifi_connected", connected);
+ 				gForceRender.set_value(1);
+ 			}
++			const auto now_ns = static_cast<uint64_t>(wifi_now.tv_sec) * 1000000000ULL + wifi_now.tv_nsec;
++			const auto speed = wifi_traffic.Sample(connected != 0, now_ns);
++			if (speed != wifi_speed) {
++				wifi_speed = speed;
++				DataManager::SetValue("tw_op15_wlan_speed", speed);
++				gForceRender.set_value(1);
++			}
+ 		}
+ #endif

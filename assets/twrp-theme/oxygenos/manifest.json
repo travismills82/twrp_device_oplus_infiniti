@@ -207,6 +207,14 @@
       14
     ]
   },
+  "oxy_dot_locked": {
+    "bytes": 444,
+    "sha256": "c90eb3a282c21e25692a00da39a55339f84ac780d034252cbad90137ba49a038",
+    "size": [
+      14,
+      14
+    ]
+  },
   "oxy_card_flash": {
     "bytes": 6284,
     "sha256": "86e610806215c93225ae789b23c50bcfeeebd7ce6f5fe2c174ad6057f49acd0d",
@@ -570,6 +578,14 @@
   "oxy_icon_wifi_connected_56": {
     "bytes": 2687,
     "sha256": "14afc61163612c53b3e9dcd09bf134109c65e9c236698f32b2e49aed05a40c2d",
+    "size": [
+      56,
+      56
+    ]
+  },
+  "oxy_icon_ftp_connected_56": {
+    "bytes": 1628,
+    "sha256": "29cb360681b6ef441672336c7f0249762ed9bd400eed5bfc0685a7cae80b76e1",
     "size": [
       56,
       56

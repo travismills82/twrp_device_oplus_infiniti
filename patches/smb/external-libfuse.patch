@@ -1,0 +1,8 @@
+diff --git a/Android.bp b/Android.bp
+--- a/Android.bp
++++ b/Android.bp
+@@ -85,3 +85,4 @@
+     vendor_available: true,
++    recovery_available: true,
+ 
+     srcs: [

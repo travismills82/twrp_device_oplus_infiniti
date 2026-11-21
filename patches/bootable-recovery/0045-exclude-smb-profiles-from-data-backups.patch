@@ -1,0 +1,8 @@
+diff --git a/partition.cpp b/partition.cpp
+--- a/partition.cpp
++++ b/partition.cpp
+@@ -1297,3 +1297,4 @@
+ 		backup_exclusions.add_absolute_dir("/data/data/com.google.android.music/files");
+ 		backup_exclusions.add_absolute_dir("/data/per_boot"); // DJ9,14Jan2020 - exclude this dir to prevent "error 255" on AOSP ROMs that create and lock it
++		backup_exclusions.add_absolute_dir("/data/twrp/smb"); // Recovery-local SMB credentials must not leave the device in a Data archive.
+ 		backup_exclusions.add_absolute_dir("/data/vendor/dumpsys");

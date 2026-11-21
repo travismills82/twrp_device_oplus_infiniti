@@ -148,6 +148,11 @@ def status_template(original):
     # account for Roboto's ascent and the retained Wi-Fi asset's top padding.
     image(n,"oxy_icon_thermometer_32",238,21)
     label(n,"CPU %tw_op15_dashboard_cpu%",282,12,"oxy_status")
+    # Right-align in the lane between the camera cutout and Wi-Fi. Limit
+    # long transfer rates to the same lane instead of growing over the cutout.
+    speed=label(n,"%tw_op15_wlan_speed%",794,15,"oxy_traffic_bold",color="#F4F4F7",align=1)
+    speed.find("placement").set("maxwidth","216")
+    cond(speed,"tw_wifi_connected");cond(speed,"tw_op15_wlan_speed","")
     wifi=image(n,"wifi_status",800,2);cond(wifi,"tw_wifi_connected")
     # Safe inset for the OP15 rounded physical display. No cellular ornament.
     battery=label(n,"%tw_op15_dashboard_battery%",936,12,"oxy_status",align=1);cond(battery,'tw_op15_dashboard_battery_valid')
@@ -366,9 +371,16 @@ def dashboard(layout,theme,classic):
     label(p,"OnePlus 15 · TWRP %tw_version%",192,168,"oxy_subtitle",color="#BFC0C7")
     for q in layout["pills"]:image(p,"oxy_pill_"+q["id"],*q["box"][:2])
     image(p,"oxy_icon_slot_32",82,258);label(p,"%tw_op15_dashboard_slot%",128,254,"oxy_small")
-    image(p,"oxy_icon_crypto_32",300,258);label(p,"%tw_op15_dashboard_crypto%",348,254,"oxy_small")
+    image(p,"oxy_icon_crypto_32",292,258);label(p,"%tw_op15_dashboard_crypto%",358,256,"oxy_caption")
+    crypto="tw_op15_dashboard_crypto"
+    n=image(p,"oxy_dot_ready",334,268);cond(n,crypto,"Decrypted")
+    n=image(p,"oxy_dot_locked",334,268);cond(n,crypto,"Encrypted")
+    n=image(p,"oxy_dot_unknown",334,268);cond(n,crypto,"Decrypted","!=");cond(n,crypto,"Encrypted","!=")
     image(p,"oxy_icon_storage_32",564,258)
+    storage="tw_op15_dashboard_storage"
     n=image(p,"oxy_dot_unknown",616,268);cond(n,"tw_op15_dashboard_storage_ready","1","!=")
+    cond(n,storage,"Internal storage locked","!=")
+    n=image(p,"oxy_dot_locked",616,268);cond(n,storage,"Internal storage locked")
     n=image(p,"oxy_dot_ready",616,268);cond(n,"tw_op15_dashboard_storage_ready")
     label(p,"%tw_op15_dashboard_storage%",648,254,"oxy_small")
     for c in layout["cards"]:
@@ -388,7 +400,7 @@ def dashboard(layout,theme,classic):
             label(p,b["label"],x+w//2,y+94,"oxy_body",align=5)
         else:
             size=64 if kind=="large" else (44 if kind=="quick" else 56)
-            ix=x+(64 if kind=="large" else (24 if kind=="quick" else 30))
+            ix=x+{"large":64,"quick":24,"network":18}[kind]
             icon_node=image(p,f"oxy_icon_{b['icon']}_{size}",ix,y+(h-size)//2)
             if b['id']=='wifi':
                 cond(icon_node,'tw_wifi_connected','1','!=')
@@ -398,9 +410,15 @@ def dashboard(layout,theme,classic):
                 cond(icon_node,'tw_op15_dashboard_charging','1','!=')
                 connected=image(p,'oxy_icon_charging_active_56',ix,y+(h-size)//2)
                 cond(connected,'tw_op15_dashboard_charging')
-            tx=x+(174 if kind=="large" else (98 if kind=="quick" else 124))
-            font="oxy_body" if kind=="large" else ("oxy_quick" if kind=="quick" else "oxy_small")
-            parts=b["label"].split("|");lineh=30 if kind=="quick" else 40
+            elif b['id'] in ('smb','ftp'):
+                state="tw_op15_dashboard_"+b['id']+"_connected"
+                cond(icon_node,state,'1','!=')
+                connected=image(p,'oxy_icon_ftp_connected_56',ix,y+(h-size)//2)
+                cond(connected,state)
+            compact=kind in {"quick","network"}
+            tx=x+{"large":174,"quick":98,"network":86}[kind]
+            font="oxy_quick" if compact else "oxy_body"
+            parts=b["label"].split("|");lineh=30 if compact else 40
             for i,t in enumerate(parts):label(p,t,tx,y+h//2-len(parts)*lineh//2+i*lineh-3,font)
         if cap:
             n=fill(p,"#09090DA0",x,y,w,h);cond(n,cap,"1","!=")
@@ -422,15 +440,189 @@ def dashboard(layout,theme,classic):
     return p
 
 
+def native_smb(text):
+    """Generate the native browser, navigation and masked input pages."""
+    old = r'<text>\{@extension_btn=Extension\}</text>\s*<action function="page">extension</action>'
+    new = ('<text>CIFS / SMB Browser</text><actions>'
+           '<action function="page">smb_browser</action>'
+           '<action function="op15smb">refresh</action></actions>')
+    text,count = re.subn(old, lambda _:new, text)
+    if count != 1 and new not in text: raise ValueError('Advanced Extension button not found')
+
+    def action(parent, fn, value):
+        add(parent, 'action', function=fn).text=value
+    def button(page, title, col, y, commands, visible=None, *, full=False, font=None):
+        style='main_button_half_height_full_width' if full else 'main_button_half_height'
+        n=add(page,'button',style=style)
+        place(n,'%indent%' if col==0 else '%col1_x_right%',y)
+        if font: add(n,'font',resource=font,color='%text_button_color%')
+        add(n,'text').text=title
+        c=add(n,'conditions')
+        cond(c,'tw_busy','0')
+        cond(c,'tw_smb_busy','0')
+        if visible:cond(c,*visible)
+        group=add(n,'actions')
+        for fn,value in commands: action(group,fn,value)
+        return n
+    def shell(name, title, back, wipe=False):
+        page=node('page',name=name)
+        add(page,'template',name='page')
+        label(page,title,190,94,'oxy_title' if len(title)<=22 else 'oxy_body')
+        label(page,'Wi-Fi: %tw_smb_wifi%   •   %tw_smb_ssid%   •   %tw_smb_ip%',56,
+              302 if name=='smb_browser' else 316,'oxy_status')
+        for key,dest in (('home','main'),('back',back)):
+            event=add(page,'action');add(event,'touch',key=key)
+            group=add(event,'actions')
+            if wipe or key=='home':action(group,'set','tw_smb_password=')
+            if name=='smb_server':action(group,'set','tw_smb_auth_operation=')
+            if key=='back' and dest is None:action(group,'op15smb','back')
+            else:action(group,'page',dest)
+        return page
+    browser=shell('smb_browser','CIFS / SMB Browser',None,True)
+    # The connection card ends above the list. Never paint the opaque list
+    # over its rounded edge.
+    image(browser,'oxy_card_quick',28,360)
+    label(browser,'Server: %tw_smb_server%     Share: %tw_smb_share%',58,392,'oxy_small')
+    label(browser,'%tw_smb_status%',58,438,'oxy_small')
+    label(browser,'%tw_smb_folder%',58,485,'oxy_small')
+    list_box=add(browser,'listbox',style='advanced_listbox',smbrows='1')
+    place(list_box,36,576,1008,584)
+    add(list_box,'background',color='#1B1C21')
+    add(list_box,'separator',color='#383039',height='1')
+    # GUIScrollList includes this padding in actualItemHeight for hit testing,
+    # not just for drawing; the existing label font stays the same size.
+    add(list_box,'font',resource='font_m',spacing='38',color='#F4F4F7',highlightcolor='#FFFFFF')
+    add(list_box,'icon',selected='oxy_icon_files_56',unselected='oxy_icon_files_56')
+    for i in range(24):
+        item=add(list_box,'listitem',name=f'tw_smb_row_{i}')
+        conditions=add(item,'conditions')
+        # TWRP treats an empty var2 as a presence test; '!=' would invert it.
+        cond(conditions,f'tw_smb_row_{i}','')
+        cond(conditions,'tw_smb_busy','0')
+        action(item,'op15smb',f'row:{i+1}')
+    folder=('tw_smb_view','folders')
+    connected=('tw_smb_view','connected')
+    first, second, third, footer=(1184,1314,1444,1574)
+    def discovery_button(title,col,y,commands):
+        n=button(browser,title,col,y,commands,('tw_smb_view','folders','!='))
+        cond(n.find('conditions'),'tw_smb_view','connected','!=')
+        return n
+    discovery_button('Add Server / Login',0,first,(('set','tw_smb_auth_operation='),('page','smb_server')))
+    discovery_button('Scan Network',1,first,(('op15smb','scan'),))
+    button(browser,'Refresh',0,first,(('op15smb','refresh'),),folder)
+    button(browser,'Parent Folder',1,first,(('op15smb','parent'),),folder)
+    button(browser,'Resume Share',0,first,(('op15smb','resume'),),connected)
+    button(browser,'Disconnect',1,first,(('op15smb','disconnect'),),connected)
+    discovery_button('Wi-Fi Settings',0,second,(('set','tw_smb_password='),('page','wlan')))
+    discovery_button('Saved SMB Locations',1,second,(('op15smb','saved'),))
+    button(browser,'Create Folder',0,second,(('page','smb_newfolder'),),folder)
+    button(browser,'Disconnect',1,second,(('op15smb','disconnect'),),folder)
+    button(browser,'Set as Backup Destination',0,third,(('op15smb','backup'),),folder,font='oxy_small')
+    button(browser,'Set as Restore Source',1,third,(('op15smb','restore'),),folder,font='oxy_small')
+    # Pagination follows the last action row; absent pager buttons never
+    # reserve an empty row in the middle of the action grid.
+    for title,col,operation,var in (('Previous Results',0,'previous','tw_smb_prev'),
+                                     ('More Results',1,'next','tw_smb_more')):
+        pager=button(browser,title,col,footer,(('op15smb',operation),),folder)
+        cond(pager.find('conditions'),var,'1')
+        pager=discovery_button(title,col,third,(('op15smb',operation),))
+        cond(pager.find('conditions'),var,'1')
+
+    login=shell('smb_server','Server / Login','smb_browser',True)
+    manual=('tw_smb_auth_operation','','!=')  # empty field selects manual mode
+    prompted=('tw_smb_auth_operation','')
+    cond(label(login,'Leave username blank for guest access. Default port: 445.',56,374,'oxy_small'),*manual)
+    cond(label(login,'%tw_smb_auth_hint%',56,374,'oxy_small'),*prompted)
+    field_data=(('server','Server','Hostname or IPv4'),('port','Port','Port (445 if empty)'),
+                ('share','Share','Share name (optional for listing)'),('user','Username','Username (empty for guest)'),
+                ('password','Password','Password'),('domain','Domain','Domain / workgroup (optional)'))
+    field_pages=[]
+    for i,(key,caption,heading) in enumerate(field_data):
+        title=caption if key=='password' else caption+': %tw_smb_'+key+'%'
+        button(login,title,0,430+132*i,(('page','smb_input_'+key),),full=True)
+        field_pages.append((key,heading,'smb_server',False))
+    field_pages.append(('newfolder','Create Folder','smb_browser',True))
+    button(login,'List Shares',0,1260,(('page','smb_browser'),('op15smb','shares')),manual)
+    button(login,'Connect',1,1260,(('page','smb_browser'),('op15smb','mount')),manual)
+    button(login,'Sign In',0,1260,(('page','smb_browser'),('op15smb','signin')),prompted,full=True)
+    pages=[browser,login]
+    for key,heading,back,mkdir in field_pages:
+        name='smb_newfolder' if mkdir else 'smb_input_'+key
+        page=shell(name,heading,back,key=='password')
+        inp=add(page,'input')
+        place(inp,36,470,1008,96)
+        attrs={'name':'tw_smb_'+key,'maxlen':'255'}
+        if key=='password':attrs['mask']='*'
+        add(inp,'data',**attrs)
+        add(inp,'cursor',hasfocus='1',color='#E31B36')
+        action(inp,'page',back)
+        if mkdir:action(inp,'op15smb','mkdir')
+        items=[('page',back)]+([('op15smb','mkdir')] if mkdir else [])
+        button(page,'Done',0,608,items,full=True)
+        add(page,'template',name='keyboardtemplate')
+        pages.append(page)
+    text=insert(text,'smb-pages',serialize(pages),'</pages>')
+    restore=re.search(r'<page name="restore">.*?</page>',text,re.S)
+    if not restore:raise ValueError('Native Restore page not found')
+    page=restore[0]
+    marker='<!-- OP15 hide local file picker for SMB -->'
+    if marker not in page:
+        page=page.replace('<fileselector>', '<fileselector>\n'+marker+'\n'
+            '<condition var1="tw_smb_storage_selected" op="!=" var2="1"/>',1)
+    remote=[]
+    auto=node('action')
+    cond(auto,'tw_smb_storage_selected','1')
+    action(auto,'op15smb','restore-list')
+    remote.append(auto)
+    notice=node('text', color='#F4F4F7')
+    cond(notice,'tw_smb_storage_selected','1')
+    add(notice,'font',resource='oxy_small')
+    place(notice,56,438)
+    add(notice,'text').text='%tw_smb_status%'
+    remote.append(notice)
+    remote_list=node('listbox',style='advanced_listbox',smbrows='1')
+    conditions=add(remote_list,'conditions')
+    cond(conditions,'tw_smb_storage_selected','1');cond(conditions,'tw_smb_view','restores')
+    place(remote_list,36,496,1008,840)
+    for i in range(24):
+        item=add(remote_list,'listitem',name=f'tw_smb_row_{i}')
+        conditions=add(item,'conditions')
+        cond(conditions,f'tw_smb_row_{i}','');cond(conditions,'tw_smb_busy','0')
+        action(item,'op15smb',f'row:{i+1}')
+    remote.append(remote_list)
+    for title,op,col,y in (('Previous Results','previous',0,1360),('More Results','next',1,1360),
+                           ('Refresh Network Backups','restore-list',0,1456)):
+        holder=node('holder')
+        button(holder,title,col,y,(('op15smb',op),),('tw_smb_storage_selected','1'))
+        remote.append(holder[0])
+    page=insert(page,'smb-native-restore',serialize(remote),'</page>')
+    return text[:restore.start()]+page+text[restore.end():]
+
+
+def general_touch_wake(text):
+    settings=re.search(r'<page name="settings">.*?</page>',text,re.S)
+    if not settings:raise ValueError('General Settings page missing')
+    if 'variable="tw_op15_dt2w"' in settings[0]:return text
+    option=node('listitem',name='Double tap to wake')
+    conditions=add(option,'conditions')
+    cond(conditions,'tw_no_screen_timeout','0')
+    cond(conditions,'tw_has_brightnesss_file','1')
+    add(option,'data',variable='tw_op15_dt2w')
+    page=settings[0].replace('</listbox>',serialize([option])+'\t\t\t</listbox>',1)
+    if page==settings[0]:raise ValueError('General Settings checkbox list missing')
+    return text[:settings.start()]+page+text[settings.end():]
+
+
 def patch(recovery):
     common=recovery/"gui/theme/common/portrait.xml";ui=recovery/"gui/theme/portrait_hdpi/ui.xml"
-    ct=common.read_text();ut=ui.read_text();theme=ET.fromstring(ct)
+    ct=native_smb(common.read_text());ut=ui.read_text();theme=ET.fromstring(ct)
     # Only read the pinned native actions at build time. No Classic page ships.
     classic=native_main(recovery)
     layout=json.loads((ASSETS/"dashboard.json").read_text());manifest=json.loads((ASSETS/"manifest.json").read_text())
     resources=[]
     for name,size in (("oxy_title",64),("oxy_subtitle",32),("oxy_section",38),("oxy_body",38),("oxy_small",32),("oxy_status",34),("oxy_caption",28),("oxy_quick",29),("oxy_value",38)):
         resources.append(node("font",name=name,filename="RobotoCondensed-Regular.ttf",size=size))
+    resources.append(node("font",name="oxy_traffic_bold",filename="RobotoCondensed-Regular.ttf",size=28,bold=1))
     for name,meta in sorted(manifest.items()):
         data=base64.b64decode((ASSETS/(name+".png.b64")).read_bytes(),validate=False)
         if hashlib.sha256(data).hexdigest()!=meta["sha256"] or len(data)!=meta["bytes"]:raise ValueError("Asset checksum mismatch: "+name)
@@ -462,6 +654,9 @@ def patch(recovery):
     ct=modern_wlan(ct,recovery)
     ct=inset_paired_buttons(ct)  # Native Tools actions were freshly copied.
     defaults=[node('variable',name='tw_op15_wifi_tools',value='0'),
+              node('variable',name='tw_smb_busy',value='0'),
+              node('variable',name='tw_op15_dashboard_smb_connected',value='0'),
+              node('variable',name='tw_op15_dashboard_ftp_connected',value='0'),
               node('variable',name='tw_op15_wifi_back',value='advanced'),
               node('variable',name='tw_wlan_network_count',value='0'),
               node('variable',name='tw_op15_wlan_scan_status',value='Tap Scan to refresh')]
@@ -469,6 +664,7 @@ def patch(recovery):
     ct=alphabetize_advanced(ct)
     ct=position_unlock_label(ct)
     ct=backup_progress_counts(ct)
+    ct=general_touch_wake(ct)
     ut=shared_theme(ut)
     patch_splash(recovery)
     ET.fromstring(ct);ET.fromstring(ut)

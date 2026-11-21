@@ -1,0 +1,86 @@
+diff --git a/gui/gui.cpp b/gui/gui.cpp
+--- a/gui/gui.cpp
++++ b/gui/gui.cpp
+@@ -33,6 +33,7 @@
+ #include <sys/mount.h>
+ #include <time.h>
+ #include <unistd.h>
++#include <atomic>
+ #include <cutils/properties.h>
+ 
+ extern "C"
+@@ -54,6 +55,7 @@
+ #include "../openrecoveryscript.hpp"
+ #include "../orscmd/orscmd.h"
+ #include "blanktimer.hpp"
++#include "../op15_network_sessions.hpp"
+ #include "tw_atomic.hpp"
+ 
+ // Enable to print render time of each frame to the log file
+@@ -582,6 +584,41 @@
+ 	} while (1);
+ }
+ 
++#ifndef TW_NO_NETWORK
++enum NetworkTileBits : unsigned { SmbTileConnected = 1, FtpTileConnected = 2 };
++static std::atomic<unsigned> network_tile_bits{0};
++
++static void* SampleNetworkTileConnections(void*)
++{
++	for (;;) {
++		// The tile sampler runs off the UI thread. Check local kernel
++		// metadata only, never make an SMB request while updating an icon.
++		unsigned bits = 0;
++		if (op15_network_sessions::Connected("smb") && !op15_smb::MountId().empty())
++			bits |= SmbTileConnected;
++		if (op15_network_sessions::Connected("ftp"))
++			bits |= FtpTileConnected;
++		network_tile_bits.store(bits, std::memory_order_relaxed);
++		sleep(1);
++	}
++}
++
++static void UpdateNetworkTileConnections()
++{
++	const auto bits = network_tile_bits.load(std::memory_order_relaxed);
++	const bool smb = (bits & SmbTileConnected) && DataManager::GetIntValue("tw_wifi_connected");
++	const bool ftp = (bits & FtpTileConnected) != 0;
++	const auto publish_connection = [](const char* name, int active) {
++		if (DataManager::GetIntValue(name) != active) {
++			DataManager::SetValue(name, active);
++			gForceRender.set_value(1);
++		}
++	};
++	publish_connection("tw_op15_dashboard_smb_connected", smb);
++	publish_connection("tw_op15_dashboard_ftp_connected", ftp);
++}
++#endif
++
+ static int runPages(const char *page_name, const int stop_on_page_done)
+ {
+ 	DataManager::SetValue("tw_page_done", 0);
+@@ -606,6 +643,14 @@
+ 	std::string dashboard_storage_ready, dashboard_battery_valid, dashboard_charging;
+ 	std::string dashboard_crypto, dashboard_storage;
+ #ifndef TW_NO_NETWORK
++	// Start one process-lifetime sampler, even if recovery reenters runPages.
++	static const int sampler_error = [] {
++		pthread_t sampler;
++		const int rc = pthread_create(&sampler, nullptr, SampleNetworkTileConnections, nullptr);
++		if (rc == 0) pthread_detach(sampler);
++		return rc;
++	}();
++	(void)sampler_error;
+ 	time_t wifi_status_second = -1;
+ 	op15_wifi::TrafficSampler wifi_traffic;
+ 	std::string wifi_speed;
+@@ -674,6 +719,9 @@
+ 				PageManager::NotifyVarChange("tw_op15_dashboard_charging", charging);
+ 				gForceRender.set_value(1);
+ 			}
++#ifndef TW_NO_NETWORK
++			UpdateNetworkTileConnections();
++#endif
+ 		}
+ 		FD_ZERO(&fdset);
+ 		timeout.tv_sec = 0;

@@ -1,0 +1,88 @@
+diff --git a/data.cpp b/data.cpp
+--- a/data.cpp
++++ b/data.cpp
+@@ -910,7 +910,9 @@
+ 	mConst.SetValue("tw_screen_timeout_secs", "0");
+ 	mConst.SetValue("tw_no_screen_timeout", "1");
++	mConst.SetValue("tw_op15_dt2w", "0");
+ #else
+ 	mPersist.SetValue("tw_screen_timeout_secs", "60");
+ 	mPersist.SetValue("tw_no_screen_timeout", "0");
++	mPersist.SetValue("tw_op15_dt2w", "1");
+ #endif
+ #ifdef BOARD_BOOT_HEADER_VERSION
+diff --git a/gui/blanktimer.cpp b/gui/blanktimer.cpp
+--- a/gui/blanktimer.cpp
++++ b/gui/blanktimer.cpp
+@@ -32,4 +32,9 @@
+ #include "../variables.h"
+
++static bool KeepTouchListening() {
++    return DataManager::GetIntValue("tw_op15_dt2w") == 1 &&
++           DataManager::GetIntValue("tw_has_brightnesss_file") == 1;
++}
++
+ blanktimer::blanktimer(void) {
+ 	pthread_mutex_init(&mutex, NULL);
+@@ -71,5 +76,7 @@
+ 	}
+ #ifndef TW_NO_SCREEN_BLANK
+-	if (state == kOff) {
++	// In touch-wake mode OLED brightness is zero, but DRM must not suspend
++	// the recovery touchscreen's input path. The lock overlay still applies.
++	if (state == kOff && !KeepTouchListening()) {
+ 		gr_fb_blank(true);
+ 		state = kBlanked;
+@@ -100,8 +107,7 @@
+ 			gr_fb_blank(false);
+ #endif
+-			// TODO: this is asymmetric with postscreenblank.sh - shouldn't it be under the next case label?
+-			TWFunc::check_and_run_script("/system/bin/postscreenunblank.sh", "unblank");
+ 			// No break here, we want to keep going
+ 		case kOff:
++			TWFunc::check_and_run_script("/system/bin/postscreenunblank.sh", "unblank");
+ 			gui_forceRender();
+ 			// No break here, we want to keep going
+@@ -133,5 +139,5 @@
+ 	}
+ #ifndef TW_NO_SCREEN_BLANK
+-	if (state == kOff) {
++	if (state == kOff && !KeepTouchListening()) {
+ 		gr_fb_blank(true);
+ 		state = kBlanked;
+diff --git a/gui/gui.cpp b/gui/gui.cpp
+--- a/gui/gui.cpp
++++ b/gui/gui.cpp
+@@ -47,4 +47,5 @@
+ #include "../op15_smb_gui.hpp"
+ #include "../op15_wifi_traffic.hpp"
++#include "../op15_double_tap_wake.hpp"
+ #include "../data.hpp"
+ #include "../variables.h"
+@@ -168,4 +169,5 @@
+ 	int x, y; // x and y coordinates of last touch
+ 	struct timeval touchStart; // used to track time for long press / key repeat
++	op15_touch::DoubleTap wake_taps;
+
+ 	void processHoldAndRepeat();
+@@ -195,4 +197,20 @@
+ 	}
+
++	const bool touch_wake = blankTimer.isScreenOff() && DataManager::GetIntValue("tw_op15_dt2w") == 1 &&
++		DataManager::GetIntValue("tw_has_brightnesss_file") == 1;
++	if (!touch_wake) {
++		wake_taps.Reset();
++	} else if (ev.type == EV_ABS && (ev.code == 0 || ev.code == 1)) {
++		timespec now{};
++		clock_gettime(CLOCK_MONOTONIC, &now);
++		const auto ms = static_cast<uint64_t>(now.tv_sec) * 1000 + now.tv_nsec / 1000000;
++		touch_status = TS_NONE;
++		state = AS_NO_ACTION;
++		if (wake_taps.Observe(ev.code == 1, ev.value >> 16, ev.value & 0xffff, ms, gr_fb_width()))
++			blankTimer.resetTimerAndUnblank();
++		// Neither wake tap may reach the page/lock controls underneath.
++		return true;
++	}
++
+ 	switch (ev.type)
+ 	{

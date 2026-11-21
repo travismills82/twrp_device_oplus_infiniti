@@ -1,0 +1,772 @@
+diff --git a/partitions.hpp b/partitions.hpp
+--- a/partitions.hpp
++++ b/partitions.hpp
+@@ -304,6 +304,7 @@
+ 	bool Is_Super;															  // States whether partition should be loaded from the super partition
+
+ friend class TWPartitionManager;
++	std::string Op15SmbMount;
+ friend class DataManager;
+ friend class GUIPartitionList;
+ friend class GUIAction;
+@@ -368,6 +369,8 @@
+ 	void Clean_Backup_Folder(string Backup_Folder);                           // Clean Backup Folder on Error
+ 	int Fix_Contexts();
+ 	void Get_Partition_List(string ListType, std::vector<PartitionList> *Partition_List);
++	bool Set_Op15_Smb_Storage(const string& folder, const string& label);
++	bool Disconnect_Op15_Smb();
+ 	int Fstab_Processed();                                                    // Indicates if the fstab has been processed or not
+ 	void Output_Storage_Fstab();                                              // Creates a /cache/recovery/storage.fstab file with a list of all potential storage locations for app use
+ 	bool Enable_MTP();                                                        // Enables MTP
+@@ -440,6 +443,7 @@
+
+ private:
+ 	std::vector<TWPartition*> Partitions;                                     // Vector list of all partitions
++	TWPartition Op15SmbStorage; // Session-only, not a block partition or fstab entry.
+ 	string Active_Slot_Display;                                               // Current Active Slot (A or B) for display purposes
+ 	std::vector<users_struct> Users_List;                                     // List of FBE users
+ 	std::vector<std::string> Super_Partition_List;                            // Display value for super partitions
+diff --git a/partition.cpp b/partition.cpp
+--- a/partition.cpp
++++ b/partition.cpp
+@@ -51,6 +51,7 @@
+ #include "gui/gui.hpp"
+ #include "adbbu/libtwadbbu.hpp"
+ #include "backup_safety.hpp"
++#include "op15_smb_storage.hpp"
+ #include <linux/fs.h>
+ #ifdef TW_INCLUDE_CRYPTO
+ 	// #include "crypto/fde/cryptfs.h"
+@@ -1555,6 +1556,8 @@
+ }
+
+ bool TWPartition::Is_Mounted(void) {
++	if (!Op15SmbMount.empty())
++		return op15_smb::MountId() == Op15SmbMount;
+ 	if (!Can_Be_Mounted)
+ 		return false;
+
+@@ -1592,6 +1595,8 @@
+ }
+
+ bool TWPartition::Mount(bool Display_Error) {
++	if (!Op15SmbMount.empty())
++		return op15_smb::MountId() == Op15SmbMount && op15_smb::WifiUp();
+ 	int exfat_mounted = 0;
+ 	unsigned int flags = Mount_Flags;
+
+@@ -1780,6 +1785,8 @@
+ }
+
+ bool TWPartition::UnMount(bool Display_Error, int flags) {
++	if (!Op15SmbMount.empty())
++		return false; // Only the guarded SMB disconnect action can unmount it.
+ 	if (Is_Mounted()) {
+ 		int never_unmount_system;
+
+@@ -3193,6 +3200,13 @@
+ }
+
+ bool TWPartition::Update_Size(bool Display_Error) {
++	if (!Op15SmbMount.empty()) {
++		uint64_t available = 0;
++		if (!op15_smb::Directory(Storage_Path, Op15SmbMount) ||
++			!op15_smb::Capacity(Storage_Path, &available)) return false;
++		Free = available;
++		return true;
++	}
+ 	bool ret = false, Was_Already_Mounted = false, ro = false;
+
+ 	Find_Actual_Block_Device();
+diff --git a/partitionmanager.cpp b/partitionmanager.cpp
+--- a/partitionmanager.cpp
++++ b/partitionmanager.cpp
+@@ -75,6 +75,7 @@
+ #include "twrpDigestDriver.hpp"
+ #include "backup_safety.hpp"
+ #include "backup_destination.hpp"
++#include "op15_smb_storage.hpp"
+ #include "twrpRepacker.hpp"
+ #include "adbbu/libtwadbbu.hpp"
+
+@@ -848,6 +849,11 @@
+ }
+
+ int TWPartitionManager::Mount_By_Path(string Path, bool Display_Error) {
++	if (op15_smb::NetworkPath(Path)) {
++		std::unique_lock guard(op15_smb::Session, std::try_to_lock);
++		return guard && !Op15SmbStorage.Op15SmbMount.empty() &&
++			op15_smb::Below(Op15SmbStorage.Storage_Path, Path) && Op15SmbStorage.Mount(Display_Error);
++	}
+ 	std::vector<TWPartition*>::iterator iter;
+ 	int ret = false;
+ 	bool found = false;
+@@ -911,6 +917,10 @@
+ int TWPartitionManager::Mount_Current_Storage(bool Display_Error) {
+ 	string current_storage_path = DataManager::GetCurrentStoragePath();
+
++	if (op15_smb::NetworkPath(current_storage_path) && !Op15SmbStorage.Update_Size(Display_Error)) {
++		gui_print("SMB storage is disconnected or cannot report free space.\n");
++		return false;
++	}
+ 	if (Mount_By_Path(current_storage_path, Display_Error)) {
+ 		TWPartition* FreeStorage = Find_Partition_By_Path(current_storage_path);
+ 		if (FreeStorage)
+@@ -925,6 +935,11 @@
+ }
+
+ TWPartition* TWPartitionManager::Find_Partition_By_Path(const string& Path) {
++	if (op15_smb::NetworkPath(Path)) {
++		std::unique_lock guard(op15_smb::Session, std::try_to_lock);
++		return guard && !Op15SmbStorage.Op15SmbMount.empty() &&
++			op15_smb::Below(Op15SmbStorage.Storage_Path, Path) ? &Op15SmbStorage : nullptr;
++	}
+ 	std::vector<TWPartition*>::iterator iter;
+ 	string Local_Path = TWFunc::Get_Root_Path(Path);
+
+@@ -1002,6 +1017,7 @@
+ }
+
+ bool TWPartitionManager::Backup_Partition(PartitionSettings *part_settings) {
++	const bool network = op15_smb::NetworkPath(part_settings->Backup_Folder);
+ 	time_t start, stop;
+ 	int use_compression;
+ 	string backup_log = part_settings->Backup_Folder + "/recovery.log";
+@@ -1021,6 +1037,8 @@
+ 		if (!part_settings->adbbackup && part_settings->generate_digest) {
+ 			if (!twrpDigestDriver::Make_Digest(Full_Filename))
+ 				goto backup_error;
++			if (network && !twrpDigestDriver::Check_Digest(Full_Filename, true))
++				goto backup_error;
+ 		}
+
+ 		if (part_settings->Part->Has_SubPartition) {
+@@ -1040,6 +1058,8 @@
+ 						if (!twrpDigestDriver::Make_Digest(Full_Filename)) {
+ 							goto backup_error;
+ 						}
++						if (network && !twrpDigestDriver::Check_Digest(Full_Filename, true))
++							goto backup_error;
+ 					}
+ 				}
+ 			}
+@@ -1060,9 +1080,13 @@
+ 		return true;
+ 	}
+ backup_error:
+-	Clean_Backup_Folder(part_settings->Backup_Folder);
+-	TWFunc::copy_file("/tmp/recovery.log", backup_log, 0644);
+-	tw_set_default_metadata(backup_log.c_str());
++	if (network) {
++		gui_print("SMB backup did not finish. The incomplete backup will not be restored.\n");
++	} else {
++		Clean_Backup_Folder(part_settings->Backup_Folder);
++		TWFunc::copy_file("/tmp/recovery.log", backup_log, 0644);
++		tw_set_default_metadata(backup_log.c_str());
++	}
+ 	TWFunc::SetPerformanceMode(false);
+ 	return false;
+ }
+@@ -1131,16 +1155,56 @@
+ 	return 0;
+ }
+
++bool TWPartitionManager::Set_Op15_Smb_Storage(const string& folder, const string& label) {
++	std::unique_lock guard(op15_smb::Session, std::try_to_lock);
++	if (!guard) return false;
++	auto id = op15_smb::MountId();
++	uint64_t free = 0;
++	if (!op15_smb::Directory(folder, id) || !op15_smb::Capacity(folder, &free)) return false;
++	Op15SmbStorage.Op15SmbMount = id;
++	Op15SmbStorage.Storage_Path = folder;
++	Op15SmbStorage.Storage_Name = "SMB: " + label;
++	Op15SmbStorage.Free = free;
++	op15_smb::Queue("tw_storage_path", folder);
++	return true;
++}
++
++bool TWPartitionManager::Disconnect_Op15_Smb() {
++	std::unique_lock guard(op15_smb::Session, std::try_to_lock);
++	if (!guard) return false;
++	if (!op15_smb::MountId().empty() && umount2(op15_smb::Root, 0) != 0) return false;
++	if (op15_smb::NetworkPath(DataManager::GetCurrentStoragePath())) {
++		auto* local = Get_Default_Storage_Partition();
++		if (!local) return false;
++		op15_smb::Queue("tw_storage_path", local->Storage_Path);
++	}
++	Op15SmbStorage.Op15SmbMount.clear();
++	Op15SmbStorage.Storage_Path.clear();
++	return true;
++}
++
+ bool TWPartitionManager::Check_Directory_Backup_Destination(const TWPartition* part,
+ 		const string& destination, string* error) const {
+ 	// /storage is a bind of /data/media/0, not the standard Data backup.
+ 	// Data excludes media from its archive and may still use it as a destination.
+ 	if (part->Backup_Method != BM_FILES || part->Has_Data_Media || !(part->Mount_Flags & MS_BIND))
+ 		return true;
++	if (op15_smb::NetworkPath(destination)) {
++		// The verified FUSE filesystem is separate from the bind source.
++		std::unique_lock guard(op15_smb::Session, std::try_to_lock);
++		if (guard && !Op15SmbStorage.Op15SmbMount.empty() &&
++			op15_smb::MountId() == Op15SmbStorage.Op15SmbMount &&
++			op15_smb::Below(Op15SmbStorage.Storage_Path, destination)) return true;
++		*error = "SMB storage is disconnected";
++		return false;
++	}
+ 	return twrp_backup_safety::SafeNewBackupDirectory(part->Primary_Block_Device, destination, error);
+ }
+
+ int TWPartitionManager::Run_Backup(bool adbbackup) {
++	bool network = !adbbackup && op15_smb::NetworkPath(DataManager::GetCurrentStoragePath());
++	std::unique_lock guard(op15_smb::Session, std::defer_lock);
++	if (network && !guard.try_lock()) return false;
+ 	PartitionSettings part_settings;
+ 	int partition_count = 0, disable_free_space_check = 0, skip_digest = 0;
+ 	string Backup_Name, Backup_List, backup_path;
+@@ -1170,12 +1234,17 @@
+ 		return false;
+
+ 	DataManager::GetValue(TW_SKIP_DIGEST_GENERATE_VAR, skip_digest);
++	if (network) skip_digest = 0;
+ 	if (skip_digest == 0)
+ 		part_settings.generate_digest = true;
+ 	else
+ 		part_settings.generate_digest = false;
+
+ 	DataManager::GetValue(TW_BACKUPS_FOLDER_VAR, part_settings.Backup_Folder);
++	if (!adbbackup && op15_smb::NetworkPath(part_settings.Backup_Folder) != network) {
++		gui_print("Backup storage changed during preflight. Select the destination again.\n");
++		return false;
++	}
+ 	DataManager::GetValue(TW_BACKUP_NAME, Backup_Name);
+ 	if (Backup_Name == gui_lookup("curr_date", "(Current Date)")) {
+ 		Backup_Name = TWFunc::Get_Current_Date();
+@@ -1262,6 +1331,7 @@
+ 	}
+
+ 	DataManager::GetValue(TW_DISABLE_FREE_SPACE_VAR, disable_free_space_check);
++	if (network) disable_free_space_check = 0;
+
+ 	if (adbbackup)
+ 		disable_free_space_check = true;
+@@ -1285,7 +1355,20 @@
+ 	DataManager::GetValue(TW_IS_ENCRYPTED, is_encrypted);
+ 	if (!adbbackup || (!is_encrypted || (is_encrypted && is_decrypted))) {
+ 		gui_msg(Msg("backup_folder= * Backup Folder: {1}")(part_settings.Backup_Folder));
+-		if (!TWFunc::Recursive_Mkdir(part_settings.Backup_Folder)) {
++		if (network) {
++			const auto& dest = Op15SmbStorage.Storage_Path;
++			const auto& path = part_settings.Backup_Folder;
++			const auto parent = path.substr(0, path.rfind('/'));
++			if (path == dest || !op15_smb::Below(dest, path) ||
++				!op15_smb::Path(path.substr(dest.size())) ||
++				!op15_smb::Directory(dest, Op15SmbStorage.Op15SmbMount) ||
++				!op15_smb::Writable(dest) || !TWFunc::Recursive_Mkdir(parent) ||
++				!op15_smb::Directory(parent, Op15SmbStorage.Op15SmbMount) ||
++				mkdir(path.c_str(), 0700) != 0) {
++				gui_print("Cannot create a new SMB backup folder; check permissions, free space and connection.\n");
++				return false;
++			}
++		} else if (!TWFunc::Recursive_Mkdir(part_settings.Backup_Folder)) {
+ 			gui_err("fail_backup_folder=Failed to make backup folder.");
+ 			return false;
+ 		}
+@@ -1367,8 +1450,13 @@
+ 	Update_System_Details();
+ 	UnMount_Main_Partitions();
+ 	string backup_log = part_settings.Backup_Folder + "/recovery.log";
+-	TWFunc::copy_file("/tmp/recovery.log", backup_log, 0644);
+-	tw_set_default_metadata(backup_log.c_str());
++	if (!network) {
++		TWFunc::copy_file("/tmp/recovery.log", backup_log, 0644);
++		tw_set_default_metadata(backup_log.c_str());
++	} else if (!op15_smb::Directory(part_settings.Backup_Folder, Op15SmbStorage.Op15SmbMount)) {
++		gui_print("SMB disconnected; backup remains incomplete.\n");
++		return false;
++	}
+
+ 	if (part_settings.adbbackup) {
+ 		if (twadbbu::Write_ADB_Stream_Trailer() == false) {
+@@ -1427,6 +1515,14 @@
+ }
+
+ int TWPartitionManager::Run_Restore(const string& Restore_Name) {
++	const bool network = op15_smb::NetworkPath(Restore_Name);
++	std::unique_lock guard(op15_smb::Session, std::defer_lock);
++	if (network && (!guard.try_lock() ||
++		!op15_smb::Below(DataManager::GetStrValue(TW_BACKUPS_FOLDER_VAR), Restore_Name) ||
++		!op15_smb::Directory(Restore_Name, Op15SmbStorage.Op15SmbMount))) {
++		gui_print("The selected SMB restore folder is no longer accessible.\n");
++		return false;
++	}
+ 	PartitionSettings part_settings;
+ 	int check_digest;
+
+@@ -1449,11 +1545,15 @@
+ 		return false;
+
+ 	// Mount the selected storage before inspecting its incomplete marker.
+-	if (TWFunc::Path_Exists(Restore_Name + twrp_backup_safety::kIncomplete)) {
++	const auto marker_path = Restore_Name + twrp_backup_safety::kIncomplete;
++	struct stat incomplete {};
++	if (network ? (lstat(marker_path.c_str(), &incomplete) == 0 || errno != ENOENT)
++	            : TWFunc::Path_Exists(marker_path)) {
+ 		gui_print("Refusing an incomplete backup session. No partition was restored.\n");
+ 		return false;
+ 	}
+ 	DataManager::GetValue(TW_SKIP_DIGEST_CHECK_VAR, check_digest);
++	if (network) check_digest = 1;
+ 	if (check_digest > 0) {
+ 		// Check Digest files first before restoring to ensure that all of them match before starting a restore
+ 		TWFunc::GUI_Operation_Text(TW_VERIFY_DIGEST_TEXT, gui_parse_text("{@verifying_digest}"));
+@@ -1500,10 +1600,15 @@
+ 					gui_msg(Msg(msg::kWarning, "restore_system_context=Unable to get default context for {1} -- Android may not boot.")(Get_Android_Root_Path()));
+ 				}
+
+-				if (check_digest > 0 && !twrpDigestDriver::Check_Digest(Full_Filename))
++				if (check_digest > 0 && !twrpDigestDriver::Check_Digest(Full_Filename, network))
+ 					return false;
+ 				part_settings.partition_count++;
+-				part_settings.total_restore_size += part_settings.Part->Get_Restore_Size(&part_settings);
++				const uint64_t archive_size = part_settings.Part->Get_Restore_Size(&part_settings);
++				if (network && (!archive_size || archive_size > UINT64_MAX - part_settings.total_restore_size)) {
++					gui_print("Cannot determine a valid SMB restore archive size.\n");
++					return false;
++				}
++				part_settings.total_restore_size += archive_size;
+ 				if (part_settings.Part->Has_SubPartition) {
+ 					TWPartition *parentPart = part_settings.Part;
+ 					std::vector<TWPartition*>::iterator subpart;
+@@ -1514,9 +1619,14 @@
+ 							const string child_file = part_settings.Backup_Folder + "/" + (*subpart)->Backup_FileName;
+ 							if ((*subpart)->Get_Restore_File_System(&part_settings) == "emmc" &&
+ 								!(*subpart)->Validate_Raw_Restore(child_file)) return false;
+-							if (check_digest > 0 && !twrpDigestDriver::Check_Digest(child_file))
++							if (check_digest > 0 && !twrpDigestDriver::Check_Digest(child_file, network))
+ 								return false;
+-							part_settings.total_restore_size += (*subpart)->Get_Restore_Size(&part_settings);
++							const uint64_t child_size = (*subpart)->Get_Restore_Size(&part_settings);
++							if (network && (!child_size || child_size > UINT64_MAX - part_settings.total_restore_size)) {
++								gui_print("Cannot determine a valid SMB restore subpartition archive size.\n");
++								return false;
++							}
++							part_settings.total_restore_size += child_size;
+ 						}
+ 					}
+ 				}
+@@ -1574,13 +1684,27 @@
+ }
+
+ void TWPartitionManager::Set_Restore_Files(string Restore_Name) {
++	const bool network = op15_smb::NetworkPath(Restore_Name);
++	std::unique_lock guard(op15_smb::Session, std::defer_lock);
++	if (network) {
++		struct stat marker {};
++		if (!guard.try_lock() || !op15_smb::Below(DataManager::GetStrValue(TW_BACKUPS_FOLDER_VAR), Restore_Name) ||
++			!op15_smb::Directory(Restore_Name, Op15SmbStorage.Op15SmbMount) ||
++			lstat((Restore_Name + twrp_backup_safety::kIncomplete).c_str(), &marker) == 0 || errno != ENOENT) {
++			DataManager::SetValue("tw_restore_list", "");
++			DataManager::SetValue("tw_restore_selected", "");
++			DataManager::SetValue("tw_enable_adb_backup", 0);
++			gui_print("SMB backup is incomplete or inaccessible.\n");
++			return;
++		}
++	}
+ 	// Start with the default values
+ 	string Restore_List;
+ 	bool get_date = true, check_encryption = true;
+ 	bool adbbackup = false;
+
+ 	DataManager::SetValue("tw_restore_encrypted", 0);
+-	if (twadbbu::Check_ADB_Backup_File(Restore_Name)) {
++	if (!network && twadbbu::Check_ADB_Backup_File(Restore_Name)) {
+ 		vector<string> adb_files;
+ 		adb_files = twadbbu::Get_ADB_Backup_Files(Restore_Name);
+ 		for (unsigned int i = 0; i < adb_files.size(); ++i) {
+@@ -1613,21 +1737,20 @@
+ 			char* extn = NULL;
+ 			char* ptr;
+
++			if (strlen(de->d_name) >= sizeof(str) || strlen(de->d_name) <= 2 ||
++				(network && !op15_smb::Component(de->d_name))) continue;
+ 			strcpy(str, de->d_name);
+-			if (strlen(str) <= 2)
++			const string entry = Restore_Name + "/" + str;
++			if (network && (de->d_type != DT_UNKNOWN && de->d_type != DT_REG))
+ 				continue;
+
+ 			if (get_date) {
+-				char file_path[255];
+-				struct stat st;
+-
+-				strcpy(file_path, Restore_Name.c_str());
+-				strcat(file_path, "/");
+-				strcat(file_path, str);
+-				stat(file_path, &st);
+-				string backup_date = ctime((const time_t*)(&st.st_mtime));
+-				DataManager::SetValue(TW_RESTORE_FILE_DATE, backup_date);
+-				get_date = false;
++				struct stat st {};
++				if (stat(entry.c_str(), &st) == 0) {
++					const char* backup_date = ctime(&st.st_mtime);
++					if (backup_date) DataManager::SetValue(TW_RESTORE_FILE_DATE, backup_date);
++					get_date = false;
++				}
+ 			}
+
+ 			label = str;
+@@ -1669,6 +1792,11 @@
+ 				gui_msg(Msg(msg::kError, "unable_locate_part_backup_name=Unable to locate partition by backup name: '{1}'")(label));
+ 				continue;
+ 			}
++			if (network && (!Part->Can_Be_Backed_Up || !Part->Is_Present ||
++				Part->Backup_Name != label ||
++				(Part->Backup_Method == BM_FILES && Part->Current_File_System != fstype) ||
++				(Part->Backup_Method != BM_FILES && strcmp(fstype, "emmc") != 0)))
++				continue;
+
+ 			Part->Backup_FileName = de->d_name;
+ 			if (strlen(extn) > 3) {
+@@ -2703,6 +2831,11 @@
+ 	} else if (ListType == "storage") {
+ 		char free_space[255];
+ 		string Current_Storage = DataManager::GetCurrentStoragePath();
++		std::unique_lock guard(op15_smb::Session, std::try_to_lock);
++		if (guard && !Op15SmbStorage.Op15SmbMount.empty() && Op15SmbStorage.Is_Mounted()) {
++			Partition_List->push_back({Op15SmbStorage.Storage_Name, Op15SmbStorage.Storage_Path,
++				static_cast<unsigned>(Current_Storage == Op15SmbStorage.Storage_Path)});
++		}
+ 		for (iter = Partitions.begin(); iter != Partitions.end(); iter++) {
+ 			if ((*iter)->Is_Storage) {
+ 				struct PartitionList part;
+diff --git a/data.cpp b/data.cpp
+--- a/data.cpp
++++ b/data.cpp
+@@ -29,6 +29,7 @@
+
+ #include "variables.h"
+ #include "data.hpp"
++#include "op15_smb_protocol.hpp"
+ #include "partitions.hpp"
+ #include "twrp-functions.hpp"
+ #ifndef TW_NO_SCREEN_TIMEOUT
+@@ -531,8 +532,9 @@
+ void DataManager::SetBackupFolder()
+ {
+ 	string str = GetCurrentStoragePath();
++	const bool smb = op15_smb::NetworkPath(str);
+ 	TWPartition* partition = PartitionManager.Find_Partition_By_Path(str);
+-	str += TWFunc::Check_For_TwrpFolder() + "/BACKUPS/";
++	str += (smb ? "/TWRP" : TWFunc::Check_For_TwrpFolder()) + string("/BACKUPS/");
+
+ 	string dev_id;
+ 	GetValue("device_id", dev_id);
+@@ -540,11 +542,13 @@
+ 	str += dev_id;
+ 	LOGINFO("Backup folder set to '%s'\n", str.c_str());
+ 	SetValue(TW_BACKUPS_FOLDER_VAR, str, 0);
++	SetValue("tw_smb_storage_selected", smb ? 1 : 0);
+ 	if (partition != NULL) {
+ 		SetValue("tw_storage_display_name", partition->Storage_Name);
+ 		char free_space[255];
+ 		sprintf(free_space, "%llu", partition->Free / 1024 / 1024);
+ 		SetValue("tw_storage_free_size", free_space);
++		if (smb) return;
+ 		string zip_path, zip_root, storage_path;
+ 		GetValue(TW_ZIP_LOCATION_VAR, zip_path);
+ 		if (partition->Has_Data_Media && !partition->Symlink_Mount_Point.empty())
+diff --git a/twrpDigestDriver.cpp b/twrpDigestDriver.cpp
+--- a/twrpDigestDriver.cpp
++++ b/twrpDigestDriver.cpp
+@@ -31,9 +31,11 @@
+ #include "twrpDigest/twrpDigest.hpp"
+ #include "twrpDigest/twrpMD5.hpp"
+ #include "twrpDigest/twrpSHA.hpp"
++#include "op15_smb_archive.hpp"
++#include <sys/stat.h>
+
+
+-bool twrpDigestDriver::Check_File_Digest(const string& Filename) {
++bool twrpDigestDriver::Check_File_Digest(const string& Filename, bool required) {
+ 	twrpDigest *digest;
+ 	string digestfile = Filename, file_name = Filename;
+ 	string digest_str;
+@@ -70,10 +72,22 @@
+
+ 	if (!TWFunc::Path_Exists(digestfile)) {
+ 		delete digest;
++		if (required) {
++			gui_print("Required SMB backup checksum missing.\n");
++			return false;
++		}
+ 		gui_msg(Msg(msg::kWarning, "no_digest=Skipping Digest check: no Digest file found"));
+ 		return true;
+ 	}
+
++	if (required) {
++		struct stat checksum {};
++		if (lstat(digestfile.c_str(), &checksum) != 0 || !S_ISREG(checksum.st_mode) ||
++			checksum.st_size <= 0 || checksum.st_size > 4096) {
++			delete digest;
++			return false;
++		}
++	}
+
+ 	if (TWFunc::read_file(digestfile, digest_str) != 0) {
+ 		gui_msg("digest_error=Digest Error!");
+@@ -102,26 +116,15 @@
+ 	return false;
+ }
+
+-bool twrpDigestDriver::Check_Digest(string Full_Filename) {
+-	char split_filename[512];
+-	int index = 0;
+-
+-	sync();
+-	if (!TWFunc::Path_Exists(Full_Filename)) {
+-		// This is a split archive, we presume
+-		memset(split_filename, 0, sizeof(split_filename));
+-		while (index < 1000) {
+-			sprintf(split_filename, "%s%03i", Full_Filename.c_str(), index);
+-			if (!TWFunc::Path_Exists(split_filename))
+-				break;
+-				LOGINFO("split_filename: %s\n", split_filename);
+-				if (!Check_File_Digest(split_filename))
+-					return false;
+-				index++;
+-		}
+-		return true;
++bool twrpDigestDriver::Check_Digest(string Full_Filename, bool required) {
++	std::vector<string> files;
++	if (!op15_smb::BackupDigestFiles(Full_Filename, &files)) {
++		gui_print("Backup archive is missing, incomplete, or unreadable.\n");
++		return false;
+ 	}
+-	return Check_File_Digest(Full_Filename); // Single file archive
++	for (const auto& file : files)
++		if (!Check_File_Digest(file, required)) return false;
++	return true;
+ }
+
+ bool twrpDigestDriver::Write_Digest(string Full_Filename) {
+@@ -183,48 +186,28 @@
+ }
+
+ bool twrpDigestDriver::Make_Digest(string Full_Filename) {
+-	string command, result;
+-
+ 	TWFunc::GUI_Operation_Text(TW_GENERATE_DIGEST_TEXT, gui_parse_text("{@generating_digest1}"));
+ 	gui_msg("generating_digest2= * Generating digest...");
+-	if (TWFunc::Path_Exists(Full_Filename)) {
+-		if (!Write_Digest(Full_Filename))
+-			return false;
+-	} else {
+-		char filename[512];
+-		int index = 0;
+-		sprintf(filename, "%s%03i", Full_Filename.c_str(), index);
+-		while (index < 1000) {
+-			string digest_src(filename);
+-			if (TWFunc::Path_Exists(filename)) {
+-				if (!Write_Digest(filename))
+-					return false;
+-				}
+-				else
+-					break;
+-				index++;
+-				sprintf(filename, "%s%03i", Full_Filename.c_str(), index);
+-			}
+-			if (index == 0) {
+-				LOGERR("Backup file: '%s' not found!\n", filename);
+-					return false;
+-			}
+-			gui_msg("digest_created= * Digest Created.");
+-	}
++	std::vector<string> files;
++	if (!op15_smb::BackupDigestFiles(Full_Filename, &files)) return false;
++	for (const auto& file : files)
++		if (!Write_Digest(file)) return false;
+ 	return true;
+ }
+
+ bool twrpDigestDriver::stream_file_to_digest(string filename, twrpDigest* digest) {
+ 	char buf[4096];
+-	int bytes;
+-
+-	int fd = open(filename.c_str(), O_RDONLY);
++	int fd = open(filename.c_str(), O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+ 	if (fd < 0) {
+ 		return false;
+ 	}
+-	while ((bytes = read(fd, &buf, sizeof(buf))) != 0) {
+-		digest->update((unsigned char*)buf, bytes);
++	for (;;) {
++		const ssize_t bytes = read(fd, &buf, sizeof(buf));
++		if (bytes > 0) digest->update((unsigned char*)buf, bytes);
++		else if (!bytes) return close(fd) == 0;
++		else if (errno != EINTR) {
++			close(fd);
++			return false;
++		}
+ 	}
+-	close(fd);
+-	return true;
+ }
+diff --git a/twrpDigestDriver.hpp b/twrpDigestDriver.hpp
+--- a/twrpDigestDriver.hpp
++++ b/twrpDigestDriver.hpp
+@@ -24,8 +24,8 @@
+ class twrpDigestDriver {
+ public:
+
+-	static bool Check_File_Digest(const string& Filename);		//Check the digest of a TWRP partition backup
+-	static bool Check_Digest(string Full_Filename);				//Check to make sure the digest is correct
++	static bool Check_File_Digest(const string& Filename, bool required = false);
++	static bool Check_Digest(string Full_Filename, bool required = false);
+ 	static bool Write_Digest(string Full_Filename);				//Write the digest to a file
+ 	static bool Make_Digest(string Full_Filename);				//Create the digest for a partition backup
+ 	static bool stream_file_to_digest(string filename, twrpDigest* digest); //Stream the file to twrpDigest
+diff --git a/openrecoveryscript.cpp b/openrecoveryscript.cpp
+--- a/openrecoveryscript.cpp
++++ b/openrecoveryscript.cpp
+@@ -701,6 +701,10 @@
+ 	} else if (cmd_str == "get") {
+ 		if (parts.size() > 1) {
+ 			string varname = parts[1];
++			if (varname == "tw_smb_password" || varname == "tw_smb_user" || varname == "tw_smb_domain") {
++				gui_print("SMB login fields are private.\n");
++				return;
++			}
+ 			string value;
+ 			DataManager::GetValue(varname, value);
+ 			gui_print("%s = %s\n", varname.c_str(), value.c_str());
+diff --git a/gui/action.cpp b/gui/action.cpp
+--- a/gui/action.cpp
++++ b/gui/action.cpp
+@@ -60,6 +60,7 @@
+
+ #include "rapidxml.hpp"
+ #include "objects.hpp"
++#include "../op15_smb_gui.hpp"
+ #include "pages.hpp"
+ #include "tw_atomic.hpp"
+ #include <cstring>
+@@ -262,6 +263,7 @@
+         ADD_ACTION(wlanconnect);
+         ADD_ACTION(wlangetstatus);
+         ADD_ACTION(wlantest);
++        ADD_ACTION(op15smb);
+ #endif
+         ADD_ACTION(disableAVB2);
+ 	}
+@@ -1318,6 +1320,14 @@
+ 	return 0;
+ }
+
++int GUIAction::op15smb(std::string arg) {
++	if (simulate) return 0;
++	op15_smb::Set("busy", "1");
++	const int result = op15_smb::Run(arg);
++	op15_smb::Set("busy", "0");
++	return result;
++}
++
+ int GUIAction::cancelbackup(std::string arg __unused) {
+ 	if (simulate) {
+ 		PartitionManager.stop_backup.set_value(1);
+diff --git a/gui/objects.hpp b/gui/objects.hpp
+--- a/gui/objects.hpp
++++ b/gui/objects.hpp
+@@ -393,6 +393,7 @@
+ 	int wlanconnect(std::string arg);
+ 	int wlangetstatus(std::string arg);
+ 	int wlantest(std::string arg);
++	int op15smb(std::string arg);
+ 	int disableAVB2(std::string arg);
+ #ifndef TW_EXCLUDE_NANO
+ 	int editfile(std::string arg);
+@@ -685,6 +686,7 @@
+ 	ImageResource* mIconUnselected;
+ 	bool isCheckList;
+ 	bool isTextParsed;
++	bool op15SmbRows = false;
+ };
+
+ class GUIPartitionList : public GUIScrollList
+diff --git a/gui/listbox.cpp b/gui/listbox.cpp
+--- a/gui/listbox.cpp
++++ b/gui/listbox.cpp
+@@ -107,6 +107,7 @@
+ 		allowSelection = false;  // allows using listbox as a read-only list or menu
+
+ 	// Get the data for the list
++	op15SmbRows = node->first_attribute("smbrows") != nullptr;
+ 	child = FindNode(node, "listitem");
+ 	if (!child) return;
+ 	while (child) {
+@@ -199,6 +200,7 @@
+ 		return 0;
+
+ 	// Check to see if the variable that we are using to store the list selected value has been updated
++	if (op15SmbRows && varName.rfind("tw_smb_row_", 0) == 0) mUpdate = 1;
+ 	if (varName == mVariable) {
+ 		currentValue = value;
+ 		mUpdate = 1;
+@@ -247,7 +249,7 @@
+ {
+ 	GUIScrollList::SetPageFocus(inFocus);
+ 	if (inFocus) {
+-		if (!isTextParsed) {
++		if (!isTextParsed && !op15SmbRows) {
+ 			isTextParsed = true;
+ 			for (size_t i = 0; i < mListItems.size(); i++) {
+ 				ListItem& item = mListItems[i];
+@@ -270,7 +272,7 @@
+ 	// don't confuse it with the more persistent "selected" flag per list item used below
+ 	ListItem& item = mListItems[mVisibleItems[itemindex]];
+ 	ImageResource* icon = item.selected ? mIconSelected : mIconUnselected;
+-	const std::string& text = item.displayName;
++	const std::string text = op15SmbRows ? DataManager::GetStrValue(item.displayName) : item.displayName;
+
+ 	RenderStdItem(yPos, selected, icon, text.c_str());
+ }
+diff --git a/gui/gui.cpp b/gui/gui.cpp
+--- a/gui/gui.cpp
++++ b/gui/gui.cpp
+@@ -44,6 +44,7 @@
+
+ #include "rapidxml.hpp"
+ #include "objects.hpp"
++#include "../op15_smb_gui.hpp"
+ #include "../data.hpp"
+ #include "../variables.h"
+ #include "../partitions.hpp"
+@@ -591,6 +592,7 @@
+ 	for (;;)
+ 	{
+ 		loopTimer(input_timeout_ms);
++		op15_smb::ApplyUpdates();
+ #ifndef TW_NO_NETWORK
+ 		// Network I/O stays in the controller; only mirror verified status here.
+ 		timespec wifi_now{};
+diff --git a/gui/fileselector.cpp b/gui/fileselector.cpp
+--- a/gui/fileselector.cpp
++++ b/gui/fileselector.cpp
+@@ -36,6 +36,7 @@
+
+ #include "rapidxml.hpp"
+ #include "objects.hpp"
++#include "../op15_smb_protocol.hpp"
+ #include "../data.hpp"
+ #include "../twrp-functions.hpp"
+ #include "../adbbu/libtwadbbu.hpp"
+@@ -250,6 +251,9 @@
+ 	mFolderList.clear();
+ 	mFileList.clear();
+
++	// The Restore page has an asynchronous, filtered native list for SMB.
++	if (mPathVar == "tw_backups_folder" && op15_smb::NetworkPath(folder)) return 0;
++
+ 	d = opendir(folder.c_str());
+ 	if (d == NULL) {
+ 		LOGINFO("Unable to open '%s'\n", folder.c_str());
