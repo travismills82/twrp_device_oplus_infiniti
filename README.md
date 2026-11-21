@@ -58,18 +58,21 @@ Works:
 
 - [X] ADB
 - [X] Display
+- [X] GPU acceleration support
 - [X] Decryption
 - [X] Fastbootd
-- [X] Flashing
 - [X] OTA Flash
 - [X] MTP
 - [X] Sideload
 - [X] Touch
+- [X] Double tap to wake
 - [X] USB OTG
 - [X] Vibrator
-- [X] Wireless LAN
-- [X] Wireless backup and restore over curl using FTP, FTPS, HTTP, HTTPS, SCP, SFTP, Telnet, and TFTP
-- [X] Interactive FTP/FTPS backup and restore menu in TWRP Terminal
+- [X] Wireless LAN Support
+- [X] Bypass and SuperVooc charging support.
+- [X] Interactive FTP/FTPS backup and restore unix menu
+- [X] Cifs/SMB file manager
+- [X] Interactive Cifs/SMB share backup and restore
 - [X] Magisk installation built in to recovery 
 
 ## A/B OTA safety
