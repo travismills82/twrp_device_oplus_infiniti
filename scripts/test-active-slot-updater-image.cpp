@@ -12,6 +12,12 @@ std::string android::base::GetProperty(const std::string&, const std::string& fa
 
 int main(int argc,char** argv) {
     assert(argc == 6);
+    assert(SlotToken("androidboot.slot_suffix = \"_a\"\n",true) == "_a");
+    assert(SlotToken("unrelated=yes androidboot.slot_suffix=_b",false) == "_b");
+    try {
+        SlotToken("androidboot.slot_suffix=_a androidboot.slot_suffix=_b",false);
+        assert(!"Ambiguous kernel slot accepted");
+    } catch (const std::runtime_error&) {}
     auto source = Open(argv[1]);
     assert(source >= 0);
     const auto v = RecoveryImage(source);
