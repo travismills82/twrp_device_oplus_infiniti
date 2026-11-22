@@ -148,6 +148,10 @@ jobs:
       run: |
         git clone ${{ github.event.inputs.DEVICE_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} device/${{ github.event.inputs.DEVICE_PATH }}
 
+    - name: Verify reviewed release commit
+      if: inputs.PUBLISH_RELEASE
+      run: test "$(git -C device/oplus/infiniti rev-parse HEAD)" = "$GITHUB_SHA"
+
     - name: Validate device-tree executable permissions
       run: |
         HOOK="device/${{ github.event.inputs.DEVICE_PATH }}/recovery/root/system/etc/dhcpcd/dhcpcd-run-hooks"
@@ -326,6 +330,7 @@ jobs:
       run: |
         python3 device/${{ github.event.inputs.DEVICE_PATH }}/tools/verify_oxygenos_image.py "$TWRP_IMAGE" --root .
         python3 device/${{ github.event.inputs.DEVICE_PATH }}/scripts/verify-gpu-image.py "$TWRP_IMAGE" --root .
+        python3 device/${{ github.event.inputs.DEVICE_PATH }}/scripts/test-active-slot-updater-release.py . "$TWRP_IMAGE"
 
     - name: Build clean slot-A flashable ZIP
       run: |
@@ -365,6 +370,16 @@ jobs:
         fi
 
         ls -lh "$TWRP_IMAGE" "$TWRP_ZIP"
+
+    - name: Retain unpublished test build
+      if: ${{ !inputs.PUBLISH_RELEASE }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: TWRP-infiniti-${{ github.run_id }}-${{ github.run_attempt }}
+        path: |
+          ${{ env.TWRP_IMAGE }}
+          ${{ env.TWRP_ZIP }}
+        if-no-files-found: error
 
     - name: Prepare signed updater assets
       if: inputs.PUBLISH_RELEASE

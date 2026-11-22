@@ -164,10 +164,32 @@ void Partitions(const std::string& root) {
     assert(!RebootVerified(2,std::string(40,'a'),"_b",second,journal));
     assert(!RebootVerified(2,std::string(40,'a'),"_a",Hash(a.fd,size),journal));
 }
+void Downloads() {
+    const auto download=[](const std::string& chunk,uint64_t length,bool exact) {
+        int pair[2];
+        assert(pipe(pair)==0);
+        assert(write(pair[1],chunk.data(),chunk.size())==static_cast<ssize_t>(chunk.size()));
+        close(pair[1]);
+        std::string result;
+        try {
+            Receive(pair[0],length,exact,[&](const char* buf,size_t count,uint64_t done) {
+                result.append(buf,count);
+                assert(result.size()==done);
+            });
+            close(pair[0]);
+            return result;
+        } catch (...) { close(pair[0]); throw; }
+    };
+    assert(download("signed!",7,true)=="signed!");
+    assert(download("manifest",128,false)=="manifest");
+    Reject([&]{ download("incomplete",100,true); });
+    Reject([&]{ download("oversize",4,true); });
+}
 }
 int main(int argc,char** argv) {
     assert(argc==2);
     Releases();
+    Downloads();
     Partitions(argv[1]);
     std::cout << "PASS: signed releases, downgrade/slot/OTA guards, write/readback and reboot gate fixtures\n";
 }

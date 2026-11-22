@@ -319,38 +319,6 @@
       146
     ]
   },
-  "oxy_button_310_106": {
-    "bytes": 3415,
-    "sha256": "c00608c63a25cac506076d952569990cc7e2ea033092b1a21988c34b7c162161",
-    "size": [
-      310,
-      106
-    ]
-  },
-  "oxy_button_310_106_pressed": {
-    "bytes": 3395,
-    "sha256": "a97b2cfa2100f820854b80705d5b12fc041cc4e695abdb40c758701977143a57",
-    "size": [
-      310,
-      106
-    ]
-  },
-  "oxy_button_300_106": {
-    "bytes": 3407,
-    "sha256": "19bfbecfd5a8908e5324cc0cad219b473de61b0861c08461a12a049cc33c0ab8",
-    "size": [
-      300,
-      106
-    ]
-  },
-  "oxy_button_300_106_pressed": {
-    "bytes": 3389,
-    "sha256": "fa059cfe7e5753f256ee3d52778befb8480d47c6a1e099bcb9f85c6910af35b4",
-    "size": [
-      300,
-      106
-    ]
-  },
   "oxy_button_250_88_red": {
     "bytes": 3784,
     "sha256": "80cfbb3ef13626667c16725db03281f4e94694c52d367b369470b1f709209ec3",

@@ -177,9 +177,6 @@ def generate():
         for pressed in (False,True):
             key=name+("_pressed" if pressed else "")
             if key not in result:result[key]=rounded(w,h,red=b.get("red",False),pressed=pressed)
-    for w,h in ((310,106),(300,106)):
-        for pressed in (False,True):
-            result.setdefault(f"oxy_button_{w}_{h}"+("_pressed" if pressed else ""),rounded(w,h,pressed=pressed))
     for suffix,tint in (("blue",((33,73,117),(28,44,68))),
                         ("green",((31,103,66),(21,62,42))),
                         ("red",((128,38,55),(73,27,41)))):

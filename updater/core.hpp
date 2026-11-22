@@ -197,6 +197,22 @@ std::unique_ptr<Offer> Select(const Json::Value& releases, const Build& installe
 inline bool CleanOtaState(const std::string& state) {
     return state.empty() || state == "none" || state == std::string("\x08\x00",2);
 }
+template <class Sink>
+uint64_t Receive(int source,uint64_t bound,bool exact,Sink consume) {
+    char buffer[64 * 1024];
+    uint64_t done = 0;
+    for (;;) {
+        ssize_t n;
+        do { n = read(source,buffer,sizeof(buffer)); } while (n < 0 && errno == EINTR);
+        Require(n >= 0,"HTTPS stream failed");
+        if (!n) break;
+        Require(static_cast<uint64_t>(n) <= bound-done,"HTTPS response exceeds expected size");
+        done += n;
+        consume(buffer,static_cast<size_t>(n),done);
+    }
+    Require(!exact || done == bound,"Download length differs from signed manifest");
+    return done;
+}
 inline bool RebootVerified(uint64_t running, std::string_view commit, std::string_view slot,
                            const Digest& readback, const Json::Value& receipt) {
     return String(receipt,"stage",32) == "verified" && Number(receipt,"build") == running &&

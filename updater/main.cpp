@@ -412,29 +412,32 @@ std::string Fetch(const std::string& url, uint64_t limit, int fd = -1, bool api 
     }
     close(std::exchange(write_end.n,-1));
     std::string result;
-    auto done = uint64_t{0};
     const auto start = time(nullptr);
     int last = -1;
     int status = 0;
     try {
-        char buffer[64*1024];
-        ssize_t n;
-        while ((n = TEMP_FAILURE_RETRY(read(read_end,buffer,sizeof(buffer)))) > 0) {
-            Require(static_cast<uint64_t>(n) <= limit-done,"HTTPS response exceeds expected size");
-            done += n;
+        const auto done = Receive(read_end,limit,false,[&](const char* buffer,size_t n,uint64_t written) {
             if (fd < 0) result.append(buffer,n);
             else {
                 Write(fd,buffer,n);
-                const int pct = static_cast<int>(done*100/limit);
+                const int pct = static_cast<int>(written*100/limit);
                 if (pct != last) {
                     last = pct;
                     Out("progress",std::to_string(pct));
-                    Out("speed",std::to_string(done/1024/std::max<time_t>(1,time(nullptr)-start))+" KiB/s");
+                    Out("speed",std::to_string(written/1024/std::max<time_t>(1,time(nullptr)-start))+" KiB/s");
                 }
             }
+        });
+        Require(TEMP_FAILURE_RETRY(waitpid(pid,&status,0)) == pid,"HTTPS client did not finish");
+        if (WIFEXITED(status) && WEXITSTATUS(status) == 0)
+            Require(fd < 0 || done == limit,"Download length differs from signed manifest");
+    } catch (...) {
+        if (waitpid(pid,&status,WNOHANG) == 0) {
+            kill(pid,SIGKILL);
+            TEMP_FAILURE_RETRY(waitpid(pid,&status,0));
         }
-        Require(n == 0 && TEMP_FAILURE_RETRY(waitpid(pid,&status,0)) == pid,"HTTPS stream failed");
-    } catch (...) { kill(pid,SIGKILL); TEMP_FAILURE_RETRY(waitpid(pid,&status,0)); throw; }
+        throw;
+    }
     Require(WIFEXITED(status),"HTTPS client interrupted");
     switch (WEXITSTATUS(status)) {
         case 0: break;
@@ -445,7 +448,6 @@ std::string Fetch(const std::string& url, uint64_t limit, int fd = -1, bool api 
         case 35: case 60: case 77: throw std::runtime_error("GitHub TLS verification failed");
         default: throw std::runtime_error("HTTPS download failed or was interrupted");
     }
-    Require(fd < 0 || done == limit,"Download length differs from signed manifest");
     return result;
 }
 std::unique_ptr<Offer> Check(const Build& installed, const Digest& pub, Profile profile, bool preview) {
@@ -523,6 +525,8 @@ void Install(const Build& running, const Offer& o, const std::string& target,
     const auto dest = Partition(target,true);
     Require(dest.dev == original.dev && Hash(dest.fd,ImageSize) == Unhex(profile.from_recovery),
             "Active recovery partition changed before installation");
+    Require(ioctl(dest.fd,BLKFLSBUF,0) == 0,
+            "Cannot flush recovery block-device caches; writes were not started");
     Json::Value journal(Json::objectValue);
     journal["build"] = Json::UInt64(o.build.id);
     journal["commit"] = o.build.commit;

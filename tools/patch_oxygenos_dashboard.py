@@ -709,7 +709,8 @@ def patch(recovery):
             resource.set("retainaspect","1")
         resources.append(resource)
     # Preserve retired generated files outside packaged theme resources.
-    for retired in ('oxy_home_bar','oxy_footer','oxy_icon_battery_56','oxy_icon_thermometer_56','oxy_icon_backup_56','oxy_shared_logo'):
+    for retired in ('oxy_home_bar','oxy_footer','oxy_icon_battery_56','oxy_icon_thermometer_56','oxy_icon_backup_56','oxy_shared_logo',
+                    'oxy_button_310_106','oxy_button_310_106_pressed','oxy_button_300_106','oxy_button_300_106_pressed'):
         old=recovery/'gui/theme/portrait_hdpi/images'/(retired+'.png')
         if old.exists() and retired not in manifest:
             archive=recovery/'.op15-retired-assets';archive.mkdir(exist_ok=True)
