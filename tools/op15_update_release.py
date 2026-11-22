@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import stat
 import subprocess
+import tempfile
 import time
 
 DEVICE = Path(__file__).resolve().parents[1]
@@ -52,6 +53,41 @@ def identity(a):
     doc = dict(COMMON, build=a.build, timestamp=int(time.time()), commit=commit,
                channel=a.channel, public_key=a.public_key)
     a.output.write_bytes(canonical(doc))
+
+
+def verify_identity(a):
+    expected=a.identity.read_bytes()
+    check(len(expected)<=4096,"Release identity is too large")
+    doc=json.loads(expected)
+    check(all(doc.get(k)==v for k,v in COMMON.items()) and doc.get("commit")==a.commit and
+          doc.get("build")==a.build and a.image.stat().st_size==IMAGE_BYTES,
+          "Handoff identity, commit, or image size mismatch")
+    with tempfile.TemporaryDirectory(prefix="op15-identity-") as temp, a.image.open("rb") as image:
+        header=image.read(44)
+        check(header[:8]==b"ANDROID!" and header[8:12]==bytes(4) and
+              int.from_bytes(header[40:44],"little")==4,"Invalid packaged recovery header")
+        length=int.from_bytes(header[12:16],"little")
+        check(0<length<IMAGE_BYTES-4096,"Invalid packaged ramdisk length")
+        image.seek(4096)
+        ramdisk=Path(temp)/"ramdisk.lz4"
+        with ramdisk.open("wb") as out:
+            while length:
+                chunk=image.read(min(length,1024*1024))
+                check(chunk,"Truncated packaged ramdisk")
+                out.write(chunk)
+                length-=len(chunk)
+        # Never unpack archive paths to disk; extract only the named identity.
+        with subprocess.Popen(["lz4","-q","-dc",str(ramdisk)],stdout=subprocess.PIPE) as unzip:
+            with subprocess.Popen(["cpio","--quiet","-i","--to-stdout","system/etc/op15-updater-identity.json"],
+                                  stdin=unzip.stdout,stdout=subprocess.PIPE) as cpio:
+                unzip.stdout.close()
+                packed=cpio.stdout.read(4097)
+                if len(packed)>4096:
+                    cpio.kill()
+                result=cpio.wait(timeout=30)
+            check(result==0 and unzip.wait(timeout=30)==0 and packed==expected,
+                  "Packaged build identity differs from the release artifact")
+    print("Packaged updater identity verified")
 
 
 def sign(a):
@@ -105,6 +141,12 @@ def main():
     new.add_argument("--public-key", default="")
     new.add_argument("--output", required=True, type=Path)
     new.set_defaults(run=identity)
+    verify = sub.add_parser("verify-identity")
+    verify.add_argument("--identity", required=True, type=Path)
+    verify.add_argument("--image", required=True, type=Path)
+    verify.add_argument("--commit", required=True)
+    verify.add_argument("--build", required=True, type=int)
+    verify.set_defaults(run=verify_identity)
     seal = sub.add_parser("sign")
     for key in ("identity", "image", "profiles", "notes", "key", "output"):
         seal.add_argument("--"+key, type=Path, required=True)
@@ -113,7 +155,7 @@ def main():
     a = parser.parse_args()
     try:
         a.run(a)
-    except (ValueError, OSError, KeyError, subprocess.CalledProcessError) as e:
+    except (ValueError, OSError, KeyError, subprocess.SubprocessError) as e:
         parser.exit(1, f"Updater release validation failed: {e}\n")
 
 
