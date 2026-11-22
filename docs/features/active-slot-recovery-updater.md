@@ -156,8 +156,8 @@ whole-partition readback, and a verified reboot on the same slot. Prove slot A
 and slot B independently before permitting each in production.
 
 Local build command: `source build/envsetup.sh; lunch twrp_infiniti; m recoveryimage`.
-Candidate directory: `/home/travis/Android/op15-updater-build.K5i2jL/verified/`.
-This development build has no production public key and cannot offer or install
+Initial candidate directory: `/home/travis/Android/op15-updater-build.K5i2jL/verified/`.
+Development builds have no production public key and cannot offer or install
 an update.
 
 | Check | Result |
@@ -180,3 +180,10 @@ an update.
   **96,931,840** to **97,054,720 bytes** (+**122,880 bytes**), leaving
   **7,733,248 bytes** below the AVB payload limit. The padded image size did not
   change. No new runtime library was bundled specifically for the updater.
+
+The tile appearance refresh is development build 2 from `7810556`.
+`/home/travis/Android/op15-updater-build.K5i2jL/tile-refresh/recovery.img`
+is **104,857,600 bytes** with SHA-256
+`b354d68f0191ddf0a41d85a0318c4e3d48a46189a7f32aba64090c8f88d678df`.
+The dashboard and updater tests, clean patch replay, and packed UI/AVB
+verification passed. This revision was not flashed.
