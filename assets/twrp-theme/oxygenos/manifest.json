@@ -319,6 +319,22 @@
       146
     ]
   },
+  "oxy_button_230_88": {
+    "bytes": 3256,
+    "sha256": "c05556b1419f4b8d046f7573ad0bc6f9ea6afc09171954eeee3f483b710c1b13",
+    "size": [
+      230,
+      88
+    ]
+  },
+  "oxy_button_230_88_pressed": {
+    "bytes": 3251,
+    "sha256": "92b26e2393c99aee101b7f4f62d897f09c30b55ef0f5a986f1c6951a43287666",
+    "size": [
+      230,
+      88
+    ]
+  },
   "oxy_button_250_88_red": {
     "bytes": 3784,
     "sha256": "80cfbb3ef13626667c16725db03281f4e94694c52d367b369470b1f709209ec3",
@@ -349,46 +365,6 @@
     "size": [
       224,
       88
-    ]
-  },
-  "oxy_button_230_88": {
-    "bytes": 3256,
-    "sha256": "c05556b1419f4b8d046f7573ad0bc6f9ea6afc09171954eeee3f483b710c1b13",
-    "size": [
-      230,
-      88
-    ]
-  },
-  "oxy_button_230_88_pressed": {
-    "bytes": 3251,
-    "sha256": "92b26e2393c99aee101b7f4f62d897f09c30b55ef0f5a986f1c6951a43287666",
-    "size": [
-      230,
-      88
-    ]
-  },
-  "oxy_update_blue": {
-    "bytes": 3688,
-    "sha256": "f49cc642af0aca0100559887edb4eb147d174529bc7fb56c3453d7f2f115cd2c",
-    "size": [
-      230,
-      146
-    ]
-  },
-  "oxy_update_green": {
-    "bytes": 3643,
-    "sha256": "e82708a8c3efe7706829c202a6da6f36fc6d1fb994abfca795fb8fa24398c7e2",
-    "size": [
-      230,
-      146
-    ]
-  },
-  "oxy_update_red": {
-    "bytes": 3608,
-    "sha256": "1397d07f749bb7154e22f66d4e7c19c8ad97c5d6fa0f067e4a41c93300819e87",
-    "size": [
-      230,
-      146
     ]
   },
   "oxy_icon_slot_32": {
@@ -589,6 +565,14 @@
     "size": [
       56,
       56
+    ]
+  },
+  "oxy_icon_update_available_64": {
+    "bytes": 1627,
+    "sha256": "161ae1b83b35199ff354b81dc9f21658e5f665acbd036411a22c21c76be6af35",
+    "size": [
+      64,
+      64
     ]
   },
   "oxy_indeterminate001": {

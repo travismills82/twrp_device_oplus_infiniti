@@ -401,18 +401,20 @@ def dashboard(layout,theme,classic):
         if cap:cond(n,cap)
         kind=b["kind"]
         if b["id"]=="updates":
-            for state,color in (("checking","blue"),("available","green"),
-                                ("installing","green"),("failed","red")):
-                overlay=image(p,"oxy_update_"+color,x,y)
-                cond(overlay,"tw_op15_update_state",state)
-        if kind=="device":
+            state="tw_op15_update_state"
+            ix=x+(w-64)//2
+            standard=image(p,f"oxy_icon_{b['icon']}_64",ix,y+10)
+            cond(standard,state,"available","!=")
+            available=image(p,"oxy_icon_update_available_64",ix,y+10)
+            cond(available,state,"available")
+            for i,line in enumerate(b["label"].split("|")):
+                title=label(p,line,x+w//2,y+76+31*i,"oxy_quick",align=5)
+                cond(title,state,"installing","!=")
+            progress=label(p,"%tw_op15_update_progress%%",x+w//2,y+94,"oxy_quick",align=5)
+            cond(progress,state,"installing")
+        elif kind=="device":
             image(p,f"oxy_icon_{b['icon']}_64",x+(w-64)//2,y+22)
-            title=label(p,b["label"],x+w//2,y+94,
-                        "oxy_quick" if b["id"]=="updates" else "oxy_body",align=5)
-            if b["id"]=="updates":
-                cond(title,"tw_op15_update_state","installing","!=")
-                progress=label(p,"%tw_op15_update_progress%%",x+w//2,y+94,"oxy_quick",align=5)
-                cond(progress,"tw_op15_update_state","installing")
+            label(p,b["label"],x+w//2,y+94,"oxy_body",align=5)
         else:
             size=64 if kind=="large" else (44 if kind=="quick" else 56)
             ix=x+{"large":64,"quick":24,"network":18}[kind]
@@ -710,7 +712,8 @@ def patch(recovery):
         resources.append(resource)
     # Preserve retired generated files outside packaged theme resources.
     for retired in ('oxy_home_bar','oxy_footer','oxy_icon_battery_56','oxy_icon_thermometer_56','oxy_icon_backup_56','oxy_shared_logo',
-                    'oxy_button_310_106','oxy_button_310_106_pressed','oxy_button_300_106','oxy_button_300_106_pressed'):
+                    'oxy_button_310_106','oxy_button_310_106_pressed','oxy_button_300_106','oxy_button_300_106_pressed',
+                    'oxy_update_blue','oxy_update_green','oxy_update_red'):
         old=recovery/'gui/theme/portrait_hdpi/images'/(retired+'.png')
         if old.exists() and retired not in manifest:
             archive=recovery/'.op15-retired-assets';archive.mkdir(exist_ok=True)

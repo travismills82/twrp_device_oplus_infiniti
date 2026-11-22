@@ -13,18 +13,26 @@ home = theme.find("pages/page[@name='main2']")
 tile = home.find("button[@name='oxy_updates']")
 assert tile is not None and home.find("button[@name='oxy_reboot']") is None
 assert tile.find("placement").attrib == {"x":"802","y":"904"}
+assert tile.find("image").attrib == home.find("button[@name='oxy_advanced']/image").attrib
+assert tile.find("condition[@var1='tw_op15_update_state']") is None
 assert [(a.get("function"),a.text) for a in tile.iter("action")] == [
     ("page","op15_updates"),("op15updater","tile")]
-states = {}
+states = []
 for image in home.findall("image"):
     state = image.find("condition[@var1='tw_op15_update_state']")
     if state is not None:
-        states[state.get("var2")] = image.find("image").get("resource")
-assert states == {
-    "checking":"oxy_update_blue","available":"oxy_update_green",
-    "installing":"oxy_update_green","failed":"oxy_update_red"}
-for resource in set(states.values()):
+        assert image.find("placement").attrib == {"x":"885","y":"914"}
+        states.append((state.get("var2"),state.get("op","="),image.find("image").get("resource")))
+assert states == [("available","!=","oxy_icon_install_64"),
+                  ("available","=","oxy_icon_update_available_64")]
+for _,_,resource in states:
     assert ui.find("resources/image[@name='"+resource+"']") is not None
+assert not any(ui.find(f"resources/image[@name='oxy_update_{color}']") is not None
+               for color in ("blue","green","red"))
+labels = [n for n in home.findall("text") if n.findtext("text") in ("Check for","TWRP Updates")]
+assert " ".join(n.findtext("text") for n in labels) == "Check for TWRP Updates"
+assert [n.find("placement").attrib for n in labels] == [
+    {"x":"917","y":"980","placement":"5"},{"x":"917","y":"1011","placement":"5"}]
 assert ui.find("variables/variable[@name='tw_op15_update_preview']").get("value") == "0"
 assert ui.find("variables/variable[@name='tw_op15_update_state']").get("value") == "offline"
 for name in ("oxy_system","oxy_recovery","oxy_bootloader","oxy_fastbootd"):

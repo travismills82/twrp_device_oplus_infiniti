@@ -8,18 +8,19 @@ The stable branch and published assets are untouched.
 
 ## Recovery UI
 
-The Device & System tile at `[802, 904, 230, 146]` is now **Check Updates**.
+The Device & System tile at `[802, 904, 230, 146]` is now **Check for TWRP Updates**.
 The four Quick Actions are unchanged, and the native Reboot page is accessible
 through **Reboot Menu** on the update page. The tile and detail page report live
-state, not a fixed version:
+state, not a fixed version. The tile background always uses the same charcoal
+style as its neighbors; only the icon indicates availability:
 
-| State | Tile | Tap behavior |
+| State | Tile foreground | Tap behavior |
 | --- | --- | --- |
-| Offline or current | Dark gray | Show status or check again |
-| Checking | Blue | Open the status page; do not start another check |
-| Newer signed compatible release | Green | Start update without another confirmation |
-| Downloading, installing, or reading back | Green with percentage | Show current stage, progress, and download speed |
-| Check or install failed | Red | Show the error and allow a new check |
+| Offline or current | White icon | Show status or check again |
+| Checking | White icon | Open the status page; do not start another check |
+| Newer signed compatible release | Green icon | Start update without another confirmation |
+| Downloading, installing, or reading back | White icon with percentage | Show current stage, progress, and download speed |
+| Check or install failed | White icon | Show the error and allow a new check |
 
 The status page shows installed and offered build identities, active slot,
 installation target, and signed release notes. Stable is the default; the preview
