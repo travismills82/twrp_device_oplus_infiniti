@@ -1,0 +1,18 @@
+cc_binary {
+    name: "op15-twrp-updater",
+    recovery: true,
+    compile_multilib: "64",
+    srcs: ["main.cpp"],
+    cppflags: ["-fexceptions"],
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+    cpp_std: "c++17",
+    shared_libs: ["libbase", "libcrypto"],
+    static_libs: ["libavb", "libjsoncpp"],
+}
+
+prebuilt_etc {
+    name: "op15-updater-identity",
+    recovery: true,
+    src: "identity.json",
+    filename: "op15-updater-identity.json",
+}

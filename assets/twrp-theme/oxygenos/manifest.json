@@ -399,6 +399,30 @@
       88
     ]
   },
+  "oxy_update_blue": {
+    "bytes": 3688,
+    "sha256": "f49cc642af0aca0100559887edb4eb147d174529bc7fb56c3453d7f2f115cd2c",
+    "size": [
+      230,
+      146
+    ]
+  },
+  "oxy_update_green": {
+    "bytes": 3643,
+    "sha256": "e82708a8c3efe7706829c202a6da6f36fc6d1fb994abfca795fb8fa24398c7e2",
+    "size": [
+      230,
+      146
+    ]
+  },
+  "oxy_update_red": {
+    "bytes": 3608,
+    "sha256": "1397d07f749bb7154e22f66d4e7c19c8ad97c5d6fa0f067e4a41c93300819e87",
+    "size": [
+      230,
+      146
+    ]
+  },
   "oxy_icon_slot_32": {
     "bytes": 584,
     "sha256": "fd74c8bdf093cbe88f3202256b43441a02109bbf51b3380821ba81f322ea831e",

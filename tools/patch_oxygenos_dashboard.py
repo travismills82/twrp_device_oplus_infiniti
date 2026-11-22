@@ -56,6 +56,11 @@ def actions(n):
 
 
 def source_actions(theme,classic,source):
+    if source=="op15:updates":
+        group=node("actions")
+        add(group,"action",function="page").text="op15_updates"
+        add(group,"action",function="op15updater").text="tile"
+        return [group]
     if source=="ftp":
         for item in theme.findall("pages/page[@name='advanced']//listitem"):
             if any(a.text=="/system/bin/twrp-ftp-menu" for a in item.iter("action")):return actions(item)
@@ -395,9 +400,19 @@ def dashboard(layout,theme,classic):
         cap=b.get("capability")
         if cap:cond(n,cap)
         kind=b["kind"]
+        if b["id"]=="updates":
+            for state,color in (("checking","blue"),("available","green"),
+                                ("installing","green"),("failed","red")):
+                overlay=image(p,"oxy_update_"+color,x,y)
+                cond(overlay,"tw_op15_update_state",state)
         if kind=="device":
             image(p,f"oxy_icon_{b['icon']}_64",x+(w-64)//2,y+22)
-            label(p,b["label"],x+w//2,y+94,"oxy_body",align=5)
+            title=label(p,b["label"],x+w//2,y+94,
+                        "oxy_quick" if b["id"]=="updates" else "oxy_body",align=5)
+            if b["id"]=="updates":
+                cond(title,"tw_op15_update_state","installing","!=")
+                progress=label(p,"%tw_op15_update_progress%%",x+w//2,y+94,"oxy_quick",align=5)
+                cond(progress,"tw_op15_update_state","installing")
         else:
             size=64 if kind=="large" else (44 if kind=="quick" else 56)
             ix=x+{"large":64,"quick":24,"network":18}[kind]
@@ -438,6 +453,65 @@ def dashboard(layout,theme,classic):
         n=add(p,"action");add(n,"touch",key=key);add(n,"action",function=function).text=arg
     add(p,"template",name="oxygenos_status")
     return p
+
+
+def native_updates():
+    def page(name,title,back):
+        p=node("page",name=name)
+        add(p,"template",name="page")
+        label(p,title,190,102,"oxy_section")
+        for key,dest in (("home","main"),("back",back)):
+            n=add(p,"action");add(n,"touch",key=key)
+            cond(n,"tw_busy","0")
+            add(n,"action",function="page").text=dest
+        return p
+
+    def box(p,caption,x,y,fn,dest):
+        n=add(p,"button",style="main_button_half_height")
+        place(n,x,y)
+        add(n,"text").text=caption
+        cond(n,"tw_busy","0")
+        add(n,"action",function=fn).text=dest
+        return n
+
+    p=page("op15_updates","TWRP Recovery Updates","main")
+    image(p,"oxy_card_flash",28,250)
+    for i,(title,key) in enumerate((("Installed version","installed"),("Available version","available"),
+                                    ("Active slot","slot"),("Installation target","target"))):
+        y=286+i*80
+        label(p,title,58,y,"oxy_caption","#BFC0C7")
+        label(p,"%tw_op15_update_"+key+"%",330,y-4,"oxy_small")
+    label(p,"Status",56,720,"oxy_section")
+    label(p,"%tw_op15_update_status%",56,788,"oxy_small")
+    label(p,"%tw_op15_update_success%",56,850,"oxy_small","#39DD87")
+    label(p,"%tw_op15_update_warning%",56,892,"oxy_small","#FF5D73")
+    bar=add(p,"progressbar")
+    place(bar,36,942)
+    add(bar,"resource",empty="progress_empty",full="progress_full",rounded="1")
+    add(bar,"data",name="tw_op15_update_progress")
+    cond(bar,"tw_op15_update_state","installing")
+    combined=label(p,"%tw_op15_update_progress%%",540,974,"oxy_status",align=4)
+    cond(combined,"tw_op15_update_state","installing")
+    label(p,"%tw_op15_update_speed%",56,1030,"oxy_small")
+    box(p,"Check Again","%indent%",1150,"op15updater","check")
+    box(p,"View Release Notes","%col1_x_right%",1150,"page","op15_update_notes")
+    install=box(p,"Download & Install","%indent%",1280,"op15updater","install")
+    cond(install,"tw_op15_update_state","available")
+    box(p,"Reboot Menu","%col1_x_right%",1280,"page","reboot")
+    box(p,"Back","%indent%",1410,"page","main")
+    setting=box(p,"Preview channel: off","%col1_x_right%",1410,"op15updater","preview")
+    cond(setting,"tw_op15_update_preview","0")
+    setting=box(p,"Preview channel: on","%col1_x_right%",1410,"op15updater","preview")
+    cond(setting,"tw_op15_update_preview","1")
+
+    notes=page("op15_update_notes","Signed Release Notes","op15_updates")
+    content=add(notes,"textbox")
+    place(content,56,300,968,1100)
+    add(content,"font",resource="oxy_body",spacing="12",color="#FFFFFF")
+    add(content,"color",foreground="#FFFFFF",background="#1B1C21")
+    add(content,"text").text="%tw_op15_update_notes%"
+    box(notes,"Back","%indent%",1450,"page","op15_updates")
+    return p,notes
 
 
 def native_smb(text):
@@ -642,7 +716,7 @@ def patch(recovery):
             old.replace(archive/old.name)
     ut=insert(ut,"resources",serialize(resources),"</resources>")
     ut=insert(ut,"templates",serialize([status_template(ut)]),"</templates>")
-    pages=serialize([dashboard(layout,theme,classic)])
+    pages=serialize([dashboard(layout,theme,classic),*native_updates()])
     s=f"{START} pages -->";e=f"{END} pages -->"
     if s in ct:ct=re.sub(re.escape(s)+".*?"+re.escape(e),lambda _:block("pages",pages),ct,flags=re.S)
     else:
@@ -660,6 +734,10 @@ def patch(recovery):
               node('variable',name='tw_op15_wifi_back',value='advanced'),
               node('variable',name='tw_wlan_network_count',value='0'),
               node('variable',name='tw_op15_wlan_scan_status',value='Tap Scan to refresh')]
+    defaults.extend(node('variable',name='tw_op15_update_'+key,value=value) for key,value in {
+        "state":"offline","status":"Offline — connect to Wi-Fi","preview":"0","notes":"No signed release notes",
+        "installed":"—","available":"—","slot":"—","target":"—","progress":"0","speed":"","success":"","warning":""
+    }.items())
     ut=insert(ut,'wifi-variables',serialize(defaults),'</variables>')
     ct=alphabetize_advanced(ct)
     ct=position_unlock_label(ct)

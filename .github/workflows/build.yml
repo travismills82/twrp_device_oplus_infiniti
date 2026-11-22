@@ -39,13 +39,46 @@ on:
         description: "Device-tree path to flashable TWRP installer builder"
         required: true
         default: "prebuilts/flashable/build-twrp-installer.sh"
+      PUBLISH_RELEASE:
+        description: "Publish a signed release (requires verified compatibility profiles)"
+        type: boolean
+        default: false
+      PRERELEASE:
+        description: "Use the opt-in prerelease update channel"
+        type: boolean
+        default: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    environment: ${{ inputs.PUBLISH_RELEASE && 'op15-updater-release' || 'op15-updater-build' }}
     permissions:
       contents: write
     steps:
+    - name: Restrict release builds to the canonical stable checkout
+      if: inputs.PUBLISH_RELEASE
+      env:
+        DEVICE_TREE_URL: ${{ inputs.DEVICE_TREE_URL }}
+        DEVICE_TREE_BRANCH: ${{ inputs.DEVICE_TREE_BRANCH }}
+        DEVICE_PATH: ${{ inputs.DEVICE_PATH }}
+        DEVICE_NAME: ${{ inputs.DEVICE_NAME }}
+        MANIFEST_URL: ${{ inputs.TWRP_MANIFEST_URL }}
+        MANIFEST_BRANCH: ${{ inputs.TWRP_MANIFEST_BRANCH }}
+        LUNCH: ${{ inputs.LUNCH_TARGET }}
+        PARTITION: ${{ inputs.BUILD_PARTITION }}
+        BUILDER: ${{ inputs.FLASHABLE_INSTALLER_BUILDER }}
+      run: |
+        set -euo pipefail
+        [ "$GITHUB_REPOSITORY" = travismills82/twrp_device_oplus_infiniti ]
+        [ "$GITHUB_REF" = refs/heads/twrp-16.0 ]
+        [ "$DEVICE_TREE_URL" = https://github.com/travismills82/twrp_device_oplus_infiniti ]
+        [ "$DEVICE_TREE_BRANCH" = twrp-16.0 ]
+        [ "$DEVICE_PATH" = oplus/infiniti ] && [ "$DEVICE_NAME" = infiniti ]
+        [ "$MANIFEST_URL" = https://github.com/TWRP-Test/platform_manifest_twrp_aosp ]
+        [ "$MANIFEST_BRANCH" = twrp-16.0 ]
+        [ -z "$LUNCH" ] || [ "$LUNCH" = infiniti ]
+        [ "$PARTITION" = recovery ]
+        [ "$BUILDER" = prebuilts/flashable/build-twrp-installer.sh ]
     - name: Show build info
       run: |
         if [ -n "${{ github.event.inputs.LUNCH_TARGET }}" ]; then
@@ -84,7 +117,7 @@ jobs:
       run: |
         export DEBIAN_FRONTEND=noninteractive
         sudo apt-get update
-        sudo apt-get install -y repo python3 zip unzip binutils libfreetype6
+        sudo apt-get install -y repo python3 zip unzip binutils libfreetype6 libssl-dev openssl
         git config --global user.name ${{ github.actor }}
         git config --global user.email ${{ github.actor }}@users.noreply.github.com
 
@@ -145,6 +178,7 @@ jobs:
         python3 -B device/${{ github.event.inputs.DEVICE_PATH }}/scripts/test-smb-browser.py .
         g++ -std=c++17 -Wall -Wextra -Werror -I bootable/recovery device/${{ github.event.inputs.DEVICE_PATH }}/scripts/test-smb-browser.cpp -o /tmp/test-smb-browser
         /tmp/test-smb-browser
+        bash device/${{ github.event.inputs.DEVICE_PATH }}/scripts/test-active-slot-updater.sh .
         git -C bootable/recovery diff --check
         git -C bootable/recovery status --short
         grep -n "Supplicant network ID" bootable/recovery/gui/action.cpp
@@ -171,6 +205,26 @@ jobs:
         fi
         cat INFO.txt
       working-directory: device/${{ github.event.inputs.DEVICE_PATH }}
+
+    - name: Embed updater build identity
+      env:
+        DEVICE_PATH: ${{ inputs.DEVICE_PATH }}
+        PUBLIC_KEY: ${{ vars.OP15_UPDATER_PUBLIC_KEY }}
+        PUBLISH: ${{ inputs.PUBLISH_RELEASE }}
+        PREVIEW: ${{ inputs.PRERELEASE }}
+      run: |
+        set -euo pipefail
+        [ "${GITHUB_RUN_ATTEMPT}" -lt 1000 ]
+        build=$((GITHUB_RUN_NUMBER * 1000 + GITHUB_RUN_ATTEMPT))
+        channel=development
+        if [ "$PUBLISH" = true ]; then
+          [ -n "$PUBLIC_KEY" ] || { echo 'Missing OP15_UPDATER_PUBLIC_KEY'; exit 1; }
+          channel=stable
+          if [ "$PREVIEW" = true ]; then channel=prerelease; fi
+        fi
+        DEVICE="device/$DEVICE_PATH"
+        python3 "$DEVICE/tools/op15_update_release.py" identity --build "$build" \
+          --channel "$channel" --public-key "$PUBLIC_KEY" --output "$DEVICE/updater/identity.json"
 
     - name: Build TWRP
       run: |
@@ -312,16 +366,50 @@ jobs:
 
         ls -lh "$TWRP_IMAGE" "$TWRP_ZIP"
 
+    - name: Prepare signed updater assets
+      if: inputs.PUBLISH_RELEASE
+      env:
+        DEVICE_PATH: ${{ inputs.DEVICE_PATH }}
+        UPDATE_KEY: ${{ secrets.OP15_UPDATER_SIGNING_KEY }}
+        PROFILES: ${{ vars.OP15_UPDATER_COMPATIBILITY_PROFILES }}
+      run: |
+        set -euo pipefail
+        umask 077
+        [ -n "$UPDATE_KEY" ] && [ -n "$PROFILES" ]
+        temp="$(mktemp -d)"
+        trap 'rm -f -- "$temp/signing.pem" "$temp/profiles.json" "$temp/notes"; rmdir "$temp"' EXIT
+        printf '%s\n' "$UPDATE_KEY" > "$temp/signing.pem"
+        unset UPDATE_KEY
+        printf '%s\n' "$PROFILES" > "$temp/profiles.json"
+        DEVICE="device/$DEVICE_PATH"
+        git -C "$DEVICE" log -8 --format='%h %s' | cut -c1-220 > "$temp/notes"
+        sha="$(git -C "$DEVICE" rev-parse HEAD)"
+        assets="$RUNNER_TEMP/op15-update-assets"
+        mkdir -p "$assets"
+        cp -- "$TWRP_IMAGE" "$assets/recovery.img"
+        tag="$BUILD_DATE-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+        python3 "$DEVICE/tools/op15_update_release.py" sign --identity "$DEVICE/updater/identity.json" \
+          --image "$assets/recovery.img" --profiles "$temp/profiles.json" --notes "$temp/notes" \
+          --tag "$tag" --key "$temp/signing.pem" --output "$assets"
+        (cd "$assets" && sha256sum -c SHA256SUMS)
+        printf 'UPDATE_ASSETS=%s\nUPDATE_TAG=%s\nUPDATE_COMMIT=%s\n' "$assets" "$tag" "$sha" >> "$GITHUB_ENV"
+
     - name: Upload to Release
+      if: inputs.PUBLISH_RELEASE
       uses: softprops/action-gh-release@v3.0.1
       with:
         files: |
-          ${{ env.TWRP_IMAGE }}
+          ${{ env.UPDATE_ASSETS }}/recovery.img
+          ${{ env.UPDATE_ASSETS }}/twrp-update.json
+          ${{ env.UPDATE_ASSETS }}/twrp-update.json.sig
+          ${{ env.UPDATE_ASSETS }}/SHA256SUMS
           ${{ env.TWRP_ZIP }}
         fail_on_unmatched_files: true
-        overwrite_files: true
+        overwrite_files: false
         name: TWRP-${{ env.TWRP_VERSION }}-${{ github.event.inputs.DEVICE_NAME }}-${{ env.BUILD_DATE }}-${{ github.run_id }}
-        tag_name: ${{ env.BUILD_DATE }}-${{ github.run_id }}
+        tag_name: ${{ env.UPDATE_TAG }}
+        target_commitish: ${{ env.UPDATE_COMMIT }}
+        prerelease: ${{ inputs.PRERELEASE }}
         body_path: device/${{ github.event.inputs.DEVICE_PATH }}/INFO.txt
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

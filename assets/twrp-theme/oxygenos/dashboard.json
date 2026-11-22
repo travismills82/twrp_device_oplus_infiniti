@@ -16,7 +16,7 @@
     {"id":"mount", "label":"Mount", "icon":"mount", "box":[64,904,230,146], "kind":"device", "source":"main:mount"},
     {"id":"settings", "label":"Settings", "icon":"settings", "box":[310,904,230,146], "kind":"device", "source":"main:settings"},
     {"id":"advanced", "label":"Advanced", "icon":"advanced", "box":[556,904,230,146], "kind":"device", "source":"main:advanced"},
-    {"id":"reboot", "label":"Reboot", "icon":"reboot", "box":[802,904,230,146], "kind":"device", "source":"main:reboot"},
+    {"id":"updates", "label":"Check Updates", "icon":"install", "box":[802,904,230,146], "kind":"device", "source":"op15:updates"},
     {"id":"wifi", "label":"Wi-Fi", "icon":"wifi", "box":[64,1214,230,88], "kind":"network", "source":"advanced:wlan"},
     {"id":"files", "label":"File|Manager", "icon":"files", "box":[306,1214,230,88], "kind":"network", "source":"advanced:filemanagerlist"},
     {"id":"terminal", "label":"Terminal", "icon":"terminal", "box":[548,1214,230,88], "kind":"network", "source":"advanced:terminalcommand"},

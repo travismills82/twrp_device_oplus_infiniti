@@ -65,6 +65,8 @@ PRODUCT_PACKAGES += \
 	twrp-ftp-backup \
 	twrp-ftp-restore \
 	twrp-curl-cacert \
+	op15-twrp-updater \
+	op15-updater-identity \
 	twrp-touch-start \
 	twrp-thermal-guard \
 	twrp-charging \

@@ -17,12 +17,13 @@ DEVICE=Path(__file__).resolve().parents[1]
 AA=3
 
 
-def rounded(w,h,red=False,pressed=False,radius=30,panel=False,footer=False):
+def rounded(w,h,red=False,pressed=False,radius=30,panel=False,footer=False,tint=None):
     mask=Image.new("L",(w*AA,h*AA)); d=ImageDraw.Draw(mask)
     d.rounded_rectangle((1,1,w*AA-2,h*AA-2),radius=radius*AA,fill=255)
     mask=mask.resize((w,h),Image.Resampling.LANCZOS)
     im=Image.new("RGBA",(w,h));d=ImageDraw.Draw(im)
     a,b=((239,38,62),(115,13,31)) if red else (((39,28,32),(17,17,21)) if footer else (((29,30,34),(17,18,22)) if panel else ((46,47,53),(31,32,37))))
+    if tint:a,b=tint
     for y in range(h):
         t=y/max(1,h-1)
         color=tuple(min(255,round(v+(b[i]-v)*t)+(14 if pressed else 0)) for i,v in enumerate(a))+(255,)
@@ -176,6 +177,13 @@ def generate():
         for pressed in (False,True):
             key=name+("_pressed" if pressed else "")
             if key not in result:result[key]=rounded(w,h,red=b.get("red",False),pressed=pressed)
+    for w,h in ((310,106),(300,106)):
+        for pressed in (False,True):
+            result.setdefault(f"oxy_button_{w}_{h}"+("_pressed" if pressed else ""),rounded(w,h,pressed=pressed))
+    for suffix,tint in (("blue",((33,73,117),(28,44,68))),
+                        ("green",((31,103,66),(21,62,42))),
+                        ("red",((128,38,55),(73,27,41)))):
+        result["oxy_update_"+suffix]=rounded(230,146,tint=tint)
     groups={32:("slot","crypto","storage","thermometer"),44:("android","recovery","lock","fastbootd"),56:("wifi","files","terminal","ftp","sideload","charging"),64:("install","wipe","backup","restore","mount","settings","advanced","reboot")}
     for size,names in groups.items():
         for name in names:result[f"oxy_icon_{name}_{size}"]=icon(name,size)

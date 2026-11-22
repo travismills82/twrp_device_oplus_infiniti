@@ -60,7 +60,7 @@ def main():
         expected_ui=ET.parse(source/"portrait_hdpi/ui.xml").getroot();expected_common=ET.parse(source/"common/portrait.xml").getroot()
         for path in ("templates/template[@name='oxygenos_status']","templates/template[@name='progress_bar']"):
             if canonical(packed_ui.find(path))!=canonical(expected_ui.find(path)):raise RuntimeError("Stale packaged UI: "+path)
-        for page in ("main2","slideout","wlan","advanced","filemanagerlist","settings"):
+        for page in ("main2","slideout","wlan","advanced","filemanagerlist","settings","op15_updates","op15_update_notes"):
             path=f"pages/page[@name='{page}']"
             if canonical(packed_common.find(path))!=canonical(expected_common.find(path)):raise RuntimeError("Stale packaged native page: "+page)
         if canonical(packed_common)!=canonical(expected_common):raise RuntimeError('Stale packaged common theme styles or pages')
@@ -99,6 +99,15 @@ def main():
         # notifier and DataManager provider both link into the recovery ELF,
         # not a fictional libguitwrp.so. Compare the final stripped executable.
         native=get("system/bin/recovery")
+        helper=get("system/bin/op15-twrp-updater")
+        if helper[:6]!=b"\x7fELF\x02\x01" or struct.unpack_from("<H",helper,18)[0]!=183 or b"libcrypto.so\0" not in helper:
+            raise RuntimeError("Native updater is not an aarch64 recovery ELF linked to libcrypto")
+        if b"op15updater\0" not in native or b"/system/bin/op15-twrp-updater\0" not in native:
+            raise RuntimeError("Native updater GUI action is missing from recovery")
+        if get("system/etc/op15-updater-identity.json")!=(DEVICE/"updater/identity.json").read_bytes():
+            raise RuntimeError("Packaged updater build identity does not match the build input")
+        print("Updater executable size:",len(helper),"bytes; standalone LZ4:",
+              len(subprocess.check_output(["lz4","-l","-12","-c"],input=helper)),"bytes")
         for counter in (b"/sys/class/net/wlan0/statistics/rx_bytes", b"/sys/class/net/wlan0/statistics/tx_bytes"):
             if counter not in native:raise RuntimeError("Packaged Wi-Fi traffic counter reader is missing")
         for marker in (b"tw_op15_dt2w", b"user.twrp.written-sha256"):
