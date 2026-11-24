@@ -39,6 +39,17 @@ for name in ("oxy_system","oxy_recovery","oxy_bootloader","oxy_fastbootd"):
     assert home.find(f"button[@name='{name}']") is not None
 for name in ("op15_updates","op15_update_notes","reboot"):
     assert theme.find(f"pages/page[@name='{name}']") is not None
+for name,back in (("op15_updates","main"),("op15_update_notes","op15_updates")):
+    navigation = {}
+    for widget in theme.find(f"pages/page[@name='{name}']").findall("action"):
+        key = widget.find("touch[@key]")
+        if key is not None:
+            # NotifyVarChange dispatches conditioned GUIActions even on page entry.
+            assert widget.find("condition") is None and widget.find("conditions") is None
+            action = widget.find("action[@function='op15updater']")
+            assert action is not None
+            navigation[key.get("key")] = action.text
+    assert navigation == {"home":"nav:main","back":"nav:"+back}
 page = theme.find("pages/page[@name='op15_updates']")
 assert page.find("progressbar/data[@name='tw_op15_update_progress']") is not None
 install = next(b for b in page.findall("button") if b.findtext("action") == "install")
@@ -50,6 +61,8 @@ assert "ADD_ACTION(op15updater)" in (source / "gui/action.cpp").read_text()
 assert "op15_updater_gui::Instance().Apply();" in (source / "gui/gui.cpp").read_text()
 assert 'backup_exclusions.add_absolute_dir("/data/twrp/updater");' in (source / "partition.cpp").read_text()
 runtime = (device / "updater/gui.hpp").read_text()
+assert 'if (action == "nav:main" || action == "nav:op15_updates") {\n' in runtime
+assert 'if (DataManager::GetIntValue("tw_busy")) return 0;\n            return gui_changePage(' in runtime
 assert "waitpid(pid_,&status,WNOHANG)" in runtime and "O_NONBLOCK" in runtime
 assert 'if (ok && verified_ && error_.empty())' in runtime
 assert runtime.count('SetValue("tw_reboot_arg","recovery")') == 1

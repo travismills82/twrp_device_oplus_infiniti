@@ -464,8 +464,9 @@ def native_updates():
         label(p,title,190,102,"oxy_section")
         for key,dest in (("home","main"),("back",back)):
             n=add(p,"action");add(n,"touch",key=key)
-            cond(n,"tw_busy","0")
-            add(n,"action",function="page").text=dest
+            # TWRP also runs conditioned GUIActions when a page is entered.
+            # Keep key listeners unconditioned and check tw_busy on dispatch.
+            add(n,"action",function="op15updater").text="nav:"+dest
         return p
 
     def box(p,caption,x,y,fn,dest):

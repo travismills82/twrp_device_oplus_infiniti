@@ -11,6 +11,7 @@
 #include <string>
 
 #include "data.hpp"
+#include "gui/pages.hpp"
 
 namespace op15_updater_gui {
 // All methods run on the GUI thread. HTTPS, hashes and partition access are
@@ -176,6 +177,10 @@ public:
         if (now >= auto_after_ && !Start("check")) auto_after_ = now + 30;
     }
     int User(const std::string& action) {
+        if (action == "nav:main" || action == "nav:op15_updates") {
+            if (DataManager::GetIntValue("tw_busy")) return 0;
+            return gui_changePage(action == "nav:main" ? "main" : "op15_updates");
+        }
         if (pid_ >= 0 || DataManager::GetIntValue("tw_busy")) return 0;
         if (action == "preview") {
             DataManager::SetValue(Name("preview"),1-DataManager::GetIntValue(Name("preview")));
