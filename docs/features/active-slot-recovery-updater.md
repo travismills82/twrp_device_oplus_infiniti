@@ -139,8 +139,26 @@ the updater does not relax enforcement or bypass these checks.
   from the canonical branch. The workflow verifies the reviewed commit and
   the packed identity in both the build and protected release jobs, then signs
   the manifest and publishes only the verified recovery and ZIP assets. Prerelease
-  publication is explicit. `tools/op15_update_release.py` also supports offline
-  packaging with the same key, format and compatibility checks.
+  publication is explicit.
+- Every new GitHub release, stable or prerelease, must go through
+  `tools/op15_update_release.py publish` rather than a direct upload. The
+  publish command verifies the detached signature against the configured trust
+  key, checks the tag, commit, channel, signed notes and checksums, and matches
+  the manifest to the identity embedded in the exact recovery image. It passes
+  the image, manifest, signature, checksum and installer to GitHub in a single
+  release creation command. Build-only artifacts are not GitHub releases.
+- For a local release, prepare a boot-qualified image and installer in a single
+  directory with `identity.json` and the GitHub release description. Use
+  `tools/op15_update_release.py sign` with the reviewed profile list and release
+  notes to create the signed assets in that directory. Run `verify-release
+  --assets DIR --tag TAG --commit SHA --channel stable --public-key HEX` for an
+  offline preflight; call `publish` with those same arguments plus `--title` and
+  `--release-notes` when publication is authorized. Use `prerelease` for preview
+  builds. `identity.json` stays in the local handoff; the manifest carries the
+  public build identity.
+- Pre-updater releases are legacy downloads, not automatic update candidates.
+  Do not invent embedded identities or compatibility profiles to retrofit them
+  into the installable updater format.
 
 ## Validation and artifacts
 

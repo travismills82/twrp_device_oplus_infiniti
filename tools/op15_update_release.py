@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build identity and offline Ed25519 release signing. Never writes a private key."""
+"""Build identity, offline Ed25519 signing, and gated release publication."""
 import argparse
 import hashlib
 import json
@@ -12,6 +12,8 @@ import tempfile
 import time
 
 DEVICE = Path(__file__).resolve().parents[1]
+REPO = "github.com/travismills82/twrp_device_oplus_infiniti"
+SIGNED_ASSETS = ("recovery.img", "twrp-update.json", "twrp-update.json.sig", "SHA256SUMS")
 IMAGE_BYTES = 104857600
 DER_ED25519 = bytes.fromhex("302a300506032b6570032100")
 COMMON = dict(schema=1, device="infiniti", twrp="3.7.1-16",
@@ -55,14 +57,13 @@ def identity(a):
     a.output.write_bytes(canonical(doc))
 
 
-def verify_identity(a):
-    expected=a.identity.read_bytes()
+def verify_packed_identity(path, expected, commit, build):
     check(len(expected)<=4096,"Release identity is too large")
     doc=json.loads(expected)
-    check(all(doc.get(k)==v for k,v in COMMON.items()) and doc.get("commit")==a.commit and
-          doc.get("build")==a.build and a.image.stat().st_size==IMAGE_BYTES,
+    check(all(doc.get(k)==v for k,v in COMMON.items()) and doc.get("commit")==commit and
+          doc.get("build")==build and path.stat().st_size==IMAGE_BYTES,
           "Handoff identity, commit, or image size mismatch")
-    with tempfile.TemporaryDirectory(prefix="op15-identity-") as temp, a.image.open("rb") as image:
+    with tempfile.TemporaryDirectory(prefix="op15-identity-") as temp, path.open("rb") as image:
         header=image.read(44)
         check(header[:8]==b"ANDROID!" and header[8:12]==bytes(4) and
               int.from_bytes(header[40:44],"little")==4,"Invalid packaged recovery header")
@@ -87,6 +88,11 @@ def verify_identity(a):
                 result=cpio.wait(timeout=30)
             check(result==0 and unzip.wait(timeout=30)==0 and packed==expected,
                   "Packaged build identity differs from the release artifact")
+    return doc
+
+
+def verify_identity(a):
+    verify_packed_identity(a.image, a.identity.read_bytes(), a.commit, a.build)
     print("Packaged updater identity verified")
 
 
@@ -132,6 +138,67 @@ def sign(a):
     (out / "SHA256SUMS").write_text(f"{digest}  recovery.img\n")
 
 
+def verify_release(a):
+    """Verify the publishable bundle against independently supplied release inputs."""
+    check(hex32(a.public_key), "A trusted Ed25519 public key is required")
+    check(re.fullmatch(r"[0-9a-f]{40}", a.commit), "Expected a full release commit SHA")
+    check(re.fullmatch(r"[A-Za-z0-9._-]{1,96}", a.tag) and a.tag not in (".", ".."),
+          "Invalid GitHub release tag")
+    image, manifest, signature, checksum = (a.assets / file for file in SIGNED_ASSETS)
+    for asset in (image, manifest, signature, checksum):
+        check(asset.is_file() and not asset.is_symlink(), f"Missing required release asset: {asset.name}")
+    check(0 < manifest.stat().st_size <= 32768 and signature.stat().st_size == 64,
+          "Invalid release manifest or signature length")
+    subprocess.run(["openssl", "pkeyutl", "-verify", "-rawin", "-pubin", "-keyform", "DER",
+                    "-inkey", "/dev/stdin", "-in", str(manifest), "-sigfile", str(signature)],
+                   check=True, input=DER_ED25519 + bytes.fromhex(a.public_key))
+    raw = manifest.read_bytes()
+    signed = json.loads(raw)
+    check(raw == canonical(signed), "Release manifest must be canonical JSON")
+    check(all(signed.get(k) == v for k, v in COMMON.items()) and
+          signed.get("tag") == a.tag and signed.get("commit") == a.commit and
+          signed.get("channel") == a.channel and signed.get("asset") == image.name,
+          "Signed release tag, device, commit, channel or asset mismatch")
+    build, timestamp = signed.get("build"), signed.get("timestamp")
+    check(type(build) is int and 0 < build <= (1 << 53) - 1 and
+          type(timestamp) is int and timestamp > 0, "Invalid signed build identity")
+    notes, digest = signed.get("notes"), signed.get("sha256")
+    check(isinstance(notes, str) and notes.strip() and len(notes.encode()) <= 3072 and hex32(digest),
+          "Missing or invalid signed release notes or image digest")
+    verify_profiles(signed.get("profiles"))
+    expected_checksum = f"{digest}  recovery.img\n".encode()
+    check(checksum.stat().st_size == len(expected_checksum) and checksum.read_bytes() == expected_checksum,
+          "SHA256SUMS does not match the signed image digest")
+    check(image.stat().st_size == IMAGE_BYTES, "Image must cover all 100 MiB of recovery")
+    with image.open("rb") as payload:
+        payload.seek(-64, os.SEEK_END)
+        check(payload.read(4) == b"AVBf", "Recovery AVB footer is missing")
+        payload.seek(0)
+        check(hashlib.file_digest(payload, "sha256").hexdigest() == digest,
+              "Recovery image does not match the signed image digest")
+    identity_file = a.assets / "identity.json"
+    check(identity_file.is_file() and identity_file.stat().st_size <= 4096, "Missing or oversized build identity")
+    expected = identity_file.read_bytes()
+    identity = {k: signed[k] for k in (*COMMON, "build", "timestamp", "commit", "channel")}
+    check(json.loads(expected) == dict(identity, public_key=a.public_key),
+          "Signed manifest does not match the build identity or its trusted key")
+    verify_packed_identity(image, expected, a.commit, build)
+    print(f"Verified signed release {a.tag}: {a.channel} build {build}, {digest}", flush=True)
+
+
+def publish(a):
+    verify_release(a)
+    installers = sorted(a.assets.glob("TWRP-*.zip"))
+    check(len(installers) == 1 and re.fullmatch(r"TWRP-[A-Za-z0-9._-]+\.zip", installers[0].name) and
+          installers[0].is_file() and not installers[0].is_symlink(), "Expected exactly one TWRP installer ZIP")
+    check(a.release_notes.is_file(), "Missing GitHub release description")
+    flags = ["--prerelease"] if a.channel == "prerelease" else []
+    subprocess.run(["gh", "release", "create", "--repo", REPO, "--target", a.commit,
+                    "--title", a.title, "--notes-file", str(a.release_notes.resolve()),
+                    *flags, "--", a.tag, *SIGNED_ASSETS, installers[0].name],
+                   cwd=a.assets, check=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(required=True)
@@ -152,6 +219,17 @@ def main():
         seal.add_argument("--"+key, type=Path, required=True)
     seal.add_argument("--tag", required=True)
     seal.set_defaults(run=sign)
+    for command, handler in (("verify-release", verify_release), ("publish", publish)):
+        gate = sub.add_parser(command)
+        gate.add_argument("--assets", type=Path, required=True)
+        gate.add_argument("--tag", required=True)
+        gate.add_argument("--commit", required=True)
+        gate.add_argument("--channel", choices=("stable", "prerelease"), required=True)
+        gate.add_argument("--public-key", required=True)
+        if command == "publish":
+            gate.add_argument("--title", required=True)
+            gate.add_argument("--release-notes", type=Path, required=True)
+        gate.set_defaults(run=handler)
     a = parser.parse_args()
     try:
         a.run(a)

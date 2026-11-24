@@ -413,6 +413,7 @@ jobs:
         [ "$(git rev-parse HEAD)" = "$GITHUB_SHA" ]
         sudo apt-get update
         sudo apt-get install -y lz4 cpio
+        python3 -B scripts/test-op15-release-publication.py
         stage="$RUNNER_TEMP/op15-build-artifacts"
         grep -Ex '[0-9a-f]{64}  recovery\.img' "$stage/build.sha256" >/dev/null
         [ "$(wc -l < "$stage/build.sha256")" -eq 1 ]
@@ -450,15 +451,13 @@ jobs:
     - name: Publish verified recovery and installer
       env:
         GH_TOKEN: ${{ github.token }}
+        PUBLIC_KEY: ${{ vars.OP15_UPDATER_PUBLIC_KEY }}
         PREVIEW: ${{ inputs.PRERELEASE }}
       run: |
         set -euo pipefail
-        shopt -s nullglob
-        zips=("$UPDATE_ASSETS"/TWRP-*.zip)
-        [ "${#zips[@]}" -eq 1 ]
-        flags=()
-        if [ "$PREVIEW" = true ]; then flags+=(--prerelease); fi
-        gh release create "$UPDATE_TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-          --title "TWRP 3.7.1-16 infiniti — $UPDATE_TAG" --notes-file "$UPDATE_ASSETS/INFO.txt" \
-          "${flags[@]}" "$UPDATE_ASSETS/recovery.img" "$UPDATE_ASSETS/twrp-update.json" \
-          "$UPDATE_ASSETS/twrp-update.json.sig" "$UPDATE_ASSETS/SHA256SUMS" "${zips[0]}"
+        channel=stable
+        if [ "$PREVIEW" = true ]; then channel=prerelease; fi
+        python3 tools/op15_update_release.py publish --assets "$UPDATE_ASSETS" \
+          --tag "$UPDATE_TAG" --commit "$GITHUB_SHA" --channel "$channel" \
+          --public-key "$PUBLIC_KEY" --title "TWRP 3.7.1-16 infiniti — $UPDATE_TAG" \
+          --release-notes "$UPDATE_ASSETS/INFO.txt"
