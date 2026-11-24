@@ -155,8 +155,10 @@ inline std::string AssetURL(const std::string& tag, const char* asset) {
 }
 template <class Fetch>
 std::unique_ptr<Offer> Select(const Json::Value& releases, const Build& installed,
-                              const Digest& pub, const Profile& profile, bool preview, Fetch fetch) {
+                              const Digest& pub, const Profile& profile, bool preview, Fetch fetch,
+                              std::string* installed_notes = nullptr) {
     Require(releases.isArray() && releases.size() <= 20,"Invalid GitHub release list");
+    if (installed_notes) installed_notes->clear();
     std::unique_ptr<Offer> best;
     std::string last_error;
     for (const auto& release : releases) {
@@ -185,6 +187,12 @@ std::unique_ptr<Offer> Select(const Json::Value& releases, const Build& installe
             auto o = Manifest(raw,sig_bytes,pub);
             Require(o.tag == tag && ((o.build.channel == "prerelease") == release["prerelease"].asBool()),
                     "Signed manifest does not match its GitHub release");
+            // A release lists upgrade sources, not itself. Match the signed
+            // image digest to the running slot for notes only.
+            if (installed_notes && installed_notes->empty() && o.build.id == installed.id &&
+                o.build.commit == installed.commit && o.build.channel == installed.channel &&
+                Hex(o.sha) == profile.from_recovery)
+                *installed_notes = o.notes;
             if (Eligible(o,installed,profile,preview) && (!best || o.build.id > best->build.id)) {
                 o.url = AssetURL(tag,ImageAsset);
                 best = std::make_unique<Offer>(std::move(o));

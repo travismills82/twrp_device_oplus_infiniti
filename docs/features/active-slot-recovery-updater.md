@@ -23,8 +23,8 @@ style as its neighbors; only the icon indicates availability:
 | Check or install failed | White icon | Show the error and allow a new check |
 
 The status page shows installed and offered build identities, active slot,
-installation target, and signed release notes. Stable is the default; the preview
-toggle opts in for this recovery session only and invalidates the current offer.
+installation target, and signed release notes. Both screens use TWRP's bottom
+navigation; the graphical updater checks the stable channel only.
 The GUI uses a bounded nonblocking pipe to a separate recovery helper. Only the
 main GUI loop processes its status messages. Checking does not take the normal
 TWRP operation lock; installing does, including the native ORS busy gate.
@@ -33,9 +33,13 @@ TWRP operation lock; installing does, including the native ORS busy gate.
 
 The helper reads the first 20 releases from the
 [official GitHub Releases API](https://docs.github.com/en/rest/releases/releases#list-releases).
-It ignores drafts, preview releases unless selected, missing assets, mismatched
+It ignores drafts, preview releases unless requested from the recovery shell,
+missing assets, mismatched
 repository URLs, and incompatible manifests. It chooses the highest eligible
-**signed build number**, not the newest date or name. The booted image contains
+**signed build number**, not the newest date or name. When there is no eligible
+update, release notes can still come from a signed manifest matching the installed
+build, commit, channel, and active recovery image digest. This does not make that
+release eligible for installation. The booted image contains
 `/system/etc/op15-updater-identity.json` with schema, codename, TWRP version,
 build, timestamp, device-tree commit, channel, image size, compatibility
 protocol and a raw Ed25519 public key. CI uses

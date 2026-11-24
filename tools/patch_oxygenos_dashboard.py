@@ -458,10 +458,10 @@ def dashboard(layout,theme,classic):
 
 
 def native_updates():
-    def page(name,title,back):
+    def page(name,title,back,font="oxy_section",y=102):
         p=node("page",name=name)
         add(p,"template",name="page")
-        label(p,title,190,102,"oxy_section")
+        label(p,title,190,y,font)
         for key,dest in (("home","main"),("back",back)):
             n=add(p,"action");add(n,"touch",key=key)
             # TWRP also runs conditioned GUIActions when a page is entered.
@@ -477,7 +477,7 @@ def native_updates():
         add(n,"action",function=fn).text=dest
         return n
 
-    p=page("op15_updates","TWRP Recovery Updates","main")
+    p=page("op15_updates","TWRP Recovery Updates","main","oxy_update_title",98)
     image(p,"oxy_card_flash",28,250)
     for i,(title,key) in enumerate((("Installed version","installed"),("Available version","available"),
                                     ("Active slot","slot"),("Installation target","target"))):
@@ -501,11 +501,6 @@ def native_updates():
     install=box(p,"Download & Install","%indent%",1280,"op15updater","install")
     cond(install,"tw_op15_update_state","available")
     box(p,"Reboot Menu","%col1_x_right%",1280,"page","reboot")
-    box(p,"Back","%indent%",1410,"page","main")
-    setting=box(p,"Preview channel: off","%col1_x_right%",1410,"op15updater","preview")
-    cond(setting,"tw_op15_update_preview","0")
-    setting=box(p,"Preview channel: on","%col1_x_right%",1410,"op15updater","preview")
-    cond(setting,"tw_op15_update_preview","1")
 
     notes=page("op15_update_notes","Signed Release Notes","op15_updates")
     content=add(notes,"textbox")
@@ -513,7 +508,6 @@ def native_updates():
     add(content,"font",resource="oxy_body",spacing="12",color="#FFFFFF")
     add(content,"color",foreground="#FFFFFF",background="#1B1C21")
     add(content,"text").text="%tw_op15_update_notes%"
-    box(notes,"Back","%indent%",1450,"page","op15_updates")
     return p,notes
 
 
@@ -700,6 +694,7 @@ def patch(recovery):
     for name,size in (("oxy_title",64),("oxy_subtitle",32),("oxy_section",38),("oxy_body",38),("oxy_small",32),("oxy_status",34),("oxy_caption",28),("oxy_quick",29),("oxy_value",38)):
         resources.append(node("font",name=name,filename="RobotoCondensed-Regular.ttf",size=size))
     resources.append(node("font",name="oxy_traffic_bold",filename="RobotoCondensed-Regular.ttf",size=28,bold=1))
+    resources.append(node("font",name="oxy_update_title",filename="RobotoCondensed-Regular.ttf",size=46,bold=1))
     for name,meta in sorted(manifest.items()):
         data=base64.b64decode((ASSETS/(name+".png.b64")).read_bytes(),validate=False)
         if hashlib.sha256(data).hexdigest()!=meta["sha256"] or len(data)!=meta["bytes"]:raise ValueError("Asset checksum mismatch: "+name)
@@ -740,7 +735,7 @@ def patch(recovery):
               node('variable',name='tw_wlan_network_count',value='0'),
               node('variable',name='tw_op15_wlan_scan_status',value='Tap Scan to refresh')]
     defaults.extend(node('variable',name='tw_op15_update_'+key,value=value) for key,value in {
-        "state":"offline","status":"Offline — connect to Wi-Fi","preview":"0","notes":"No signed release notes",
+        "state":"offline","status":"Offline — connect to Wi-Fi","notes":"Connect to Wi-Fi to check for signed release notes.",
         "installed":"—","available":"—","slot":"—","target":"—","progress":"0","speed":"","success":"","warning":""
     }.items())
     ut=insert(ut,'wifi-variables',serialize(defaults),'</variables>')

@@ -48,15 +48,13 @@ class Controller {
         if (fcntl(fd[0],F_SETFL,O_NONBLOCK) != 0) {
             close(fd[0]); close(fd[1]); return false;
         }
-        const bool preview = DataManager::GetIntValue(Name("preview")) == 1;
         pid_ = fork();
         if (pid_ == 0) {
             if (dup2(fd[1],STDOUT_FILENO) < 0) _exit(127);
             close(fd[0]); close(fd[1]);
             constexpr auto bin = "/system/bin/op15-twrp-updater";
-            const char* channel = preview ? "preview" : "stable";
-            if (mode == "install") execl(bin,bin,mode.c_str(),channel,offered.c_str(),nullptr);
-            else if (mode == "check") execl(bin,bin,mode.c_str(),channel,nullptr);
+            if (mode == "install") execl(bin,bin,mode.c_str(),"stable",offered.c_str(),nullptr);
+            else if (mode == "check") execl(bin,bin,mode.c_str(),"stable",nullptr);
             else execl(bin,bin,mode.c_str(),nullptr);
             _exit(127);
         }
@@ -73,7 +71,7 @@ class Controller {
         } else if (mode == "check") {
             offer_.clear();
             Set("state","checking"); Set("status","Checking GitHub Releases");
-            Set("available","—"); Set("notes","No signed release notes");
+            Set("available","—"); Set("notes","Checking for signed release notes…");
             manual_after_ = Now() + 15;
             auto_after_ = Now() + 900;
         }
@@ -116,7 +114,12 @@ class Controller {
             DataManager::SetValue("tw_busy",0);
             return;
         }
-        if (!Wifi()) { Offline(); return; }
+        if (!Wifi()) {
+            if (DataManager::GetStrValue(Name("notes")) == "Checking for signed release notes…")
+                Set("notes","Connect to Wi-Fi to check for signed release notes.");
+            Offline();
+            return;
+        }
         if (ok && pending_state_ == "available" && !pending_offer_.empty()) {
             offer_ = pending_offer_;
             Set("state","available");
@@ -125,6 +128,7 @@ class Controller {
         } else {
             Set("state","failed");
             Set("status",error_.empty() ? "Update check did not complete" : error_);
+            Set("notes","Could not check for signed release notes.");
         }
     }
     void Offline() {
@@ -182,17 +186,6 @@ public:
             return gui_changePage(action == "nav:main" ? "main" : "op15_updates");
         }
         if (pid_ >= 0 || DataManager::GetIntValue("tw_busy")) return 0;
-        if (action == "preview") {
-            DataManager::SetValue(Name("preview"),1-DataManager::GetIntValue(Name("preview")));
-            offer_.clear();
-            Set("state","current");
-            Set("available","—");
-            Set("notes","No signed release notes");
-            auto_after_ = std::max(Now(),manual_after_);
-            Set("status","Update channel changed; checking again");
-            if (!Wifi()) Offline();
-            return 0;
-        }
         if (!Wifi()) { Offline(); return 0; }
         if ((action == "tile" || action == "install") && !offer_.empty()) {
             if (!Start("install",offer_)) return -1;

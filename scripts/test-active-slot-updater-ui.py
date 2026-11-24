@@ -33,15 +33,19 @@ labels = [n for n in home.findall("text") if n.findtext("text") in ("Check for",
 assert " ".join(n.findtext("text") for n in labels) == "Check for TWRP Updates"
 assert [n.find("placement").attrib for n in labels] == [
     {"x":"917","y":"980","placement":"5"},{"x":"917","y":"1011","placement":"5"}]
-assert ui.find("variables/variable[@name='tw_op15_update_preview']").get("value") == "0"
+assert ui.find("variables/variable[@name='tw_op15_update_preview']") is None
 assert ui.find("variables/variable[@name='tw_op15_update_state']").get("value") == "offline"
 for name in ("oxy_system","oxy_recovery","oxy_bootloader","oxy_fastbootd"):
     assert home.find(f"button[@name='{name}']") is not None
 for name in ("op15_updates","op15_update_notes","reboot"):
     assert theme.find(f"pages/page[@name='{name}']") is not None
 for name,back in (("op15_updates","main"),("op15_update_notes","op15_updates")):
+    update_page = theme.find(f"pages/page[@name='{name}']")
+    assert update_page.find("template[@name='page']") is not None
+    assert not any(b.findtext("text", "").startswith(("Back","Preview channel"))
+                   for b in update_page.findall("button"))
     navigation = {}
-    for widget in theme.find(f"pages/page[@name='{name}']").findall("action"):
+    for widget in update_page.findall("action"):
         key = widget.find("touch[@key]")
         if key is not None:
             # NotifyVarChange dispatches conditioned GUIActions even on page entry.
@@ -51,16 +55,21 @@ for name,back in (("op15_updates","main"),("op15_update_notes","op15_updates")):
             navigation[key.get("key")] = action.text
     assert navigation == {"home":"nav:main","back":"nav:"+back}
 page = theme.find("pages/page[@name='op15_updates']")
+title = page.find("text[text='TWRP Recovery Updates']")
+assert title.find("placement").attrib == {"x":"190","y":"98"}
+font = ui.find("resources/font[@name='" + title.find("font").get("resource") + "']")
+assert font.get("bold") == "1" and int(font.get("size")) > 38
 assert page.find("progressbar/data[@name='tw_op15_update_progress']") is not None
 install = next(b for b in page.findall("button") if b.findtext("action") == "install")
 assert install.find("condition[@var1='tw_op15_update_state']").get("var2") == "available"
 assert install.find("condition[@var1='tw_busy']").get("var2") == "0"
-for action in ("check","install","preview"):
+for action in ("check","install"):
     assert page.find(f".//action[@function='op15updater'][.='{action}']") is not None
 assert "ADD_ACTION(op15updater)" in (source / "gui/action.cpp").read_text()
 assert "op15_updater_gui::Instance().Apply();" in (source / "gui/gui.cpp").read_text()
 assert 'backup_exclusions.add_absolute_dir("/data/twrp/updater");' in (source / "partition.cpp").read_text()
 runtime = (device / "updater/gui.hpp").read_text()
+assert 'mode.c_str(),"stable"' in runtime and '"preview"' not in runtime
 assert 'if (action == "nav:main" || action == "nav:op15_updates") {\n' in runtime
 assert 'if (DataManager::GetIntValue("tw_busy")) return 0;\n            return gui_changePage(' in runtime
 assert "waitpid(pid_,&status,WNOHANG)" in runtime and "O_NONBLOCK" in runtime
@@ -74,4 +83,4 @@ assert "Partition(target,true)" in backend and backend.count("Partition(target,t
 assert 'Receipt(dir,journal,"writing")' in backend and 'Receipt(dir,journal,"verified")' in backend
 assert 'renameat(dir,"receipt.json",dir,"last-success.json")' in backend
 assert '"--proto","=https","--proto-redir","=https"' in backend and "--insecure" not in backend
-print("PASS: generated native pages, tile states, default channel, isolated write and reboot contracts")
+print("PASS: generated native pages, bold updater title, stable channel, isolated write and reboot contracts")

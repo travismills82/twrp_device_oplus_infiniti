@@ -90,7 +90,7 @@ void Releases() {
     fixture(18,"stable-last");
     fixture(21,"preview",true);
     fixture(19,"stable-newest");
-    fixture(10,"already-installed");
+    fixture(10,"already-installed",false,false,false,Device,false,false,true);
     fixture(9,"downgrade");
     auto fetch=[&](const std::string& url,uint64_t cap) {
         assert(network.count(url) && network.at(url).size() <= cap);
@@ -101,6 +101,24 @@ void Releases() {
     assert(!Select(Json::Value(Json::arrayValue),running,good.pub,p,false,fetch));
     Json::Value old(Json::arrayValue); old.append(releases[9]); old.append(releases[10]);
     assert(!Select(old,running,good.pub,p,false,fetch));
+    std::string notes = "stale notes";
+    const auto changed_image=p;
+    assert(!Select(old,running,good.pub,changed_image,false,fetch,&notes) && notes.empty());
+    auto installed_profile = p;
+    installed_profile.from_recovery = std::string(64,'e');
+    assert(!Select(old,running,good.pub,installed_profile,false,fetch,&notes));
+    assert(notes == "A test build"); // Current image matches, not its upgrade-source profile.
+    auto changed_commit=running;
+    changed_commit.commit[0]='1';
+    assert(!Select(old,changed_commit,good.pub,installed_profile,false,fetch,&notes) && notes.empty());
+    Json::Value downgrade_only(Json::arrayValue); downgrade_only.append(releases[10]);
+    assert(!Select(downgrade_only,running,good.pub,installed_profile,false,fetch,&notes) && notes.empty());
+    auto tampered_fetch=[&](const std::string& url,uint64_t cap) {
+        auto value=fetch(url,cap);
+        return url == AssetURL("already-installed",ManifestAsset) ? value+" " : value;
+    };
+    Reject([&]{ Select(old,running,good.pub,installed_profile,false,tampered_fetch,&notes); });
+    assert(notes.empty());
     const auto raw=network[AssetURL("stable-newest",ManifestAsset)];
     const auto sig=network[AssetURL("stable-newest",SignatureAsset)];
     Reject([&]{ Manifest(raw+" ",sig,good.pub); });

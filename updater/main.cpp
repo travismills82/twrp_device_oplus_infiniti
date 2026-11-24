@@ -450,14 +450,15 @@ std::string Fetch(const std::string& url, uint64_t limit, int fd = -1, bool api 
     }
     return result;
 }
-std::unique_ptr<Offer> Check(const Build& installed, const Digest& pub, Profile profile, bool preview) {
+std::unique_ptr<Offer> Check(const Build& installed, const Digest& pub, const Profile& profile,
+                             bool preview, std::string* installed_notes) {
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(60);
     auto releases = Parse(Fetch(std::string("https://api.github.com/repos/")+Repo+
         "/releases?per_page=20",2 * 1024 * 1024,-1,true));
     auto best = Select(releases,installed,pub,profile,preview,[&](const std::string& url,uint64_t size) {
         Require(std::chrono::steady_clock::now() < deadline,"Timed out checking signed releases");
         return Fetch(url,size);
-    });
+    },installed_notes);
     Require(std::chrono::steady_clock::now() < deadline,"Timed out checking signed releases");
     return best;
 }
@@ -602,16 +603,19 @@ int main(int argc, char** argv) {
         const auto profile = Probe(target,recovery);
         const bool preview = !std::strcmp(argv[2],"preview");
         Out("status","Checking GitHub Releases");
-        auto offer = Check(running,Unhex(identity["public_key"].asString()),profile,preview);
+        std::string installed_notes;
+        auto offer = Check(running,Unhex(identity["public_key"].asString()),profile,preview,
+                           mode == "check" ? &installed_notes : nullptr);
         if (!offer) {
             Require(mode == "check","Previously selected update is no longer eligible");
+            Out("notes",installed_notes.empty() ? "No signed release notes for this build." : installed_notes);
             Out("state","current");
             Out("status","No newer signed compatible recovery");
             return 0;
         }
         const auto id = std::to_string(offer->build.id);
         Out("available",offer->tag+" / build "+id);
-        Out("notes",offer->notes);
+        Out("notes",offer->notes.empty() ? "No signed release notes for this update." : offer->notes);
         if (mode == "install") {
             Require(offer->Token() == argv[3],"Release changed; check again before installing");
             Install(running,*offer,target,profile,recovery);
