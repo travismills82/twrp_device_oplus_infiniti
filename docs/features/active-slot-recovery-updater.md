@@ -18,13 +18,17 @@ style as its neighbors; only the icon indicates availability:
 | --- | --- | --- |
 | Offline or current | White icon | Show status or check again |
 | Checking | White icon | Open the status page; do not start another check |
-| Newer signed compatible release | Green icon | Start update without another confirmation |
+| Newer signed compatible release | Green icon | Open the status page for review; do not download or install |
 | Downloading, installing, or reading back | White icon with percentage | Show current stage, progress, and download speed |
 | Check or install failed | White icon | Show the error and allow a new check |
 
 The status page shows installed and offered build identities, active slot,
-installation target, and signed release notes. Both screens use TWRP's bottom
-navigation; the graphical updater checks the stable channel only.
+installation target, and signed release notes. The user can review the notes
+first and must tap the charcoal **Download & Install** button to start the
+update. **What's new** shows one bullet per nonempty signed line. Both screens
+use TWRP's bottom navigation; the graphical updater checks the stable channel
+only. The [build 1002 notes](../releases/2026-11-24-updater-1002-whats-new.md)
+list the commits from November 22–24, 2026.
 The GUI uses a bounded nonblocking pipe to a separate recovery helper. Only the
 main GUI loop processes its status messages. Checking does not take the normal
 TWRP operation lock; installing does, including the native ORS busy gate.

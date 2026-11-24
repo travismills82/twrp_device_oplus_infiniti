@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "../updater/core.hpp"
+#include "../updater/op15_updater_notes.hpp"
 #include <cassert>
 #include <fcntl.h>
 #include <iostream>
@@ -203,11 +204,20 @@ void Downloads() {
     Reject([&]{ download("incomplete",100,true); });
     Reject([&]{ download("oversize",4,true); });
 }
+void Notes() {
+    using namespace op15_update_notes;
+    const auto record = Encode("  - First change\r\n\r\n* Second change\n+ Third change\n• Fourth change\nPlain line\n");
+    assert(record.find('\n') == std::string::npos && record.find('\r') == std::string::npos);
+    assert(Bullets(record) == "• First change\n• Second change\n• Third change\n• Fourth change\n• Plain line");
+    assert(Bullets(Encode(" \n\r\n ")).empty());
+    assert(Bullets(Encode("First\x1e" "not a record\tnext field")) == "• First not a record next field");
+}
 }
 int main(int argc,char** argv) {
     assert(argc==2);
     Releases();
     Downloads();
+    Notes();
     Partitions(argv[1]);
     std::cout << "PASS: signed releases, downgrade/slot/OTA guards, write/readback and reboot gate fixtures\n";
 }

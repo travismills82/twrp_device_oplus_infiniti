@@ -59,7 +59,7 @@ def source_actions(theme,classic,source):
     if source=="op15:updates":
         group=node("actions")
         add(group,"action",function="page").text="op15_updates"
-        add(group,"action",function="op15updater").text="tile"
+        add(group,"action",function="op15updater").text="open"
         return [group]
     if source=="ftp":
         for item in theme.findall("pages/page[@name='advanced']//listitem"):
@@ -469,8 +469,9 @@ def native_updates():
             add(n,"action",function="op15updater").text="nav:"+dest
         return p
 
-    def box(p,caption,x,y,fn,dest):
-        n=add(p,"button",style="main_button_half_height")
+    def box(p,caption,x,y,fn,dest,*,full=False):
+        style="main_button_half_height_full_width" if full else "main_button_half_height"
+        n=add(p,"button",style=style)
         place(n,x,y)
         add(n,"text").text=caption
         cond(n,"tw_busy","0")
@@ -498,15 +499,19 @@ def native_updates():
     label(p,"%tw_op15_update_speed%",56,1030,"oxy_small")
     box(p,"Check Again","%indent%",1150,"op15updater","check")
     box(p,"View Release Notes","%col1_x_right%",1150,"page","op15_update_notes")
-    install=box(p,"Download & Install","%indent%",1280,"op15updater","install")
+    install=box(p,"Download & Install","%indent%",1280,"op15updater","install",full=True)
     cond(install,"tw_op15_update_state","available")
-    box(p,"Reboot Menu","%col1_x_right%",1280,"page","reboot")
+    box(p,"Reboot Menu","%indent%",1410,"page","reboot",full=True)
 
-    notes=page("op15_update_notes","Signed Release Notes","op15_updates")
-    content=add(notes,"textbox")
-    place(content,56,300,968,1100)
-    add(content,"font",resource="oxy_body",spacing="12",color="#FFFFFF")
-    add(content,"color",foreground="#FFFFFF",background="#1B1C21")
+    notes=page("op15_update_notes","Release Notes","op15_updates","oxy_update_title",98)
+    fill(notes,"#1B1C21",28,260,1024,1270)
+    fill(notes,"#E31B36",56,294,6,38)
+    label(notes,"What's new",76,291,"oxy_section")
+    fill(notes,"#393A42",56,360,968,2)
+    content=add(notes,"textbox",multiline="1")
+    place(content,64,400,952,1080)
+    add(content,"font",resource="oxy_small",spacing="12",color="#F4F4F7")
+    add(content,"color",foreground="#F4F4F7",background="#1B1C21")
     add(content,"text").text="%tw_op15_update_notes%"
     return p,notes
 

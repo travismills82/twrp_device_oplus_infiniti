@@ -435,7 +435,7 @@ jobs:
         printf '%s\n' "$UPDATE_KEY" > "$temp/signing.pem"
         unset UPDATE_KEY
         printf '%s\n' "$PROFILES" > "$temp/profiles.json"
-        git log -8 --format='%h %s' | cut -c1-220 > "$temp/notes"
+        git log -8 --format='- %h %s' | cut -c1-220 > "$temp/notes"
         assets="$RUNNER_TEMP/op15-build-artifacts"
         channel=stable
         if [ "$PREVIEW" = true ]; then channel=prerelease; fi

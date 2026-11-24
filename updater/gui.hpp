@@ -12,6 +12,7 @@
 
 #include "data.hpp"
 #include "gui/pages.hpp"
+#include "op15_updater_notes.hpp"
 
 namespace op15_updater_gui {
 // All methods run on the GUI thread. HTTPS, hashes and partition access are
@@ -85,6 +86,9 @@ class Controller {
             key == "available" || key == "notes" || key == "status" || key == "speed" ||
             (key == "progress" && value.size() <= 3 && Digits(value))) {
             Set(key,value);
+        } else if (key == "notes_items") {
+            auto formatted = op15_update_notes::Bullets(value);
+            Set("notes",formatted.empty() ? "No signed release notes for this build." : formatted);
         } else if (key == "offer" && Token(value)) pending_offer_ = value;
         else if (key == "state" && (value == "available" || value == "current")) pending_state_ = value;
         else if (key == "error") error_ = value;
@@ -185,14 +189,17 @@ public:
             if (DataManager::GetIntValue("tw_busy")) return 0;
             return gui_changePage(action == "nav:main" ? "main" : "op15_updates");
         }
+        if (action != "open" && action != "check" && action != "install") return -1;
         if (pid_ >= 0 || DataManager::GetIntValue("tw_busy")) return 0;
         if (!Wifi()) { Offline(); return 0; }
-        if ((action == "tile" || action == "install") && !offer_.empty()) {
+        if (action == "install") {
+            if (offer_.empty() || DataManager::GetStrValue(Name("state")) != "available") return -1;
             if (!Start("install",offer_)) return -1;
             offer_.clear();
             return 0;
         }
-        if (action == "install") return -1;
+        // Opening the status page with an offer preserves it for review.
+        if (action == "open" && !offer_.empty()) return 0;
         if (Now() < manual_after_) {
             Set("status","Please wait before checking again");
             return 0;

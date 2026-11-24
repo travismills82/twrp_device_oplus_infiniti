@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "core.hpp"
+#include "op15_updater_notes.hpp"
 
 #include <android-base/properties.h>
 #include <libavb/libavb.h>
@@ -78,6 +79,10 @@ bool Exists(int dir, const char* name) {
 void Out(const char* key, std::string value) {
     for (char& c : value) if (static_cast<unsigned char>(c) < 32 || c == 127) c = ' ';
     std::cout << key << '\t' << value << std::endl;
+}
+void OutNotes(const std::string& signed_notes,const char* fallback) {
+    if (signed_notes.empty()) Out("notes",fallback);
+    else std::cout << "notes_items\t" << op15_update_notes::Encode(signed_notes) << std::endl;
 }
 void Write(int fd, const char* p, size_t length) {
     while (length) {
@@ -608,14 +613,14 @@ int main(int argc, char** argv) {
                            mode == "check" ? &installed_notes : nullptr);
         if (!offer) {
             Require(mode == "check","Previously selected update is no longer eligible");
-            Out("notes",installed_notes.empty() ? "No signed release notes for this build." : installed_notes);
+            OutNotes(installed_notes,"No signed release notes for this build.");
             Out("state","current");
             Out("status","No newer signed compatible recovery");
             return 0;
         }
         const auto id = std::to_string(offer->build.id);
         Out("available",offer->tag+" / build "+id);
-        Out("notes",offer->notes.empty() ? "No signed release notes for this update." : offer->notes);
+        OutNotes(offer->notes,"No signed release notes for this update.");
         if (mode == "install") {
             Require(offer->Token() == argv[3],"Release changed; check again before installing");
             Install(running,*offer,target,profile,recovery);

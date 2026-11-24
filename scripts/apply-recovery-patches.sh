@@ -594,6 +594,7 @@ install -m 0644 "$DEVICE_DIR/smb/network_sessions.hpp" "$RECOVERY_DIR/op15_netwo
 install -m 0644 "$DEVICE_DIR/smb/gui.hpp" "$RECOVERY_DIR/op15_smb_gui.hpp"
 install -m 0644 "$DEVICE_DIR/smb/archive.hpp" "$RECOVERY_DIR/op15_smb_archive.hpp"
 install -m 0644 "$DEVICE_DIR/smb/stream_digest.hpp" "$RECOVERY_DIR/op15_smb_stream_digest.hpp"
+install -m 0644 "$DEVICE_DIR/updater/op15_updater_notes.hpp" "$RECOVERY_DIR/op15_updater_notes.hpp"
 install -m 0644 "$DEVICE_DIR/updater/gui.hpp" "$RECOVERY_DIR/op15_updater_gui.hpp"
 python3 -B "$DEVICE_DIR/tools/patch_op15_updater.py" "$RECOVERY_DIR" ||
     fail "Active-slot updater action integration failed"
